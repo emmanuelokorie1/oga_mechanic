@@ -3,7 +3,7 @@ import React, { forwardRef, useEffect, useRef, useImperativeHandle } from "react
 import { View, StyleSheet, AppState } from "react-native";
 import { OtpInput, OtpInputRef } from "react-native-otp-entry";
 import * as Clipboard from 'expo-clipboard';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from 'expo-router/react-navigation';
 
 const OTPInput = forwardRef(({ numberOfDigits, onComplete, countdown }: OTPInputProps, ref: React.Ref<OtpInputRef>) => {
   const internalRef = useRef<OtpInputRef>(null);

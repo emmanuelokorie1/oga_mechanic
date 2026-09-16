@@ -200,6 +200,7 @@ declare interface ServicesProps {
   isSmall?: boolean
   bgColor: string
   border: string
+  badge?: string
 }
 
 declare interface myCar {

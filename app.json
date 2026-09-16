@@ -7,7 +7,6 @@
     "icon": "./assets/icons/box_logo.png",
     "scheme": "ogamechanic",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ogamechanic.app",
@@ -55,11 +54,7 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.ACCESS_BACKGROUND_LOCATION"
-      ],
-      "usesCleartextTraffic": true,
-      "jsEngine": "hermes",
-      "enableProguardInReleaseBuilds": false,
-      "enableSeparateBuildPerCPUArchitecture": false
+      ]
     },
     "web": {
       "bundler": "metro",

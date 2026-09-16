@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Animated } from 'react-native'
 import { useFormikContext } from 'formik'
 import CustomAlert from './CustomAlert'
 import { useCustomAlert } from '@/hooks/useCustomAlert'
@@ -109,11 +109,50 @@ const VINInputBase: React.FC<VINInputBaseProps> = ({
     return true
   }
 
+  const animatedValue = React.useRef(new Animated.Value(0)).current;
+  const [isFocused, setIsFocused] = useState(false);
+
+  const hasError = name ? Boolean((errors as Record<string, any>)[name] && (touched as Record<string, any>)[name]) : false;
+
+  const borderColors = React.useMemo(
+    () => ({
+      default: hasError ? "#EF4444" : "#E5E7EB",
+      focused: hasError ? "#EF4444" : "#F87171",
+      success: "#10B981"
+    }),
+    [hasError]
+  );
+
+  const handleFocus = () => {
+    if (!isFocused) {
+      setIsFocused(true);
+      Animated.timing(animatedValue, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: false,
+      }).start();
+    }
+  };
+
   const handleBlur = () => {
+    if (isFocused) {
+      setIsFocused(false);
+      Animated.timing(animatedValue, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: false,
+      }).start();
+    }
     if (name && setFieldTouched) {
       setFieldTouched(name, true)
     }
   }
+
+  const borderColor = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [isSuccess ? borderColors.success : borderColors.default, isSuccess ? borderColors.success : borderColors.focused],
+    extrapolate: "clamp",
+  });
 
   const handleAutoVINLookup = async () => {
     if (!localValue || localValue.length !== 17) return
@@ -141,7 +180,7 @@ const VINInputBase: React.FC<VINInputBaseProps> = ({
   return (
     <View>
       <View className="flex-row items-center justify-between mb-2">
-        <Text className="text-xs font-NunitoExtraBold text-gray-500 uppercase tracking-widest ml-1">
+        <Text className="text-base font-NunitoSemiBold text-gray-700 ml-1">
           {label} {required && <Text className="text-red-500">*</Text>}
         </Text>
 
@@ -153,23 +192,30 @@ const VINInputBase: React.FC<VINInputBaseProps> = ({
         </TouchableOpacity>
       </View>
       
-      <View className="relative justify-center">
+      <Animated.View 
+        className={`flex flex-row items-center rounded-xl px-4 py-1 ${isSuccess ? 'bg-green-50/10' : 'bg-gray-50'}`}
+        style={{
+          borderWidth: 1,
+          borderColor: borderColor,
+        }}
+      >
         <TextInput
           value={localValue}
           onChangeText={handleChange}
+          onFocus={handleFocus}
           onBlur={handleBlur}
           placeholder={placeholder}
           placeholderTextColor="#9CA3AF"
-          className={`border ${isSuccess ? 'border-green-500 bg-green-50/10' : 'border-gray-200 bg-gray-50/50'} rounded-2xl px-5 py-4 text-base font-NunitoBold text-gray-900 pr-12`}
+          className="flex-1 py-3 text-[1.2rem] font-NunitoMedium text-gray-900"
           autoCapitalize="characters"
           autoCorrect={false}
           maxLength={17}
         />
-        <View className="absolute right-4">
+        <View className="pl-2">
           {isLoading && <ActivityIndicator size="small" color="#111827" />}
           {isSuccess && !isLoading && <CheckCircleIcon size={22} color="#10B981" />}
         </View>
-      </View>
+      </Animated.View>
 
       {name && (errors as Record<string, any>)[name] && (touched as Record<string, any>)[name] && (
         <Text className="text-red-500 text-[10px] font-NunitoBold mt-1.5 ml-1">{(errors as Record<string, any>)[name]}</Text>

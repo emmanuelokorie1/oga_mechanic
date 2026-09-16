@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { CheckCircleIcon } from 'react-native-heroicons/solid';
+import { CheckIcon } from 'react-native-heroicons/outline';
 
 interface StepIndicatorProps {
   currentStep: 1 | 2;
@@ -15,43 +15,46 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({ currentStep, hasCa
   if (!hasCarList) return null;
 
   return (
-    <View className="flex-row items-center justify-center mb-10 mt-2">
+    <View className="flex-row items-center justify-center mb-8 mt-2">
       <View className="flex-row items-center">
+        {/* Step 1 Node */}
         <View
-          className={`w-10 h-10 rounded-2xl items-center justify-center ${
-            currentStep >= 1 ? 'bg-gray-900 shadow-lg shadow-gray-200' : 'bg-gray-100'
+          className={`w-10 h-10 rounded-full items-center justify-center ${
+            currentStep >= 1 ? 'bg-[#D30309]' : 'bg-gray-100'
           }`}
         >
           {currentStep > 1 ? (
-            <CheckCircleIcon size={20} color="#FFFFFF" />
+            <CheckIcon size={20} color="#FFFFFF" strokeWidth={3} />
           ) : (
             <Text
-              className={`text-sm font-NunitoExtraBold ${
+              className={`text-base font-NunitoExtraBold ${
                 currentStep >= 1 ? 'text-white' : 'text-gray-400'
               }`}
             >
-              01
+              1
             </Text>
           )}
         </View>
         
-        <View className="w-12 h-[2px] mx-3 bg-gray-100 overflow-hidden">
+        {/* Progress Line */}
+        <View className="w-16 h-[3px] mx-2 bg-gray-100 overflow-hidden rounded-full">
           <View 
-            className={`h-full ${currentStep >= 2 ? 'bg-gray-900 w-full' : 'bg-gray-100 w-0'}`}
+            className={`h-full rounded-full ${currentStep >= 2 ? 'bg-[#D30309] w-full' : 'bg-transparent w-0'}`}
           />
         </View>
 
+        {/* Step 2 Node */}
         <View
-          className={`w-10 h-10 rounded-2xl items-center justify-center ${
-            currentStep >= 2 ? 'bg-gray-900 shadow-lg shadow-gray-200' : 'bg-gray-100'
+          className={`w-10 h-10 rounded-full items-center justify-center ${
+            currentStep >= 2 ? 'bg-[#D30309]' : 'bg-gray-100'
           }`}
         >
           <Text
-            className={`text-sm font-NunitoExtraBold ${
+            className={`text-base font-NunitoExtraBold ${
               currentStep >= 2 ? 'text-white' : 'text-gray-400'
             }`}
           >
-            02
+            2
           </Text>
         </View>
       </View>

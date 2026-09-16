@@ -30,6 +30,7 @@ interface MultiSelectFieldProps {
   options: SelectOption[];
   value: string[];
   onValueChange?: (value: string[]) => void;
+  required?: boolean;
 }
 
 const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
@@ -39,6 +40,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
   options,
   value,
   onValueChange,
+  required = false,
 }) => {
   const [showDrawer, setShowDrawer] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -94,27 +96,30 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
 
   const borderColor = animatedValue.interpolate({
     inputRange: [0, 1],
-    outputRange: ["#D1D5DB", "#F59E42"],
+    outputRange: ["#E5E7EB", "#F87171"],
     extrapolate: "clamp",
   });
 
   return (
     <View className="mb-4 w-full">
       {label ? (
-        <Text className="text-base font-NunitoSemiBold text-gray-700 mb-2">{label}</Text>
+        <Text className="text-base font-NunitoSemiBold text-gray-700 mb-2">
+          {label}
+          {required && <Text className="text-red-500 ml-1">*</Text>}
+        </Text>
       ) : null}
 
       <Animated.View
         className="flex flex-row items-center bg-gray-50 rounded-xl px-4 py-1"
         style={{
-          borderWidth: 1.5,
+          borderWidth: 1,
           borderColor,
           ...Platform.select({
             ios: {
               shadowColor: "transparent",
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0,
+              shadowRadius: 0,
             },
             android: {
               elevation: 0,
@@ -159,7 +164,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
                 </Text>
               </View>
 
-              <View className="flex-row items-center bg-gray-100 rounded-xl px-3 py-2 mb-4">
+              <View className="flex-row items-center bg-gray-100 rounded-2xl px-3 py-3 mb-3">
                 <MagnifyingGlassIcon size={20} color="#9CA3AF" />
                 <TextInput
                   placeholder={`Search ${label.toLowerCase()}...`}
@@ -174,21 +179,21 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
             </View>
 
             <ScrollView className="flex-1 px-6" showsVerticalScrollIndicator bounces={false}>
-              <View className="space-y-2 pb-6">
+              <View className="pt-2 pb-6">
                 {filteredOptions.length > 0 ? (
-                  filteredOptions.map((option) => {
+                  filteredOptions.map((option, index) => {
                     const checked = selectedSet.has(option.value);
                     return (
                       <TouchableOpacity
                         key={option.value}
                         onPress={() => toggleValue(option.value)}
-                        className="flex-row items-center justify-between p-4 bg-gray-50 rounded-xl"
-                        activeOpacity={0.85}
+                        className="flex-row items-center justify-between py-4 border-b border-gray-100"
+                        activeOpacity={0.7}
                       >
-                        <Text className="text-base font-NunitoMedium text-gray-900 flex-1 pr-3">
+                        <Text className={`text-[16px] ${checked ? 'font-NunitoBold text-primary-600' : 'font-NunitoSemiBold text-gray-800'} flex-1 pr-3`}>
                           {option.label}
                         </Text>
-                        {checked ? <CheckIcon size={20} color="#0A6DEE" /> : null}
+                        {checked && <CheckIcon size={20} color="#D30309" strokeWidth={2.5} />}
                       </TouchableOpacity>
                     );
                   })

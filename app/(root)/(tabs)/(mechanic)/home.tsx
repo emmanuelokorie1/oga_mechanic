@@ -13,12 +13,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { LAYOUT } from "@/constants/units";
 import OrderCard, { Order } from "@/components/OrderCard";
-import CustomerReviewCard from "@/components/CustomerReviewCard";
 import { router, useFocusEffect } from "expo-router";
 import { icons } from "@/constants";
 import { usePrimaryUserProfile, useMechanicProfile } from "@/hooks/useUserProfile";
 import { useProfileStore } from "@/hooks/useProfileStore";
 import { mechanicRoutes } from "@/constants/routes";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Navbar from "@/components/Navbar";
 import MechanicActionConfirmationModal, { MechanicActionType } from "@/components/modals/MechanicActionConfirmationModal";
 import { useRepairRequests, useAcceptRepairRequest, useDeclineRepairRequest, useMechanicAnalytics } from "@/hooks/useRepairRequests";
@@ -30,6 +30,7 @@ import ProfileCompletionModal from "@/components/modals/ProfileCompletionModal";
 import KYCBanner from "@/components/KYCBanner";
 import AnimatedPageContainer from "@/components/AnimatedPageContainer";
 import BiddingCarousel from "@/components/bidding/BiddingCarousel";
+
 import SpecialistIconBtn from "@/components/SpecialistIconBtn";
 import { useMechanicOrderNotifications } from "@/hooks/useMechanicOrderNotifications";
 import { useNotificationWebSocket } from "@/hooks/useNotificationWebSocket";
@@ -138,6 +139,29 @@ const OrderCardSkeleton = () => {
     </View>
   );
 };
+
+// ── Metric Card ──────────────────────────────────────────────────────────────
+interface MetricCardProps {
+  label: string;
+  value: number;
+  sublabel: string;
+  accentColor?: string;
+}
+
+const MetricCard = ({ label, value, sublabel, accentColor = '#D30309' }: MetricCardProps) => (
+  <View className="flex-1 bg-white rounded-xl border border-gray-200 items-center justify-between h-24 py-3.5 px-2 elevation-1">
+    <Text className="text-[10px] font-NunitoBold text-slate-500 uppercase tracking-wide text-center">
+      {label}
+    </Text>
+    {/* accentColor must stay inline — Tailwind can't resolve dynamic color values at runtime */}
+    <Text style={{ fontSize: 24, fontFamily: 'NunitoExtraBold', color: accentColor, lineHeight: 28 }}>
+      {value}
+    </Text>
+    <Text className="text-[11px] font-NunitoMedium text-slate-500 text-center">
+      {sublabel}
+    </Text>
+  </View>
+);
 
 const MechanicHome = () => {
   useFocusEffect(
@@ -527,8 +551,13 @@ const MechanicHome = () => {
       />
 
       {/* Floating Chat Specialist */}
-      <View style={{ position: 'absolute', bottom: 100, right: 20, zIndex: 1000 }}>
+      <View style={{ position: 'absolute', bottom: LAYOUT.SCROLL_PADDING_BOTTOM - 5, right: 20, zIndex: 1000 }}>
         <SpecialistIconBtn isFloating={true} />
+      </View>
+
+      {/* Sticky Navbar */}
+      <View className="px-5">
+        <Navbar />
       </View>
 
       <ScrollView
@@ -551,28 +580,16 @@ const MechanicHome = () => {
         }
       >
         <AnimatedPageContainer animationType="fadeInDown" duration={500}>
-          <Navbar />
 
           <View className="py-4">
           <KYCBanner isVisible={!profileLoading && (!isComplete || isPendingApproval || isRejected)} role="mechanic" isPending={isPendingApproval} isRejected={isRejected} />
 
-          {/* Add Bidding Carousel */}
-          <BiddingCarousel containerPadding={20} />
-
-          {/* Key Metrics Header */}
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-lg font-NunitoBold text-gray-900">
-              Key Metrics
-            </Text>
-            {!analyticsLoading && analyticsData?.data?.time_window && (
-              <Text className="text-xs text-gray-500 font-NunitoMedium">
-                Last 7 days: {analyticsData.data.time_window.last_7_days_requests || 0}
-              </Text>
-            )}
-          </View>
+          {/* Promo Cards: Buy Spare Parts & Buy a Car */}
+          <BiddingCarousel containerPadding={20} fallbackVariant="mechanic" />
 
           {/* Metrics */}
-          <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}
+          className="py-4">
             {analyticsLoading ? (
               <>
                 <MetricCardSkeleton />
@@ -581,229 +598,61 @@ const MechanicHome = () => {
               </>
             ) : (
               <>
-                <View
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: 16,
-                    paddingVertical: 14,
-                    paddingHorizontal: 8,
-                    borderWidth: 1,
-                    borderColor: "#E2E8F0",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    height: 96,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 9,
-                      color: "#94A3B8",
-                      fontFamily: "NunitoBold",
-                      letterSpacing: 0.5,
-                      textTransform: "uppercase",
-                      textAlign: "center",
-                    }}
-                  >
-                    Total Requests
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 22,
-                      fontFamily: "NunitoExtraBold",
-                      color: "#0F172A",
-                      lineHeight: 26,
-                    }}
-                  >
-                    {analyticsData?.data?.summary?.total_repair_requests || 0}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 9,
-                      color: "#94A3B8",
-                      fontFamily: "NunitoMedium",
-                      textAlign: "center",
-                    }}
-                  >
-                    received
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: 16,
-                    paddingVertical: 14,
-                    paddingHorizontal: 8,
-                    borderWidth: 1,
-                    borderColor: "#E2E8F0",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    height: 96,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 9,
-                      color: "#94A3B8",
-                      fontFamily: "NunitoBold",
-                      letterSpacing: 0.5,
-                      textTransform: "uppercase",
-                      textAlign: "center",
-                    }}
-                  >
-                    Completed
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 22,
-                      fontFamily: "NunitoExtraBold",
-                      color: "#0F172A",
-                      lineHeight: 26,
-                    }}
-                  >
-                    {analyticsData?.data?.summary?.completed_repair_requests || 0}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 9,
-                      color: "#94A3B8",
-                      fontFamily: "NunitoMedium",
-                      textAlign: "center",
-                    }}
-                  >
-                    tasks finished
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    flex: 1,
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: 16,
-                    paddingVertical: 14,
-                    paddingHorizontal: 8,
-                    borderWidth: 1,
-                    borderColor: "#E2E8F0",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    height: 96,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 9,
-                      color: "#94A3B8",
-                      fontFamily: "NunitoBold",
-                      letterSpacing: 0.5,
-                      textTransform: "uppercase",
-                      textAlign: "center",
-                    }}
-                  >
-                    In Progress
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 22,
-                      fontFamily: "NunitoExtraBold",
-                      color: "#0F172A",
-                      lineHeight: 26,
-                    }}
-                  >
-                    {analyticsData?.data?.summary?.in_progress_repair_requests || 0}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: 9,
-                      color: "#94A3B8",
-                      fontFamily: "NunitoMedium",
-                      textAlign: "center",
-                    }}
-                  >
-                    active work
-                  </Text>
-                </View>
+                <MetricCard
+                  label="Total Requests"
+                  value={analyticsData?.data?.summary?.total_repair_requests || 0}
+                  sublabel="received"
+                  accentColor="#0F172A"
+                />
+                <MetricCard
+                  label="Completed"
+                  value={analyticsData?.data?.summary?.completed_repair_requests || 0}
+                  sublabel="tasks finished"
+                  accentColor="#16A34A"
+                />
+                <MetricCard
+                  label="In Progress"
+                  value={analyticsData?.data?.summary?.in_progress_repair_requests || 0}
+                  sublabel="active work"
+                  accentColor="#D30309"
+                />
               </>
             )}
           </View>
 
-
-          {/* Specializations Section - Only show when profile is complete */}
-          {isComplete && (
-            <View className="mb-6 mt-2">
-              <View className="flex-row items-center justify-between mb-3">
-                <Text className="text-lg font-NunitoBold text-gray-900">
-                  Specializations
+          {/* Compact Rating Strip */}
+          {!analyticsLoading && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => router.push(mechanicRoutes.reviews as any)}
+              className="flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-4 py-3 mb-4"
+            >
+              <View className="flex-row items-center gap-2">
+                <Text style={{ fontSize: 28, fontFamily: 'NunitoExtraBold', color: '#0F172A' }}>
+                  {averageRating > 0 ? averageRating.toFixed(1) : '0'}
                 </Text>
-                {expertise.length > 0 && (
-                  <TouchableOpacity onPress={() => router.push(`${mechanicRoutes.completeKyc}?step=2`)}>
-                    <Text className="text-red-600 font-NunitoBold text-xs">Edit</Text>
-                  </TouchableOpacity>
-                )}
+                <View>
+                  <View className="flex-row gap-0.5 mb-0.5">
+                    {[1,2,3,4,5].map(s => (
+                      <MaterialCommunityIcons
+                        key={s}
+                        name={s <= Math.round(averageRating) ? 'star' : 'star-outline'}
+                        size={14}
+                        color="#F59E0B"
+                      />
+                    ))}
+                  </View>
+                  <Text className="text-[11px] font-NunitoMedium text-slate-400">
+                    {totalReviews} review{Number(totalReviews) !== 1 ? 's' : ''}
+                  </Text>
+                </View>
               </View>
-              
-              {isExpertiseLoading ? (
-                <View className="flex-row flex-wrap gap-2">
-                  {[1, 2, 3].map((i) => (
-                    <View key={i} className="bg-gray-200 h-8 w-24 rounded-full animate-pulse" />
-                  ))}
-                </View>
-              ) : expertise.length > 0 ? (
-                <View className="flex-row flex-wrap gap-2">
-                  {expertise.map((item: any, index: number) => (
-                    <View 
-                      key={index} 
-                      className="bg-white px-4 py-2 rounded-xl border border-gray-100 shadow-sm flex-row items-center"
-                      style={{
-                        shadowColor: "#000",
-                        shadowOffset: { width: 0, height: 1 },
-                        shadowOpacity: 0.05,
-                        shadowRadius: 2,
-                        elevation: 1
-                      }}
-                    >
-                      <View className="w-2 h-2 rounded-full bg-red-500 mr-2" />
-                      <Text className="text-gray-800 font-NunitoSemiBold text-sm">
-                        {item.vehicle_make_name || item.vehicle_make?.name || "Expertise"}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <TouchableOpacity 
-                  onPress={() => router.push(`${mechanicRoutes.completeKyc}?step=2`)}
-                  activeOpacity={0.9}
-                  className="bg-white border border-gray-100 p-4 rounded-[20px] flex-row items-center shadow-sm relative overflow-hidden"
-                >
-                  <View className="bg-primary-50 p-3 rounded-[16px] mr-4 relative z-10">
-                    <ShieldCheckIcon size={24} color="#D30309" />
-                    <View className="absolute -top-1 -right-1">
-                      <SparklesIcon size={12} color="#FBBF24" />
-                    </View>
-                  </View>
-                  
-                  <View className="flex-1 mr-3 z-10">
-                    <Text className="text-gray-900 font-NunitoExtraBold text-[15px] mb-0.5 tracking-tight">Define Your Expertise</Text>
-                    <Text className="text-gray-500 font-NunitoMedium text-[12px] leading-[16px]">
-                      List the vehicle brands you specialize in.
-                    </Text>
-                  </View>
-
-                  <View className="bg-gray-50 w-9 h-9 rounded-full items-center justify-center z-10">
-                    <ChevronRightIcon size={18} color="#9CA3AF" />
-                  </View>
-                </TouchableOpacity>
-              )}
-            </View>
+              <View className="flex-row items-center gap-1">
+                <Text className="text-[12px] font-NunitoBold text-primary-500">See all</Text>
+                <ChevronRightIcon size={14} color="#D30309" />
+              </View>
+            </TouchableOpacity>
           )}
-
-          {/* Customer Reviews */}
-          <CustomerReviewCard
-            totalReviews={totalReviews}
-            averageRating={averageRating}
-            ratingData={ratingData}
-          />
 
           {/* Repair Requests Section */}
           <View>

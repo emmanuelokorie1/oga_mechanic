@@ -41,13 +41,6 @@ export const ServiceDetailsForm: React.FC<ServiceDetailsFormProps> = ({
 }) => {
   return (
     <View className="mb-2">
-      {/* Section Header */}
-      <View className="flex-row items-center mb-4">
-        <View className="w-10 h-10 bg-gray-50 rounded-2xl items-center justify-center mr-4 border border-gray-100">
-          <WrenchScrewdriverIcon size={20} color="#111827" />
-        </View>
-        <Text className="text-lg font-NunitoExtraBold text-gray-900">Service Info</Text>
-      </View>
 
       {/* Service Type */}
       <View className="mb-2">

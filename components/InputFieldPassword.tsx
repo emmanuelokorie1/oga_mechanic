@@ -44,17 +44,16 @@ const InputFieldPassword = forwardRef<TextInput, InputFieldProps & {
   // Determine if there's an error to show
   const hasError = touched && error;
 
-  // Memoized border colors to prevent recalculation
   const borderColors = useRef({
-    default: hasError ? "#EF4444" : "#D1D5DB",
-    focused: hasError ? "#EF4444" : "#F59E42",
+    default: hasError ? "#EF4444" : "#E5E7EB",
+    focused: hasError ? "#EF4444" : "#F87171",
   });
 
   // Update border colors only when error state changes
-  if (borderColors.current.default !== (hasError ? "#EF4444" : "#D1D5DB")) {
+  if (borderColors.current.default !== (hasError ? "#EF4444" : "#E5E7EB")) {
     borderColors.current = {
-      default: hasError ? "#EF4444" : "#D1D5DB",
-      focused: hasError ? "#EF4444" : "#F59E42",
+      default: hasError ? "#EF4444" : "#E5E7EB",
+      focused: hasError ? "#EF4444" : "#F87171",
     };
   }
 
@@ -122,39 +121,37 @@ const InputFieldPassword = forwardRef<TextInput, InputFieldProps & {
   return (
     <View className="mb-4 w-full">
           {/* Label */}
-          <Text
-            className={`text-[1.1rem] font-JakartaSemiBold text-text-400 mb-2 ${labelStyle}`}
-          >
-            {label}
-            {required && <Text className="text-red-500 ml-1">*</Text>}
-          </Text>
+          {label && (
+            <Text
+              className={`text-base font-NunitoSemiBold text-gray-700 mb-2 ${labelStyle}`}
+            >
+              {label}
+              {required && <Text className="text-red-500 ml-1">*</Text>}
+            </Text>
+          )}
 
           {/* Input Container */}
           <Animated.View
-            className={`flex bg-white flex-row justify-start items-center relative bg-input-background rounded-[.8rem] ${containerStyle}`}
+            className={`flex flex-row items-center bg-gray-50 rounded-xl px-4 py-1 ${containerStyle}`}
             style={{
-              borderWidth: 1.5,
+              borderWidth: 1,
               borderColor: borderColor,
               ...Platform.select({
                 ios: {
-                  shadowColor: hasError
-                    ? "#EF4444"
-                    : isFocused
-                    ? "#F59E42"
-                    : "transparent",
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.1,
-                  shadowRadius: 4,
+                  shadowColor: "transparent",
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0,
+                  shadowRadius: 0,
                 },
                 android: {
-                  elevation: isFocused ? 2 : 0,
+                  elevation: 0,
                 },
               }),
             }}
           >
             <TextInput
               ref={ref}
-              className={`rounded-[.8rem] p-4 font-JakartaSemiBold text-[15px] flex-1 ${inputStyle} text-left`}
+              className={`flex-1 py-3 text-[1.2rem] font-NunitoMedium text-gray-900 ${inputStyle}`}
               secureTextEntry={secureTextEntry}
               placeholder={placeholder}
               placeholderTextColor="#9CA3AF"

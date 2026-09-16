@@ -599,7 +599,7 @@ const TrackMechanicOrder = () => {
 
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 20 }}
         refreshControl={
 
           <RefreshControl
@@ -963,7 +963,7 @@ const TrackMechanicOrder = () => {
       </ScrollView>
 
       {/* Action Buttons Sticky at Bottom */}
-      <View className="px-5 pt-4 pb-10 bg-white border-t border-gray-100">
+      <View className="px-5 pt-4 pb-6 bg-white border-t border-gray-100">
         <View className="flex-row gap-3 mb-3">
           {canEdit && (
             <View className="flex-1">

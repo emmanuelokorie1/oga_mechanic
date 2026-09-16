@@ -17,6 +17,8 @@ import {
   ChevronRightIcon,
 } from "react-native-heroicons/outline";
 import PriceRangeSlider from "./PriceRangeSlider";
+import { useVehicleOptions } from "@/hooks/mechanic/useVehicleOptions";
+import SelectField from "@/components/forms/SelectField";
 
 // ─────────────────────────────────────────────
 // Types
@@ -126,6 +128,17 @@ const SearchBarWithCategories = ({
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [localMin, setLocalMin] = useState(minPrice);
   const [localMax, setLocalMax] = useState(maxPrice);
+
+  // ── Model modal ──
+  const [showModelModal, setShowModelModal] = useState(false);
+  const [localMake, setLocalMake] = useState<string>("");
+  const [localModel, setLocalModel] = useState<string>("");
+  
+  const {
+    vehicleMakeOptions,
+    vehicleModelOptions,
+    vehicleMakesLoading,
+  } = useVehicleOptions(localMake);
 
   // ── Which parent is expanded (to show sub-category row) ──
   const [expandedParent, setExpandedParent] = useState<string | null>(null);
@@ -241,6 +254,36 @@ const SearchBarWithCategories = ({
     onPriceChange?.("min", "");
     onPriceChange?.("max", "");
     setShowFilterModal(false);
+    onResetSearch?.();
+  };
+
+  // ── Model modal handlers ──
+  const handleOpenModel = () => {
+    setShowModelModal(true);
+  };
+
+  const handleApplyModel = () => {
+    // Find the model name using the localModel id
+    const model = vehicleModelOptions.find(m => m.value === localModel);
+    const modelName = model ? model.label : "";
+    
+    // Find the make name
+    const make = vehicleMakeOptions.find(m => m.value === localMake);
+    const makeName = make ? make.label : "";
+
+    const queryStr = `${makeName} ${modelName}`.trim();
+    if (queryStr) {
+      setSearchQuery(queryStr);
+      // Trigger search if needed, but debouncing will handle it
+      onApplySearch?.();
+    }
+    setShowModelModal(false);
+  };
+
+  const handleResetModel = () => {
+    setLocalMake("");
+    setLocalModel("");
+    setShowModelModal(false);
     onResetSearch?.();
   };
 
@@ -364,6 +407,13 @@ const SearchBarWithCategories = ({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 2 }}
         initialNumToRender={10}
+        ListFooterComponent={
+          <Chip
+            label="Model"
+            isSelected={false}
+            onPress={handleOpenModel}
+          />
+        }
       />
 
       {/* ── Sub-category row (animated) ── */}
@@ -570,6 +620,116 @@ const SearchBarWithCategories = ({
 
             <TouchableOpacity
               onPress={handleApplyFilter}
+              activeOpacity={0.8}
+              style={{
+                flex: 1,
+                paddingVertical: 14,
+                borderRadius: 14,
+                backgroundColor: ACTIVE_COLOR,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontFamily: "Nunito-Bold", color: "#fff" }}>
+                Apply
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      {/* ── Model filter bottom-sheet modal ── */}
+      <Modal
+        visible={showModelModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowModelModal(false)}
+      >
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)" }}
+          activeOpacity={1}
+          onPress={() => setShowModelModal(false)}
+        />
+        <View
+          style={{
+            backgroundColor: "#fff",
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 24,
+            paddingBottom: 40,
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            maxHeight: "80%",
+          }}
+        >
+          {/* Handle */}
+          <View
+            style={{
+              width: 40,
+              height: 4,
+              backgroundColor: "#E5E7EB",
+              borderRadius: 2,
+              alignSelf: "center",
+              marginBottom: 20,
+            }}
+          />
+
+          <Text
+            style={{
+              fontSize: 18,
+              fontFamily: "Nunito-ExtraBold",
+              color: "#111827",
+              marginBottom: 10,
+            }}
+          >
+            Filter by Model
+          </Text>
+
+          <View style={{ marginBottom: 16 }}>
+            <SelectField
+              name="vehicleMake"
+              label="Brand"
+              placeholder={vehicleMakesLoading ? "Loading brands..." : "Select vehicle brand"}
+              options={vehicleMakeOptions}
+              value={localMake}
+              onValueChange={(value) => {
+                setLocalMake(value);
+                setLocalModel(''); // Reset model when make changes
+              }}
+            />
+          </View>
+
+          <View style={{ marginBottom: 24 }}>
+            <SelectField
+              name="vehicleModel"
+              label="Model"
+              placeholder={localMake ? "Select car model" : "Select brand first"}
+              options={vehicleModelOptions}
+              value={localModel}
+              onValueChange={setLocalModel}
+            />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TouchableOpacity
+              onPress={handleResetModel}
+              activeOpacity={0.8}
+              style={{
+                flex: 1,
+                paddingVertical: 14,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: "#E5E7EB",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontFamily: "Nunito-Bold", color: "#374151" }}>
+                Reset
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleApplyModel}
               activeOpacity={0.8}
               style={{
                 flex: 1,

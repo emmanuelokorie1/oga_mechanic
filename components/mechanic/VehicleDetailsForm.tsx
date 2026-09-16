@@ -46,13 +46,6 @@ export const VehicleDetailsForm: React.FC<VehicleDetailsFormProps> = ({
 }) => {
   return (
     <View className="mb-4">
-      {/* Section Header */}
-      <View className="flex-row items-center mb-4">
-        <View className="w-10 h-10 bg-gray-50 rounded-2xl items-center justify-center mr-4 border border-gray-100">
-          <TruckIcon size={20} color="#111827" />
-        </View>
-        <Text className="text-lg font-NunitoExtraBold text-gray-900">Vehicle Info</Text>
-      </View>
 
       {/* Vehicle VIN */}
       <View className="mb-4">

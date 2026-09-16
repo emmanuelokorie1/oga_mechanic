@@ -557,6 +557,7 @@ export const productsAPI = {
   ): Promise<ProductListResponse[]> => {
     const params = new URLSearchParams();
     params.append('q', query);
+    
     if (categoryId) {
       params.append('category', categoryId.toString());
     }
@@ -570,7 +571,7 @@ export const productsAPI = {
       params.append('make', make);
     }
     if (isRental !== undefined) {
-      params.append('is_rental', isRental.toString());
+      params.append('is_rental', isRental ? 'true' : 'false');
     }
     
     const response = await api.get<any>(

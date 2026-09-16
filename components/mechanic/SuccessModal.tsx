@@ -36,66 +36,65 @@ export const SuccessModal: React.FC<SuccessModalProps> = ({
       visible={visible}
       onRequestClose={onGoHome}
     >
-      <View className="flex-1 justify-center items-center bg-black/80 px-6">
-        <View className="bg-white rounded-[40px] p-8 w-full max-w-sm shadow-2xl overflow-hidden">
+      <View className="flex-1 justify-center items-center bg-black/60 px-5">
+        <View className="bg-white rounded-[32px] p-6 w-full max-w-sm overflow-hidden border border-gray-100">
+          
           {/* Success Icon */}
-          <View className="items-center mb-8">
-            <View className="w-24 h-24 rounded-[32px] bg-gray-50 items-center justify-center mb-6 border border-gray-100">
-              <CheckCircleIcon size={56} color="#111827" />
+          <View className="items-center mt-4 mb-6">
+            <View className="w-20 h-20 rounded-full bg-[#D30309]/10 items-center justify-center mb-5">
+              <CheckCircleIcon size={44} color="#D30309" />
             </View>
-            <Text className="text-3xl font-NunitoExtraBold text-gray-900 mb-2 text-center leading-tight">
-              Request{'\n'}Received
+            <Text className="text-2xl font-NunitoExtraBold text-gray-900 mb-2 text-center">
+              Request Received
             </Text>
-            <Text className="text-sm text-gray-400 font-NunitoMedium text-center leading-5 px-2">
+            <Text className="text-[14px] text-gray-500 font-NunitoMedium text-center leading-5 px-2">
               {message || "Your request is being processed. We'll notify you once a specialist accepts."}
             </Text>
           </View>
 
-          {/* Ticket ID */}
-          {orderId && (
-            <View className="mb-8">
-              <View className="bg-gray-50 rounded-3xl p-5 border border-gray-100 relative overflow-hidden">
-                <Text className="text-[10px] text-gray-400 font-NunitoExtraBold uppercase tracking-widest mb-1.5 text-center">
-                  Reference ID
-                </Text>
-                <Text className="text-2xl font-NunitoExtraBold text-gray-900 text-center tracking-tight">
-                  #{orderId.slice(0, 8).toUpperCase()}
-                </Text>
-                
-                {/* Decorative cutouts */}
-                <View className="absolute top-1/2 -left-3 w-6 h-6 rounded-full bg-white border border-gray-100 -translate-y-3" />
-                <View className="absolute top-1/2 -right-3 w-6 h-6 rounded-full bg-white border border-gray-100 -translate-y-3" />
-              </View>
-            </View>
-          )}
-
-          {amount != null && (
-            <View className="mb-8 items-center">
-              <Text className="text-[10px] text-gray-400 font-NunitoExtraBold uppercase tracking-widest mb-1">
-                Estimated Deposit
-              </Text>
-              <Text className="text-4xl font-NunitoExtraBold text-gray-900">
-                ₦{amount.toLocaleString()}
-              </Text>
+          {/* Details Summary Block */}
+          {(orderId || amount != null) && (
+            <View className="bg-gray-50 rounded-2xl p-4 mb-6 border border-gray-100">
+              {orderId && (
+                <View className={`flex-row items-center justify-between ${amount != null ? 'mb-3 pb-3 border-b border-gray-200' : ''}`}>
+                  <Text className="text-[11px] text-gray-400 font-NunitoBold uppercase tracking-wider">
+                    Reference ID
+                  </Text>
+                  <Text className="text-sm font-NunitoExtraBold text-gray-900">
+                    #{orderId.slice(0, 8).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              {amount != null && (
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-[11px] text-gray-400 font-NunitoBold uppercase tracking-wider">
+                    Estimated PRICE
+                  </Text>
+                  <Text className="text-sm font-NunitoExtraBold text-[#D30309]">
+                    ₦{amount.toLocaleString()}
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 
           {/* Action Buttons */}
-          <View className="gap-4">
+          <View className="gap-3 mt-1">
             <CustomButton
               title="Track Progress"
               onPress={onTrackOrder}
               bgVariant="primary"
-              className="h-14 bg-gray-900 rounded-2xl shadow-xl shadow-gray-200"
+              className=""
             />
             <TouchableOpacity
               onPress={onGoHome}
-              className="h-14 rounded-2xl items-center justify-center"
+              className="h-14 rounded-2xl items-center justify-center bg-gray-50 border border-gray-100"
               activeOpacity={0.7}
             >
-              <Text className="text-sm font-NunitoExtraBold text-gray-400 uppercase tracking-widest">Back to Dashboard</Text>
+              <Text className="text-[14px] font-NunitoBold text-gray-700">Back to Dashboard</Text>
             </TouchableOpacity>
           </View>
+          
         </View>
       </View>
     </Modal>

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TextInput, TextInputProps } from "react-native";
+import { View, Text, TextInput, TextInputProps, Animated } from "react-native";
 
 interface TextAreaProps extends TextInputProps {
   label?: string;
@@ -28,36 +28,87 @@ const TextArea = ({
   const hasError = error && touched;
   const minHeight = rows * 20; // Approximate height per row
 
+  const animatedValue = React.useRef(new Animated.Value(0)).current;
+  const [isFocused, setIsFocused] = React.useState(false);
+
+  const borderColors = React.useMemo(
+    () => ({
+      default: hasError ? "#EF4444" : "#E5E7EB",
+      focused: hasError ? "#EF4444" : "#F87171",
+    }),
+    [hasError]
+  );
+
+  const handleFocus = React.useCallback(
+    (e: any) => {
+      if (!isFocused) {
+        setIsFocused(true);
+        Animated.timing(animatedValue, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: false,
+        }).start();
+      }
+      if (onFocus) onFocus(e);
+    },
+    [isFocused, animatedValue, onFocus]
+  );
+
+  const handleBlur = React.useCallback(
+    (e: any) => {
+      if (isFocused) {
+        setIsFocused(false);
+        Animated.timing(animatedValue, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: false,
+        }).start();
+      }
+      if (onBlur) onBlur(e);
+    },
+    [isFocused, animatedValue, onBlur]
+  );
+
+  const borderColor = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [borderColors.default, borderColors.focused],
+    extrapolate: "clamp",
+  });
+
   return (
-    <View className="mb-6">
+    <View className="mb-4 w-full">
       {label && (
         <Text
-          className={`text-base font-NunitoBold text-gray-900 ${labelStyle}`}
+          className={`text-base font-NunitoSemiBold text-gray-700 mb-2 ${labelStyle}`}
         >
           {label}
           {required && <Text className="text-red-500 ml-1">*</Text>}
         </Text>
       )}
 
-      <TextInput
-        multiline
-        scrollEnabled={false}
-        numberOfLines={rows}
-        placeholder={placeholder}
-        placeholderTextColor="#9CA3AF"
-        className={`border-2 rounded-xl px-4 py-4 bg-white font-NunitoMedium text-base text-gray-900 ${
-          hasError 
-            ? "border-red-500 bg-red-50" 
-            : "border-gray-200 focus:border-blue-500"
-        }`}
+      <Animated.View
+        className="flex flex-col bg-gray-50 rounded-xl px-4 py-1"
         style={{
+          borderWidth: 1,
+          borderColor: borderColor,
           minHeight: minHeight,
-          textAlignVertical: 'top',
         }}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        {...props}
-      />
+      >
+        <TextInput
+          multiline
+          scrollEnabled={false}
+          numberOfLines={rows}
+          placeholder={placeholder}
+          placeholderTextColor="#9CA3AF"
+          className="flex-1 py-3 text-[1.2rem] font-NunitoMedium text-gray-900"
+          style={{
+            textAlignVertical: 'top',
+          }}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          {...props}
+        />
+      </Animated.View>
 
       {hasError && (
         <Text className="text-red-500 text-sm font-NunitoMedium mt-2 ml-1">

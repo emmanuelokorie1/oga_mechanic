@@ -22,6 +22,7 @@ export const routes = {
   profile: "/(root)/(tabs)/(user)/profile",
   shop: "/(root)/(tabs)/(user)/shop",
   myOrders: "/(root)/(screens)/(user)/my-orders",
+  reviews: "/(root)/(screens)/(user)/reviews",
 
 
   //screens
@@ -88,6 +89,7 @@ export const mechanicRoutes = {
   profileDetails: "/(root)/(screens)/(mechanic)/profileDetails",
   orderDetails: "/(root)/(screens)/(mechanic)/order-details",
   completeKyc: "/(root)/(screens)/(mechanic)/complete-kyc",
+  reviews: "/(root)/(screens)/(mechanic)/reviews",
 } as const;
 
 export type MechanicRouteKeys = keyof typeof mechanicRoutes;

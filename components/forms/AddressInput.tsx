@@ -109,8 +109,8 @@ const AddressInput: React.FC<AddressInputProps> = ({
 
   const borderColors = useMemo(
     () => ({
-      default: hasError ? "#EF4444" : "#D1D5DB",
-      focused: hasError ? "#EF4444" : "#F59E42",
+      default: hasError ? "#EF4444" : "#E5E7EB",
+      focused: hasError ? "#EF4444" : "#F87171",
     }),
     [hasError]
   )
@@ -439,8 +439,9 @@ const AddressInput: React.FC<AddressInputProps> = ({
           {/* Label */}
           {label && (
             <View className="mb-3 flex-row items-end justify-between">
-              <Text className={`text-base font-NunitoExtraBold text-gray-500 tracking-tight ${labelClassName}`}>
+              <Text className={`text-base font-NunitoSemiBold text-gray-700 ${labelClassName}`}>
                 {label}
+                {required && <Text className="text-red-500 ml-1">*</Text>}
               </Text>
               {showCurrentLocationButton && (
                 <TouchableOpacity
@@ -469,21 +470,20 @@ const AddressInput: React.FC<AddressInputProps> = ({
             </View>
           )}
 
-          {/* Input */}
           <Animated.View
-            className={`flex flex-row items-center bg-white rounded-[12px] px-4 ${containerStyle}`}
+            className={`flex flex-row items-center bg-gray-50 rounded-xl px-4 py-1 ${containerStyle}`}
             style={{
-              borderWidth: 2,
+              borderWidth: 1,
               borderColor: borderColor,
               ...Platform.select({
                 ios: {
-                  shadowColor: hasError ? "#EF4444" : isFocused ? "#D30309" : "#000",
-                  shadowOffset: { width: 0, height: 6 },
-                  shadowOpacity: isFocused || hasError ? 0.12 : 0.05,
-                  shadowRadius: 16,
+                  shadowColor: "transparent",
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0,
+                  shadowRadius: 0,
                 },
                 android: {
-                  elevation: isFocused ? 4 : 2,
+                  elevation: 0,
                 },
               }),
             }}
@@ -498,7 +498,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
               editable={!disabled}
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
-              className={`flex-1 py-4 text-lg font-NunitoBold text-gray-900 ${inputClassName}`}
+              className={`flex-1 py-3 text-[1.2rem] font-NunitoMedium text-gray-900 ${inputClassName}`}
               style={{ textAlignVertical: 'center' }}
               textBreakStrategy="simple"
               returnKeyType="search"

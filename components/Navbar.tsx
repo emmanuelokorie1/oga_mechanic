@@ -133,7 +133,7 @@ const Navbar = () => {
   };
 
   return (
-    <View className="flex-row justify-between items-center pt-3">
+    <View className="flex-row justify-between items-center pt-3 pb-2 border-b border-gray-100">
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       <TouchableOpacity
         onPress={() => {

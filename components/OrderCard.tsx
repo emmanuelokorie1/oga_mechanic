@@ -152,7 +152,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
   return (
     <View
       key={order.id}
-      className={`bg-white mb-4 p-4 rounded-[1rem] border border-gray-300 ${getCardBorderStyle()}`}
+      className={`bg-white mb-4 p-4 rounded-[.7rem] border border-gray-300 ${getCardBorderStyle()}`}
     >
       {/* Header with client name and status */}
       <View className="flex-row justify-between items-start mb-3">

@@ -388,11 +388,11 @@ const FindMechanic = () => {
         {formState.currentStep === 2 && (
           <View>
             {/* Form Header */}
-            <View className="bg-gray-50 rounded-3xl p-5 mb-8 border border-gray-100">
-              <Text className="text-base font-NunitoExtraBold text-gray-900 mb-1">
+            <View className="mb-8 px-1">
+              <Text className="text-2xl font-NunitoExtraBold text-gray-900 mb-1.5">
                 Request Details
               </Text>
-              <Text className="text-xs text-gray-500 font-NunitoMedium leading-5">
+              <Text className="text-sm text-gray-500 font-NunitoMedium leading-5">
                 Complete the form below and we'll connect you with available specialists near you.
               </Text>
             </View>
@@ -438,12 +438,12 @@ const FindMechanic = () => {
             />
 
             {/* Submit Button */}
-            <View className="mt-6">
+            <View className="mt-8 mb-6">
               <CustomButton
                 title={isPending ? "Submitting request..." : "Proceed to Search"}
                 onPress={handleProceed}
                 bgVariant="primary"
-                className=" bg-gray-900"
+                className="bg-[#D30309]"
                 loading={isPending}
                 disabled={isPending}
               />

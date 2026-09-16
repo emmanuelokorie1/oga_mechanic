@@ -15,6 +15,7 @@ import {
   ChevronRightIcon,
   QueueListIcon,
 } from "react-native-heroicons/outline";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import Navbar from "@/components/Navbar";
@@ -133,62 +134,25 @@ const HeroCard = ({
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STAT TILE
+// METRIC CARD (Aesthetic matches mechanic home)
 // ─────────────────────────────────────────────────────────────────────────────
-const StatTile = ({
-  label,
-  value,
-  sub,
-}: {
+interface MetricCardProps {
   label: string;
   value: number | string;
-  sub: string;
-}) => (
-  <View
-    style={{
-      flex: 1,
-      backgroundColor: "#FFFFFF",
-      borderRadius: 16,
-      paddingVertical: 14,
-      paddingHorizontal: 8,
-      borderWidth: 1,
-      borderColor: "#E2E8F0",
-      alignItems: "center",
-      justifyContent: "space-between",
-      height: 96,
-    }}
-  >
-    <Text
-      style={{
-        fontSize: 9,
-        color: "#94A3B8",
-        fontFamily: "NunitoBold",
-        letterSpacing: 0.5,
-        textTransform: "uppercase",
-        textAlign: "center",
-      }}
-    >
+  sublabel: string;
+  accentColor?: string;
+}
+
+const MetricCard = ({ label, value, sublabel, accentColor = '#D30309' }: MetricCardProps) => (
+  <View className="flex-1 bg-white rounded-xl border border-gray-200 items-center justify-between h-24 py-3.5 px-2 elevation-1">
+    <Text className="text-[10px] font-NunitoBold text-slate-500 uppercase tracking-wide text-center">
       {label}
     </Text>
-    <Text
-      style={{
-        fontSize: 22,
-        fontFamily: "NunitoExtraBold",
-        color: "#0F172A",
-        lineHeight: 26,
-      }}
-    >
+    <Text style={{ fontSize: 24, fontFamily: 'NunitoExtraBold', color: accentColor, lineHeight: 28 }}>
       {value}
     </Text>
-    <Text
-      style={{
-        fontSize: 9,
-        color: "#94A3B8",
-        fontFamily: "NunitoMedium",
-        textAlign: "center",
-      }}
-    >
-      {sub}
+    <Text className="text-[11px] font-NunitoMedium text-slate-500 text-center">
+      {sublabel}
     </Text>
   </View>
 );
@@ -407,11 +371,23 @@ const SellerHome = () => {
     }
   }, [refetchAnalytics, refetchProfile, refetchItems]);
 
-  const handleCta = () => {
-    if (!isProfileComplete || isPendingApproval) {
+  const handleCta = (action?: 'uploadSpareParts' | 'uploadCars' | 'kyc') => {
+    if (!isProfileComplete || isPendingApproval || action === 'kyc') {
       setShowProfileModal(true);
       return;
     }
+
+    if (action === 'uploadSpareParts') {
+      router.push(sellerRoutes.uploadSpareParts as any);
+      return;
+    }
+
+    if (action === 'uploadCars') {
+      router.push(isVehicleRental ? sellerRoutes.uploadCarToRent as any : sellerRoutes.uploadProducts as any);
+      return;
+    }
+
+    // Default fallback (used by HeroCard if uncommented)
     router.push(
       isVehicleRental
         ? (sellerRoutes.uploadCarToRent as any)
@@ -445,6 +421,11 @@ const SellerHome = () => {
         <SpecialistIconBtn isFloating />
       </View>
 
+      {/* Sticky Navbar */}
+      <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 }}>
+        <Navbar />
+      </View>
+
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
@@ -459,87 +440,86 @@ const SellerHome = () => {
           />
         }
       >
-        {/* navbar */}
-        <View style={{ paddingHorizontal: 20 }}>
-          <Navbar />
-        </View>
 
         {/* KYC + bidding */}
-        <View style={{ paddingHorizontal: 20, marginBottom: 4 }}>
-          <KYCBanner
-            isVisible={
-              !activeProfileQuery.isLoading &&
-              (!isProfileComplete || isPendingApproval)
+        <View style={{ paddingHorizontal: 14, marginBottom: 4 }}>
+          <BiddingCarousel
+            containerPadding={14}
+            fallbackVariant={
+              (!activeProfileQuery.isLoading && (!isProfileComplete || isPendingApproval))
+                ? 'kyc_incomplete'
+                : 'seller'
             }
-            role={isVehicleRental ? "vehicle_rental" : "seller"}
-            isPending={isPendingApproval}
+            onSellerAction={handleCta}
           />
-          <BiddingCarousel containerPadding={20} />
         </View>
 
         {/* ── HERO ─────────────────────────────────────────────────── */}
-        <HeroCard isVehicleRental={isVehicleRental} onCta={handleCta} />
+        {/* <HeroCard isVehicleRental={isVehicleRental} onCta={handleCta} /> */}
 
-        {/* ── STATS (3 Columns) ────────────────────────────────────── */}
-        <View
-          style={{
-            flexDirection: "row",
-            gap: 10,
-            paddingHorizontal: 20,
-            marginBottom: 28,
-          }}
-        >
-          <StatTile
+        {/* ── METRICS ────────────────────────────────────── */}
+        <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 14, marginBottom: 12 }} className="pt-3">
+          <MetricCard
             label={isVehicleRental ? "Total Rentals" : "Total Products"}
             value={totalListings}
-            sub="listed"
+            sublabel="listed items"
+            accentColor="#0F172A"
           />
-          <StatTile
-            label="Avg Rating"
-            value={avgRating > 0 ? avgRating.toFixed(1) : "5.0"}
-            sub="out of 5"
-          />
-          <StatTile
-            label="Reviewed"
-            value={reviewedCount}
-            sub="items"
+          {/* Using a placeholder for sales/orders to balance the UI, since we only had rating stats before */}
+          <MetricCard
+            label="Total Views"
+            value={"-"}
+            sublabel="store views"
+            accentColor="#16A34A"
           />
         </View>
 
-        {/* ── LISTINGS FEED ────────────────────────────────────────── */}
-        <View style={{ paddingHorizontal: 20 }}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 14,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 16,
-                fontFamily: "NunitoExtraBold",
-                color: "#0F172A",
-              }}
-            >
-              {isVehicleRental ? "Latest Rentals" : "Latest Products"}
-            </Text>
+        {/* ── COMPACT RATING STRIP ───────────────────────── */}
+        {!isLoadingAnalytics && (
+          <View style={{ paddingHorizontal: 14, marginBottom: 28 }}>
             <TouchableOpacity
-              onPress={() => router.push(sellerRoutes.products as any)}
-              activeOpacity={0.7}
+              activeOpacity={0.85}
+              onPress={() => router.push(sellerRoutes.profile as any)}
+              className="flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-4 py-3"
             >
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontFamily: "NunitoBold",
-                  color: "#D30309",
-                }}
-              >
-                Manage all
-              </Text>
+              <View className="flex-row items-center gap-2">
+                <Text style={{ fontSize: 28, fontFamily: 'NunitoExtraBold', color: '#0F172A' }}>
+                  {avgRating > 0 ? avgRating.toFixed(1) : '0'}
+                </Text>
+                <View>
+                  <View className="flex-row gap-0.5 mb-0.5">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <MaterialCommunityIcons
+                        key={s}
+                        name={s <= Math.round(avgRating) ? 'star' : 'star-outline'}
+                        size={14}
+                        color="#F59E0B"
+                      />
+                    ))}
+                  </View>
+                  <Text className="text-[11px] font-NunitoMedium text-slate-400">
+                    {reviewedCount} review{Number(reviewedCount) !== 1 ? 's' : ''}
+                  </Text>
+                </View>
+              </View>
+              <View className="flex-row items-center gap-1">
+                <Text className="text-[12px] font-NunitoBold text-primary-500">See all</Text>
+                <ChevronRightIcon size={14} color="#D30309" />
+              </View>
             </TouchableOpacity>
           </View>
+        )}
+
+        {/* ── LISTINGS FEED ────────────────────────────────────────── */}
+        <View style={{ paddingHorizontal: 14 }}>
+            <View className="flex-row items-center justify-between mb-4">
+              <Text className="text-lg font-NunitoBold text-gray-900">
+                {isVehicleRental ? "Latest Rentals" : "Latest Products"}
+              </Text>
+              <TouchableOpacity onPress={() => router?.push(sellerRoutes.profile as any)}>
+                <Text className="text-red-600 font-NunitoBold">Manage all</Text>
+              </TouchableOpacity>
+            </View>
 
           {latestItems.length > 0 ? (
             latestItems.map((item: any, index: number) => {

@@ -57,11 +57,10 @@ const SelectField: React.FC<SelectFieldProps> = ({
     )
   }, [options, searchQuery])
 
-  // Memoized border colors
   const borderColors = useMemo(
     () => ({
       default: hasError ? "#EF4444" : "#E5E7EB",
-      focused: hasError ? "#EF4444" : "#D30309", // Using primary brand color
+      focused: hasError ? "#EF4444" : "#F87171",
     }),
     [hasError]
   )
@@ -135,31 +134,28 @@ const SelectField: React.FC<SelectFieldProps> = ({
     <View className="mb-5 w-full">
       {/* Label */}
       {label && (
-        <View className="flex-row items-center mb-2 ml-1">
-          <Text className="text-[15px] font-NunitoBold text-gray-800">
-            {label}
-            {required && <Text className="text-primary-500 ml-1"> *</Text>}
-          </Text>
-        </View>
+        <Text className="text-base font-NunitoSemiBold text-gray-700 mb-2">
+          {label}
+          {required && <Text className="text-red-500 ml-1">*</Text>}
+        </Text>
       )}
 
       {/* Select Container */}
       <Animated.View
+        className="bg-gray-50 rounded-xl"
         style={{
           transform: [{ scale: pressAnim }],
           borderColor: borderColor,
-          borderWidth: 1.5,
-          borderRadius: 16,
-          backgroundColor: '#fff',
+          borderWidth: 1,
           ...Platform.select({
             ios: {
-              shadowColor: isFocused ? "#D30309" : "#000",
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: isFocused ? 0.12 : 0.04,
-              shadowRadius: 8,
+              shadowColor: "transparent",
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0,
+              shadowRadius: 0,
             },
             android: {
-              elevation: isFocused ? 3 : 1,
+              elevation: 0,
             },
           }),
         }}
@@ -253,7 +249,7 @@ const SelectField: React.FC<SelectFieldProps> = ({
                 </View>
                 
                 {/* Search Input Container */}
-                <View className="flex-row items-center bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 shadow-sm">
+                <View className="flex-row items-center bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3">
                   <MagnifyingGlassIcon size={20} color="#9CA3AF" strokeWidth={2} />
                   <TextInput
                     placeholder={`Search ${(label || '').toLowerCase()}...`}
@@ -280,53 +276,36 @@ const SelectField: React.FC<SelectFieldProps> = ({
                 showsVerticalScrollIndicator={false}
                 bounces={true}
               >
-                <View style={{ gap: 12 }}>
+                <View className="pt-2">
                   {filteredOptions.length > 0 ? (
                     filteredOptions.map((option, index) => {
-                      const isSelected = value === option.value
+                      const isSelected = value === option.value;
                       return (
                         <TouchableOpacity
                           key={option.value}
                           onPress={() => handleSelect(option.value)}
-                          activeOpacity={0.75}
-                          className={`flex-row items-center justify-between p-4 rounded-2xl border ${
-                            isSelected 
-                              ? 'bg-primary-50 border-primary-200' 
-                              : 'bg-white border-gray-100 shadow-sm'
-                          }`}
+                          activeOpacity={0.7}
+                          className="flex-row items-center justify-between py-4 border-b border-gray-100"
                         >
                           <View className="flex-row items-center flex-1 pr-3">
                             {option.imageUri ? (
-                              <View className="w-11 h-11 rounded-xl mr-3 bg-gray-100 overflow-hidden border border-gray-50">
+                              <View className="w-10 h-10 rounded-xl mr-4 bg-gray-50 overflow-hidden border border-gray-100 p-1">
                                 <Image
                                   source={{ uri: option.imageUri }}
                                   className="w-full h-full"
-                                  resizeMode="cover"
+                                  resizeMode="contain"
                                 />
                               </View>
-                            ) : (
-                              <View className={`w-10 h-10 rounded-xl mr-3 items-center justify-center ${isSelected ? 'bg-primary-500' : 'bg-gray-100'}`}>
-                                <Text className={`text-lg font-NunitoBold ${isSelected ? 'text-white' : 'text-gray-400'}`}>
-                                  {option.label.charAt(0).toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
-                            <View className="flex-1">
-                              <Text
-                                className={`text-[16px] ${isSelected ? 'font-NunitoBold text-primary-700' : 'font-NunitoSemiBold text-gray-900'}`}
-                                numberOfLines={1}
-                              >
-                                {option.label}
-                              </Text>
-                              {isSelected && (
-                                <Text className="text-[12px] font-NunitoMedium text-primary-500 mt-0.5">Currently Selected</Text>
-                              )}
-                            </View>
+                            ) : null}
+                            <Text
+                              className={`text-[16px] ${isSelected ? 'font-NunitoBold text-primary-600' : 'font-NunitoSemiBold text-gray-800'}`}
+                              numberOfLines={1}
+                            >
+                              {option.label}
+                            </Text>
                           </View>
                           {isSelected && (
-                            <View className="bg-primary-500 rounded-full p-1">
-                              <CheckIcon size={14} color="#fff" strokeWidth={3} />
-                            </View>
+                            <CheckIcon size={20} color="#D30309" strokeWidth={2.5} />
                           )}
                         </TouchableOpacity>
                       )

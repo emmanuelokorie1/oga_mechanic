@@ -2,161 +2,97 @@ import React from "react";
 import {
   View,
   TouchableOpacity,
-  Animated,
   Text,
   StyleSheet,
   Platform,
+  Dimensions
 } from "react-native";
-import { CurvedBottomBarExpo } from "react-native-curved-bottom-bar";
-import { useRouter } from "expo-router";
+import { Tabs } from "expo-router";
 import { icons } from "@/constants";
-import { Dimensions } from "react-native";
-import { mechanicRoutes } from "@/constants/routes";
 import AndroidNavBarSpacer from "@/components/AndroidNavBarSpacer";
 
-// Import your actual tab screen components
-import MechanicHome from "./home";
-import MechanicOrder from "./order";
-import MechanicEarnings from "./earnings";
-import MechanicProfile from "./profile";
-import MechanicShop from "./shop";
-
 export default function Layout() {
-  const router = useRouter();
   const { width } = Dimensions.get("window");
-
-  // Function to render tab icons with labels
-  const renderTabBar = ({
-    routeName,
-    selectedTab,
-    navigate,
-  }: {
-    routeName: string;
-    selectedTab: string;
-    navigate: (routeName: string) => void;
-  }) => {
-    // Define the icon and label for each tab
-    const tabInfo: Record<
-      string,
-      {
-        icon: React.ReactElement;
-        activeIcon: React.ReactElement;
-        label: string;
-      }
-    > = {
-      home: {
-        icon: <icons.home width={28} height={28} />,
-        activeIcon: <icons.activeHome width={32} height={32} />,
-        label: "Home",
-      },
-      order: {
-        icon: <icons.order width={28} height={28} />,
-        activeIcon: <icons.activeOrder width={32} height={32} />,
-        label: "Orders",
-      },
-      earnings: {
-        icon: <icons.earnings width={28} height={28} />,
-        activeIcon: <icons.activeEarnings width={32} height={32} />,
-        label: "Earnings",
-      },
-      profile: {
-        icon: <icons.profile width={28} height={28} />,
-        activeIcon: <icons.activeProfile width={32} height={32} />,
-        label: "Profile",
-      },
-    };
-
-    const isActive = routeName === selectedTab;
-
-    return (
-      <TouchableOpacity
-        onPress={() => {
-          navigate(routeName);
-        }}
-        style={styles.tabBarItem}
-      >
-        {isActive ? tabInfo[routeName]?.activeIcon : tabInfo[routeName]?.icon}
-        <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
-          {tabInfo[routeName]?.label}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
 
   return (
     <View style={{ flex: 1, position: "relative" }}>
-      <CurvedBottomBarExpo.Navigator
-        // The library's type intersects DefaultNavigatorOptions (requires screenOptions +
-        // screenListeners) with its own Props (uses defaultScreenOptions). We supply all
-        // three to satisfy TypeScript — at runtime only screenOptions takes effect.
-        screenOptions={{ headerShown: false }}
-        defaultScreenOptions={{ headerShown: false }}
-        screenListeners={{}}
-        type="DOWN"
-        style={[styles.bottomBar]}
-        height={Platform.OS === "android" ? 75 : 80}
-        width={width}
-        borderColor="transparent"
-        borderWidth={0}
-        id="curved-bottom-bar"
-        circleWidth={100}
-        bgColor="white"
-        borderTopLeftRight={false}
-        initialRouteName={"home"}
-        tabBar={renderTabBar}
-        renderCircle={({ navigate }: { navigate: (routeName: string) => void }) => (
-          <Animated.View
-            style={[
-              styles.shopTabContainer,
-              Platform.OS === "android" && { paddingBottom: 24 },
-            ]}
-          >
-            <TouchableOpacity
-              style={styles.shopButton}
-              onPress={() => navigate("shop")}
-            >
-              <icons.shopTab />
-            </TouchableOpacity>
-          </Animated.View>
-        )}
-        circlePosition="CENTER"
-        shadowStyle={{
-          elevation: 10,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.4,
-          shadowRadius: 6,
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: false,
+          tabBarStyle: styles.bottomBar,
         }}
-        backBehavior="initialRoute"
+        initialRouteName="home"
       >
-        <CurvedBottomBarExpo.Screen
+        <Tabs.Screen
           name="home"
-          position="LEFT"
-          component={MechanicHome}
-        />
-        <CurvedBottomBarExpo.Screen
-          name="order"
-          position="LEFT"
-          component={MechanicOrder}
-        />
-        
-        <CurvedBottomBarExpo.Screen
-          name="shop"
-          position="CENTER"
-          component={MechanicShop}
+          options={{
+            title: "Home",
+            tabBarIcon: ({ focused }) => (
+              <View style={styles.tabBarItem}>
+                {focused ? <icons.activeHome width={32} height={32} /> : <icons.home width={28} height={28} />}
+                <Text style={[styles.tabLabel, focused && styles.activeTabLabel]}>Home</Text>
+              </View>
+            ),
+          }}
         />
 
-        <CurvedBottomBarExpo.Screen
+        <Tabs.Screen
+          name="order"
+          options={{
+            title: "Orders",
+            tabBarIcon: ({ focused }) => (
+              <View style={styles.tabBarItem}>
+                {focused ? <icons.activeOrder width={32} height={32} /> : <icons.order width={28} height={28} />}
+                <Text style={[styles.tabLabel, focused && styles.activeTabLabel]}>Orders</Text>
+              </View>
+            ),
+          }}
+        />
+        
+        <Tabs.Screen
+          name="shop"
+          options={{
+            title: "Shop",
+            tabBarIcon: ({ focused }) => (
+              <View style={styles.shopTabContainer}>
+                <View style={styles.shopButton}>
+                  <icons.shopTab />
+                </View>
+              </View>
+            ),
+          }}
+        />
+
+        <Tabs.Screen
           name="earnings"
-          position="RIGHT"
-          component={MechanicEarnings}
+          options={{
+            title: "Earnings",
+            tabBarIcon: ({ focused }) => (
+              <View style={styles.tabBarItem}>
+                {focused ? <icons.activeEarnings width={32} height={32} /> : <icons.earnings width={28} height={28} />}
+                <Text style={[styles.tabLabel, focused && styles.activeTabLabel]}>Earnings</Text>
+              </View>
+            ),
+          }}
         />
-        <CurvedBottomBarExpo.Screen
+
+        <Tabs.Screen
           name="profile"
-          position="RIGHT"
-          component={MechanicProfile}
+          options={{
+            title: "Profile",
+            tabBarIcon: ({ focused }) => (
+              <View style={styles.tabBarItem}>
+                {focused ? <icons.activeProfile width={32} height={32} /> : <icons.profile width={28} height={28} />}
+                <Text style={[styles.tabLabel, focused && styles.activeTabLabel]}>Profile</Text>
+              </View>
+            ),
+          }}
         />
-      </CurvedBottomBarExpo.Navigator>
+
+        {/* Hide extra files in this directory from the tab bar */}
+        <Tabs.Screen name="service" options={{ href: null }} />
+      </Tabs>
       
       {/* Android Navigation Bar Spacer */}
       <AndroidNavBarSpacer />
@@ -166,23 +102,25 @@ export default function Layout() {
 
 const styles = StyleSheet.create({
   bottomBar: {
-    backgroundColor: "transparent",
+    backgroundColor: "white",
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    width: "100%",
+    height: Platform.OS === "android" ? 75 : 85,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 10,
+    borderTopWidth: 0,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10, // Handle safe area manually if absolute
   },
   tabBarItem: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingBottom: 14,
+    top: Platform.OS === "ios" ? 12 : 6, 
+    width: 65,
   },
   tabLabel: {
     fontSize: 12,
@@ -194,25 +132,21 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   shopTabContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
-    bottom: Platform.OS === "ios" ? 30 : 20,
+    top: Platform.OS === "ios" ? -10 : -16, 
   },
   shopButton: {
-    width: 65,
-    height: 65,
-    borderRadius: 32.5,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "#D30309",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
+    shadowColor: "#D30309",
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 6,
   },
 });

@@ -181,7 +181,6 @@ const MechanicProfile = () => {
 
   const displayEmail = userData?.email || mechanicData?.mechanic_profile?.user?.email || '';
   const isVerified = userData?.is_verified || false;
-  const activeRole = primaryProfileData?.active_role || primaryProfileData?.data?.active_role || 'mechanic';
   const profileImage = (mechanicData?.mechanic_profile as any)?.selfie || (userData as any)?.profile_picture || (userData as any)?.image || null;
   
   // Stats data
@@ -329,9 +328,10 @@ const MechanicProfile = () => {
                   </View>
 
                   {/* Role Badge */}
-                  <View className="bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-100">
-                    <Text className="text-primary-600 text-xs font-NunitoBold capitalize">
-                      {activeRole.replace('_', ' ')}
+                  <View className="bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-100 flex-row items-center gap-1.5">
+                    <View className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+                    <Text className="text-primary-600 text-xs font-NunitoBold">
+                      Mechanic
                     </Text>
                   </View>
                 </View>

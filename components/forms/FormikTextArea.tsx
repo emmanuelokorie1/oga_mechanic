@@ -57,8 +57,8 @@ function FormikTextArea({
   // Memoized border colors to prevent recalculation
   const borderColors = useMemo(
     () => ({
-      default: hasError ? "#EF4444" : "#D1D5DB",
-      focused: hasError ? "#EF4444" : "#F59E42",
+      default: hasError ? "#EF4444" : "#E5E7EB",
+      focused: hasError ? "#EF4444" : "#F87171",
     }),
     [hasError]
   )
@@ -146,21 +146,17 @@ function FormikTextArea({
       <Animated.View
         className="bg-gray-50 rounded-xl px-4 py-3"
         style={{
-          borderWidth: 1.5,
+          borderWidth: 1,
           borderColor: borderColor,
           ...Platform.select({
             ios: {
-              shadowColor: hasError
-                ? "#EF4444"
-                : isFocused
-                ? "#F59E42"
-                : "transparent",
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
+              shadowColor: "transparent",
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0,
+              shadowRadius: 0,
             },
             android: {
-              elevation: isFocused ? 2 : 0,
+              elevation: 0,
             },
           }),
         }}

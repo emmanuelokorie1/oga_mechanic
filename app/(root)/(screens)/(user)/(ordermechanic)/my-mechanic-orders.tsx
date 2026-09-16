@@ -120,8 +120,8 @@ const MyMechanicOrders = () => {
               onPress={() => handleTabChange(tab)}
               className={`mr-3 px-6 py-3 rounded-2xl border ${
                 activeTab === tab 
-                  ? 'bg-gray-900 border-gray-900 shadow-lg shadow-gray-200' 
-                  : 'bg-gray-50 border-gray-50'
+                  ? 'bg-[#D30309] border-[#D30309] shadow-lg shadow-red-200/50' 
+                  : 'bg-gray-50 border-gray-100'
               }`}
               activeOpacity={0.9}
             >
@@ -183,7 +183,7 @@ const MyMechanicOrders = () => {
               </Text>
               <TouchableOpacity
                 onPress={() => router.push(routes.findMechanic)}
-                className="mt-8 bg-gray-900 px-8 py-4 rounded-2xl shadow-xl shadow-gray-200"
+                className="mt-8 bg-[#D30309] px-8 py-4 rounded-2xl shadow-xl shadow-red-200/50"
               >
                 <Text className="text-white font-NunitoExtraBold text-sm">Find a Mechanic</Text>
               </TouchableOpacity>

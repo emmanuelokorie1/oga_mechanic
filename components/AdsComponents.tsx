@@ -1,13 +1,17 @@
-import { View, Text, ImageBackground, TouchableOpacity } from "react-native";
-import React, { memo, useMemo } from 'react';
+import { View, Text, Image, TouchableOpacity, Animated } from "react-native";
+import React, { memo, useMemo, useState, useEffect, useRef } from 'react';
 import { LinearGradient } from "expo-linear-gradient";
-import { ArrowRightIcon } from "react-native-heroicons/outline";
 import { ShieldCheckIcon } from "react-native-heroicons/solid";
 import { AdsProps } from "@/types/type";
+
+interface ExtendedAdsProps extends AdsProps {
+  images?: { uri: string }[];
+}
 
 const AdsComponents = memo(
   ({
     image,
+    images,
     title,
     description,
     onPress,
@@ -16,7 +20,7 @@ const AdsComponents = memo(
     year,
     repairHistoryCount = 0,
     isBidding = false,
-  }: AdsProps) => {
+  }: ExtendedAdsProps) => {
     const formattedPrice = useMemo(() => {
       if (!price) return null;
       const numPrice = typeof price === "string" ? parseFloat(price) : price;
@@ -27,115 +31,97 @@ const AdsComponents = memo(
       }).format(numPrice);
     }, [price, currency]);
 
-    // Common text shadow for readability
-    const textShadow = {
-      textShadowColor: 'rgba(0, 0, 0, 0.9)',
-      textShadowOffset: { width: 0, height: 1 },
-      textShadowRadius: 6,
-    };
+    const displayImages = useMemo(() => {
+      if (images && images.length > 0) return images;
+      if (image) return [image];
+      return [];
+    }, [images, image]);
 
     return (
       <TouchableOpacity
-        className="w-full h-[185px] bg-gray-200 rounded-[1.5rem] overflow-hidden"
         onPress={onPress}
         activeOpacity={0.9}
         style={{
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.15,
-          shadowRadius: 15,
-          elevation: 8,
+          width: '100%',
+          height: 170, // Reduced from 185 to 155 for a slimmer profile
+          backgroundColor: '#111827',
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: '#E2E8F0',
+          overflow: 'hidden',
         }}
       >
-        <ImageBackground
-          source={image}
-          className="w-full h-full"
-          resizeMode="cover"
-        >
-          {/* Enhanced Gradient Overlay for Text Readability */}
-          <LinearGradient
-            colors={["rgba(0,0,0,0.9)", "rgba(0,0,0,0.4)", "rgba(0,0,0,0.1)"]}
-            className="absolute inset-0 w-full h-full"
-            start={{ x: 0, y: 0.8 }}
-            end={{ x: 0.8, y: 0.1 }}
-          />
+        {/* Static Background Image Layer */}
+        {displayImages.length > 0 && (
+          <View style={{ position: 'absolute', width: '100%', height: '100%' }}>
+            <Image
+              source={displayImages[0]} // Just show the first image statically
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="cover"
+            />
+          </View>
+        )}
 
-          <View className="flex-1 justify-between p-5">
-            {/* Top Row: Badges */}
-            <View className="flex-row items-center gap-2">
-              {isBidding && (
-                <View className="bg-primary-500 px-3 py-1.5 rounded-full flex-row items-center shadow-lg">
-                  <View className="w-2 h-2 bg-white rounded-full mr-1.5" />
-                  <Text className="text-[10px] font-NunitoExtraBold text-white uppercase tracking-widest">
-                    Live Bidding
-                  </Text>
-                </View>
-              )}
-              {repairHistoryCount > 0 && (
-                <View className="bg-green-600 px-3 py-1.5 rounded-full flex-row items-center shadow-lg">
-                  <ShieldCheckIcon size={12} color="white" />
-                  <Text className="text-[10px] font-NunitoExtraBold text-white uppercase tracking-widest ml-1.5">
-                    Verified History
-                  </Text>
-                </View>
-              )}
-            </View>
+        {/* Subtle gradient for badges at top */}
+        <LinearGradient
+          colors={["rgba(0,0,0,0.5)", "transparent"]}
+          style={{ position: 'absolute', top: 0, width: '100%', height: 50 }}
+        />
+        
+        {/* Rich gradient for text legibility at bottom */}
+        <LinearGradient
+          colors={["transparent", "rgba(15, 23, 42, 0.7)", "rgba(15, 23, 42, 0.95)"]}
+          style={{ position: 'absolute', bottom: 0, width: '100%', height: 90 }} // Reduced gradient height
+        />
 
-            {/* Middle: Info */}
-            <View className="mt-auto">
-              <View className="flex-row items-center gap-2 mb-1.5">
+        <View style={{ flex: 1, justifyContent: 'space-between', padding: 14 }}>
+          
+          {/* Top: Badges */}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {isBidding && (
+              <View style={{ backgroundColor: 'rgba(225, 29, 72, 0.9)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 4, height: 4, backgroundColor: '#FFFFFF', borderRadius: 2, marginRight: 4 }} />
+                <Text style={{ fontSize: 9, color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.5 }} className="font-NunitoExtraBold">Live</Text>
+              </View>
+            )}
+            {repairHistoryCount > 0 && (
+              <View style={{ backgroundColor: 'rgba(5, 150, 105, 0.9)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
+                <ShieldCheckIcon size={10} color="white" />
+                <Text style={{ fontSize: 9, color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.5, marginLeft: 4 }} className="font-NunitoExtraBold">Verified</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Bottom: Info (Highly Structured) */}
+          <View style={{ paddingBottom: 12 }}> 
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              
+              {/* Left Side: Vehicle Info */}
+              <View style={{ flex: 1, paddingRight: 16 }}>
                 {year && (
-                  <Text 
-                    className="text-white text-xs font-NunitoExtraBold bg-black/30 px-1.5 py-0.5 rounded"
-                    style={textShadow}
-                  >
-                    {year}
+                  <Text style={{ fontSize: 9, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }} className="font-NunitoExtraBold">
+                    {year} MODEL
                   </Text>
                 )}
-                <Text
-                  className="text-white text-xl font-NunitoExtraBold"
-                  numberOfLines={1}
-                  style={textShadow}
-                >
+                <Text style={{ fontSize: 17, color: '#FFFFFF', letterSpacing: -0.5 }} numberOfLines={1} className="font-NunitoExtraBold">
                   {title}
                 </Text>
               </View>
-
-              <Text 
-                className="text-gray-200 text-xs font-NunitoBold mb-3 leading-4" 
-                numberOfLines={2}
-                style={textShadow}
-              >
-                {description}
-              </Text>
-
-              {/* Bottom Row: Price & CTA */}
-              <View className="flex-row items-center justify-between mt-1">
-                <View>
-                  <Text 
-                    className="text-gray-300 text-[9px] uppercase font-NunitoExtraBold mb-0.5 tracking-tighter"
-                    style={textShadow}
-                  >
-                    {isBidding ? "Current Bid" : "Buy Now"}
-                  </Text>
-                  <Text 
-                    className="text-white text-[20px] font-NunitoExtraBold"
-                    style={textShadow}
-                  >
-                    {formattedPrice || "Contact Seller"}
-                  </Text>
-                </View>
-
-                <View className="bg-white px-5 py-2.5 rounded-2xl flex-row items-center shadow-xl active:opacity-80">
-                  <Text className="text-black font-NunitoExtraBold text-[13px] mr-1.5">
-                    Details
-                  </Text>
-                  <ArrowRightIcon size={16} color="#000" strokeWidth={2.5} />
-                </View>
+              
+              {/* Right Side: Price */}
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 9, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }} className="font-NunitoBold">
+                  {isBidding ? "Current Bid" : "Price"}
+                </Text>
+                <Text style={{ fontSize: 16, color: '#FFFFFF', letterSpacing: -0.5 }} className="font-NunitoExtraBold">
+                  {formattedPrice || "Contact"}
+                </Text>
               </View>
+
             </View>
           </View>
-        </ImageBackground>
+
+        </View>
       </TouchableOpacity>
     );
   }
