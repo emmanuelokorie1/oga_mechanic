@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
+import { CheckIcon } from 'react-native-heroicons/outline';
 
 interface FeatureBadgeProps {
   label: string;
@@ -11,19 +12,22 @@ const FeatureBadge: React.FC<FeatureBadgeProps> = ({ label, isSelected, onPress 
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`flex-row items-center justify-center px-4 py-2.5 rounded-full border mr-2.5 mb-3 ${
+      className={`flex-row items-center justify-center px-3.5 py-2 rounded-full border mr-2 mb-2.5 ${
         isSelected 
-          ? 'bg-[#FCF3F2] border-[#D30309]/20' 
-          : 'bg-white border-[#E5E7EB]'
+          ? 'bg-gray-100 border-gray-600' 
+          : 'bg-white border-gray-200'
       }`}
-      activeOpacity={0.7}
-      style={isSelected ? { shadowColor: '#D30309', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 0 } : {}}
+      activeOpacity={0.75}
     >
       {isSelected && (
-        <View className="w-1.5 h-1.5 rounded-full bg-[#D30309] mr-2" />
+        <View className="mr-1.5">
+          <CheckIcon size={12} color="#111827" strokeWidth={2.5} />
+        </View>
       )}
-      <Text className={`text-[13px] font-NunitoSemiBold ${
-        isSelected ? 'text-[#D30309]' : 'text-[#6B7280]'
+      <Text className={`text-[13px] ${
+        isSelected 
+          ? 'text-gray-600 font-NunitoExtraBold' 
+          : 'text-gray-500 font-NunitoMedium'
       }`}>
         {label}
       </Text>
@@ -47,7 +51,7 @@ const FeatureBadges: React.FC<FeatureBadgesProps> = ({
   return (
     <View className="mb-2">
       {label && (
-        <Text className="text-[13px] text-gray-500 font-NunitoMedium mb-4 pl-1">
+        <Text className="text-[13px] text-gray-500 font-NunitoMedium mb-3 pl-0.5">
           {label}
         </Text>
       )}

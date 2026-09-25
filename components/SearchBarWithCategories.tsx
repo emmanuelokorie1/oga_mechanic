@@ -334,7 +334,7 @@ const SearchBarWithCategories = ({
             borderWidth: 1,
             borderColor: "#E5E7EB",
             paddingHorizontal: 14,
-            paddingVertical: 11,
+            paddingVertical: 4,
           }}
         >
           {isSearching ? (

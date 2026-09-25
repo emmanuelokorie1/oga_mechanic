@@ -18,6 +18,7 @@ import AndroidNavBarSpacer from '@/components/AndroidNavBarSpacer'
 import { useProfileStore } from '@/hooks/useProfileStore'
 import ProfileCompletionModal from '@/components/modals/ProfileCompletionModal'
 import PreferredOptionModal from '@/components/modals/PreferredOptionModal'
+import SubscriptionGateModal from '@/components/modals/SubscriptionGateModal'
 
 const { width: screenWidth } = Dimensions.get("window");
 
@@ -32,6 +33,7 @@ const Product = () => {
   const isProfileComplete = useProfileStore((state) => state.isProfileComplete);
   const setIsProfileComplete = useProfileStore((state) => state.setIsProfileComplete);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   const FREE_UPLOAD_LIMIT = 2;
 
@@ -250,16 +252,24 @@ const Product = () => {
         id: 1,
         title: 'Upload Spare Parts',
         onPress: () => {
-          setShowModal(false)
-          router.push(sellerRoutes.uploadSpareParts)
+          setShowModal(false);
+          if (!isSubscribed && allProducts.length >= FREE_UPLOAD_LIMIT) {
+            setShowSubscriptionModal(true);
+            return;
+          }
+          router.push(sellerRoutes.uploadSpareParts);
         }
       },
       {
         id: 2,
         title: 'Upload Cars',
         onPress: () => {
-          setShowModal(false)
-          router.push(sellerRoutes.uploadProducts)
+          setShowModal(false);
+          if (!isSubscribed && allProducts.length >= FREE_UPLOAD_LIMIT) {
+            setShowSubscriptionModal(true);
+            return;
+          }
+          router.push(sellerRoutes.uploadProducts);
         }
       }
     ] : []),
@@ -268,12 +278,16 @@ const Product = () => {
         id: 3,
         title: 'Rent out Cars',
         onPress: () => {
-          setShowModal(false)
-          router.push(sellerRoutes.uploadCarToRent)
+          setShowModal(false);
+          if (!isSubscribed && allProducts.length >= FREE_UPLOAD_LIMIT) {
+            setShowSubscriptionModal(true);
+            return;
+          }
+          router.push(sellerRoutes.uploadCarToRent);
         }
       }
     ] : [])
-  ]
+  ];
 
   const renderStars = (rating: number) => {
     const stars = []
@@ -541,12 +555,9 @@ const Product = () => {
               setShowProfileModal(true);
               return;
             }
-            // Subscription gate: allow if subscribed or under free upload limit
+            // Subscription gate: if free uploads used, show subscription modal
             if (!isSubscribed && allProducts.length >= FREE_UPLOAD_LIMIT) {
-              router.push({
-                pathname: sellerRoutes.subscription as any,
-                params: { usedFreeUploads: String(allProducts.length) },
-              });
+              setShowSubscriptionModal(true);
               return;
             }
             if (isVehicleRental) {
@@ -596,7 +607,8 @@ const Product = () => {
             />
           }
           contentContainerStyle={{
-            paddingBottom: 0,
+            paddingBottom: SCROLL_PADDING_BOTTOM + 20,
+            flexGrow: 1,
           }}
         >
           {/* Subscription Status Banner */}
@@ -608,7 +620,11 @@ const Product = () => {
               </Text>
             </View>
           ) : allProducts.length >= FREE_UPLOAD_LIMIT ? (
-            <View className="flex-row items-center bg-red-50 border border-red-200 rounded-2xl px-4 py-3 mt-3 mb-1">
+            <TouchableOpacity 
+              activeOpacity={0.8}
+              onPress={() => setShowSubscriptionModal(true)}
+              className="flex-row items-center bg-red-50 border border-red-200 rounded-2xl px-4 py-3 mt-3 mb-1"
+            >
               <LockClosedIcon size={16} color="#DC2626" />
               <View className="ml-2 flex-1">
                 <Text className="text-sm font-NunitoBold text-red-700">Free uploads used</Text>
@@ -616,7 +632,8 @@ const Product = () => {
                   Subscribe for ₦15,000/mo to upload more products
                 </Text>
               </View>
-            </View>
+              <Text className="text-xs font-NunitoBold text-primary-600 mr-1">Upgrade</Text>
+            </TouchableOpacity>
           ) : (
             <View className="flex-row items-center bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3 mt-3 mb-1">
               <LockClosedIcon size={16} color="#3B82F6" />
@@ -747,6 +764,13 @@ const Product = () => {
         onComplete={() => setShowProfileModal(false)}
         onClose={() => setShowProfileModal(false)}
         isPending={isPendingApproval}
+      />
+
+      <SubscriptionGateModal
+        isVisible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        usedUploads={allProducts.length}
+        roleName={isVehicleRental ? "vehicle_rental" : "seller"}
       />
     </SafeAreaView>
   )

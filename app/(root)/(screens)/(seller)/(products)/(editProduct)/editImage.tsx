@@ -30,7 +30,15 @@ const EditImage = () => {
     productType?: string;
   }>();
 
-  const parsedProductData = productDataParam ? JSON.parse(productDataParam) : null;
+  const parsedProductData = React.useMemo(() => {
+    if (!productDataParam) return null;
+    try {
+      return JSON.parse(productDataParam);
+    } catch (e) {
+      console.error("Failed to parse productDataParam", e);
+      return null;
+    }
+  }, [productDataParam]);
   const isRental = productType === 'rental-car';
   
   // Initialize custom alert hook
@@ -45,7 +53,9 @@ const EditImage = () => {
     : (profileData?.data as any)?.user_id;
 
   // Get make and model names for display
-  const getMakeName = (makeId: number) => {
+  const getMakeName = (makeId: any) => {
+    if (!makeId) return '';
+    if (typeof makeId === 'string' && isNaN(Number(makeId))) return makeId;
     const makeNames: { [key: number]: string } = {
       1: 'Toyota', 2: 'Honda', 3: 'Ford', 4: 'Nissan', 5: 'Chevrolet',
       6: 'Hyundai', 7: 'Kia', 8: 'Mazda', 9: 'Subaru', 10: 'Volkswagen',
@@ -53,15 +63,16 @@ const EditImage = () => {
       16: 'Acura', 17: 'Volvo', 18: 'Jaguar', 19: 'Land Rover', 20: 'Porsche',
       21: 'Mitsubishi', 22: 'Suzuki', 23: 'Isuzu', 24: 'Peugeot', 25: 'Renault'
     };
-    return makeNames[makeId] || `Make ID: ${makeId}`;
+    return makeNames[Number(makeId)] || `Make: ${makeId}`;
   };
 
-  const getModelName = (modelId: number) => {
+  const getModelName = (modelId: any) => {
+    if (!modelId) return '';
+    if (typeof modelId === 'string' && isNaN(Number(modelId))) return modelId;
     const modelNames: { [key: number]: string } = {
       26: 'Civic',
-      // Add more model mappings as needed
     };
-    return modelNames[modelId] || `Model ID: ${modelId}`;
+    return modelNames[Number(modelId)] || (typeof modelId === 'string' ? modelId : `Model: ${modelId}`);
   };
 
   // Use custom hook for all product image operations

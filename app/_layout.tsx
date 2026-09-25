@@ -3,6 +3,7 @@ import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import Toast from 'react-native-toast-message';
+import Constants from 'expo-constants';
 import { setupNotificationListeners } from "@/lib/notifications";
 import { useRouter } from "expo-router";
 
@@ -36,6 +37,11 @@ function AppContent() {
 
   // ── Global Notification Listener ──────────────────────────────────────────
   useEffect(() => {
+    if (Constants.appOwnership === 'expo') {
+      console.log('Running in Expo Go: Push notifications disabled to prevent crash.');
+      return;
+    }
+
     let staleNotificationId: string | null = null;
 
     const bootstrap = async () => {

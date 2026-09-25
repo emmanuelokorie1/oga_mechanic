@@ -39,6 +39,7 @@ const VINInputBase: React.FC<VINInputBaseProps> = ({
   const touched = formikContext?.touched || {};
   const setFieldTouched = formikContext?.setFieldTouched;
 
+  const hasUserTyped = React.useRef(false);
   const [localValue, setLocalValue] = useState(
     controlledValue !== undefined 
       ? controlledValue 
@@ -65,6 +66,7 @@ const VINInputBase: React.FC<VINInputBaseProps> = ({
   }, [name, values]);
 
   const handleChange = (text: string) => {
+    hasUserTyped.current = true
     setLocalValue(text)
     
     if (name && setFieldValue) {
@@ -85,9 +87,9 @@ const VINInputBase: React.FC<VINInputBaseProps> = ({
     }
   }
 
-  // Auto-trigger VIN lookup when it reaches 17 characters
+  // Auto-trigger VIN lookup when it reaches 17 characters from user input
   useEffect(() => {
-    if (localValue.length === 17 && onVINLookup && !hasLookedUp && isValidVIN(localValue)) {
+    if (hasUserTyped.current && localValue.length === 17 && onVINLookup && !hasLookedUp && isValidVIN(localValue)) {
       const timeoutId = setTimeout(() => {
         handleAutoVINLookup()
       }, 1000)
@@ -206,7 +208,7 @@ const VINInputBase: React.FC<VINInputBaseProps> = ({
           onBlur={handleBlur}
           placeholder={placeholder}
           placeholderTextColor="#9CA3AF"
-          className="flex-1 py-3 text-[1.2rem] font-NunitoMedium text-gray-900"
+          className="flex-1 py-3 text-[14px] font-NunitoMedium text-gray-900"
           autoCapitalize="characters"
           autoCorrect={false}
           maxLength={17}

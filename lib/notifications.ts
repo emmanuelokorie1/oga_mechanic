@@ -1,4 +1,20 @@
 import { Platform } from 'react-native';
+import { isRunningInExpoGo } from 'expo';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+
+const isExpoGo = () => {
+  try {
+    if (typeof isRunningInExpoGo === 'function' && isRunningInExpoGo()) {
+      return true;
+    }
+  } catch {
+    // fallback
+  }
+  return (
+    Constants?.appOwnership === 'expo' ||
+    Constants?.executionEnvironment === ExecutionEnvironment.StoreClient
+  );
+};
 
 /**
  * Safely initialize notification listeners.
@@ -19,6 +35,9 @@ export const setupNotificationListeners = (
   onNotification: (data: any) => void,
   staleId: string | null = null,
 ) => {
+  if (isExpoGo() && Platform.OS === 'android') {
+    return null;
+  }
   try {
     const Notifications = require('expo-notifications');
 

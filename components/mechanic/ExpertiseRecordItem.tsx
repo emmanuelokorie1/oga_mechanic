@@ -72,7 +72,7 @@ const ExpertiseRecordItem: React.FC<ExpertiseRecordItemProps> = ({
         <View className="flex-1">
           <Text className="text-[13px] font-NunitoBold text-gray-500 uppercase tracking-wider mb-3 ml-1">Experience</Text>
           <TextInput
-            className="bg-gray-50/50 border border-gray-400 rounded-xl px-4 py-[16px] font-NunitoBold text-gray-900"
+            className="bg-gray-50/50 border border-gray-400 rounded-xl px-4 py-[14px] text-[14px] font-NunitoBold text-gray-900"
             placeholder="Years"
             keyboardType="numeric"
             placeholderTextColor="#9CA3AF"

@@ -88,7 +88,7 @@ const Checkbox: React.FC<CheckboxProps> = ({
           className="flex-shrink"
         >
           <Text
-            className={`text-[1.2rem] font-NunitoMedium ${
+            className={`text-[14px] font-NunitoMedium ${
               disabled ? "text-gray-400" : `text-[${textColor}]`
             } ${labelStyle}`}
             style={{ color: disabled ? "#9CA3AF" : textColor }}

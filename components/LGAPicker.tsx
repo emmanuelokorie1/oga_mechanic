@@ -244,7 +244,7 @@ const LGAPicker: React.FC<LGAPickerProps> = ({
                 placeholder="Search LGAs..."
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                className="flex-1 ml-2 text-base"
+                className="flex-1 ml-2 text-[14px] font-NunitoMedium text-gray-900"
               />
             </View>
           </View>

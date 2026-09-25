@@ -170,7 +170,7 @@ const InputField = forwardRef<TextInput, InputFieldProps & {
             {/* Text Input */}
             <TextInput
               ref={ref}
-              className={`flex-1 ${props.multiline ? 'py-3 min-h-[100px]' : 'py-3'} text-[1.2rem] font-NunitoMedium text-gray-900 ${inputStyle}`}
+              className={`flex-1 ${props.multiline ? 'py-3 min-h-[100px]' : 'py-3'} text-[14px] font-NunitoMedium text-gray-900 ${inputStyle}`}
               secureTextEntry={secureTextEntry && isPasswordVisible}
               keyboardType={keyboardType}
               placeholder={placeholder}

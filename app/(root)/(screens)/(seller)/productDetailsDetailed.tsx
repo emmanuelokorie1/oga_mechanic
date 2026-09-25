@@ -249,10 +249,15 @@ const ProductDetailsDetailed = () => {
   const handleEdit = () => {
     if (!productData) return;
     
-    // Determine if it's a spare part (not a car)
-    const isSparePart = !productData.category?.name?.toLowerCase().includes('car');
-
-    if (isSparePart) {
+    if (productData.is_rental) {
+      router.push({
+        pathname: sellerRoutes.editCarToRent,
+        params: {
+          productId: productData.id,
+          productData: JSON.stringify(productData)
+        }
+      });
+    } else if (!productData.category?.name?.toLowerCase().includes('car')) {
       // Navigate to spare part edit page
       router.push({
         pathname: sellerRoutes.editSparePart,
@@ -583,7 +588,7 @@ const ProductDetailsDetailed = () => {
             shadowOffset: { width: 0, height: -8 }, 
             shadowOpacity: 0.15, 
             shadowRadius: 24, 
-            elevation: 16 
+            elevation: 2 
           }}
           className="bg-white mx-4 rounded-2xl relative z-10 shadow-2xl mb-4"
         >
@@ -1217,7 +1222,7 @@ const ProductDetailsDetailed = () => {
           shadowOffset: { width: 0, height: -8 }, 
           shadowOpacity: 0.2, 
           shadowRadius: 24, 
-          elevation: 20 
+          elevation: 2 
         }}
         className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100">
         

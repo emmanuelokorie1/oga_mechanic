@@ -77,11 +77,13 @@ const MetricCardSkeleton = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-200 rounded-[.4rem] p-4">
-      {/* Label skeleton */}
-      <Animated.View style={[shimmerStyle]} className="h-4 bg-gray-300 rounded mb-4 w-3/4" />
-      {/* Number skeleton */}
-      <Animated.View style={[shimmerStyle]} className="h-8 bg-gray-300 rounded w-16" />
+    <View
+      className="flex-1 bg-white rounded-xl border border-gray-100 py-3 px-2 items-center justify-between"
+      style={{ minHeight: 112 }}
+    >
+      <Animated.View style={[shimmerStyle]} className="h-3.5 bg-gray-200 rounded w-3/4 mb-1" />
+      <Animated.View style={[shimmerStyle]} className="h-7 bg-gray-200 rounded w-10 my-1" />
+      <Animated.View style={[shimmerStyle]} className="h-3 bg-gray-200 rounded w-2/3 mt-1" />
     </View>
   );
 };
@@ -149,17 +151,38 @@ interface MetricCardProps {
 }
 
 const MetricCard = ({ label, value, sublabel, accentColor = '#D30309' }: MetricCardProps) => (
-  <View className="flex-1 bg-white rounded-xl border border-gray-200 items-center justify-between h-24 py-3.5 px-2 elevation-1">
-    <Text className="text-[10px] font-NunitoBold text-slate-500 uppercase tracking-wide text-center">
-      {label}
-    </Text>
+  <View
+    className="flex-1 bg-white rounded-xl border border-gray-200 items-center justify-between py-2.5 px-1.5 shadow-sm"
+    style={{ minHeight: 112 }}
+  >
+    <View style={{ minHeight: 26, justifyContent: 'center', alignItems: 'center' }}>
+      <Text
+        numberOfLines={2}
+        className="text-[10px] font-NunitoBold text-slate-500 uppercase tracking-wide text-center"
+      >
+        {label}
+      </Text>
+    </View>
     {/* accentColor must stay inline — Tailwind can't resolve dynamic color values at runtime */}
-    <Text style={{ fontSize: 24, fontFamily: 'NunitoExtraBold', color: accentColor, lineHeight: 28 }}>
+    <Text
+      style={{
+        fontSize: 22,
+        fontFamily: 'NunitoExtraBold',
+        color: accentColor,
+        lineHeight: 26,
+        marginVertical: 2,
+      }}
+    >
       {value}
     </Text>
-    <Text className="text-[11px] font-NunitoMedium text-slate-500 text-center">
-      {sublabel}
-    </Text>
+    <View style={{ minHeight: 26, justifyContent: 'center', alignItems: 'center' }}>
+      <Text
+        numberOfLines={2}
+        className="text-[10px] font-NunitoMedium text-slate-500 text-center leading-tight"
+      >
+        {sublabel}
+      </Text>
+    </View>
   </View>
 );
 
@@ -492,44 +515,6 @@ const MechanicHome = () => {
     });
   };
 
-  // Transform rating distribution from API to ratingData format
-  const ratingData = (() => {
-    const distribution = analyticsData?.data?.ratings?.rating_distribution || {};
-    const totalReviews = analyticsData?.data?.ratings?.total_reviews || 0;
-    
-    return [
-      { 
-        stars: 5, 
-        count: distribution['5'] || 0, 
-        percentage: totalReviews > 0 ? ((distribution['5'] || 0) / totalReviews) * 100 : 0, 
-        color: "bg-green-500" 
-      },
-      { 
-        stars: 4, 
-        count: distribution['4'] || 0, 
-        percentage: totalReviews > 0 ? ((distribution['4'] || 0) / totalReviews) * 100 : 0, 
-        color: "bg-blue-500" 
-      },
-      { 
-        stars: 3, 
-        count: distribution['3'] || 0, 
-        percentage: totalReviews > 0 ? ((distribution['3'] || 0) / totalReviews) * 100 : 0, 
-        color: "bg-purple-500" 
-      },
-      { 
-        stars: 2, 
-        count: distribution['2'] || 0, 
-        percentage: totalReviews > 0 ? ((distribution['2'] || 0) / totalReviews) * 100 : 0, 
-        color: "bg-orange-500" 
-      },
-      { 
-        stars: 1, 
-        count: distribution['1'] || 0, 
-        percentage: totalReviews > 0 ? ((distribution['1'] || 0) / totalReviews) * 100 : 0, 
-        color: "bg-red-500" 
-      },
-    ];
-  })();
 
   // Get average rating from API, default to 0
   const averageRating = analyticsData?.data?.ratings?.avg_rating ?? 0;

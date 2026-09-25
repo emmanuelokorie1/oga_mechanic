@@ -206,7 +206,7 @@ const CountryStatePicker: React.FC<CountryStatePickerProps> = ({
                   placeholder="Search countries..."
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  className="flex-1 ml-2 text-base"
+                  className="flex-1 ml-2 text-[14px] font-NunitoMedium text-gray-900"
                 />
               </View>
             </View>
@@ -283,7 +283,7 @@ const CountryStatePicker: React.FC<CountryStatePickerProps> = ({
                   placeholder="Search states..."
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  className="flex-1 ml-2 text-base"
+                  className="flex-1 ml-2 text-[14px] font-NunitoMedium text-gray-900"
                 />
               </View>
             </View>

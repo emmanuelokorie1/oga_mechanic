@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, Switch, StyleSheet } from 'react-native'
+import { View, Text, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, Switch, StyleSheet, ActivityIndicator } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon, ChevronRightIcon } from 'react-native-heroicons/outline'
+import { SparklesIcon } from 'react-native-heroicons/solid'
 import { router, useLocalSearchParams } from 'expo-router'
+import { generateCarDescription } from '@/utils/aiDescriptionGenerator'
 import { Formik } from 'formik'
 import * as Yup from 'yup'
 import FormikInput from '@/components/forms/FormikInput'
@@ -43,12 +45,13 @@ const STEPS = [
 // ─── SectionCard ───────────────────────────────────────────────────────────────
 
 const SectionCard = ({
-  accentColor, icon, title, subtitle, children,
+  accentColor, icon, title, subtitle, rightAction, children,
 }: {
   accentColor: string
   icon: string
   title: string
   subtitle: string
+  rightAction?: React.ReactNode
   children: React.ReactNode
 }) => (
   <View style={[styles.sectionCard, { borderTopColor: accentColor }]}>
@@ -60,6 +63,7 @@ const SectionCard = ({
         <Text style={styles.sectionTitle}>{title}</Text>
         <Text style={styles.sectionSubtitle}>{subtitle}</Text>
       </View>
+      {rightAction}
     </View>
     {children}
   </View>
@@ -130,12 +134,59 @@ const Stepper = ({ currentStep }: { currentStep: number }) => (
 const UploadProducts = () => {
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [currentStep, setCurrentStep] = useState(1)
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiVariationIndex, setAiVariationIndex] = useState(0)
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null)
   const { visible, alertConfig, hideAlert, showSuccess, showError } = useCustomAlert()
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: true })
   }, [currentStep])
+
+  const handleGenerateAIDescription = async (
+    values: any,
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    setIsGeneratingAI(true);
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    try {
+      const resolvedMake = vehicleMakes?.find(
+        (m: any) => m.id.toString() === values.make?.toString() || m.name.toLowerCase() === values.make?.toString().toLowerCase()
+      );
+      const resolvedMakeName = resolvedMake?.name || values.make || '';
+
+      const availableModels = resolvedMake?.models || [];
+      const resolvedModel = availableModels.find(
+        (m: any) => m.id.toString() === values.model?.toString() || m.name.toLowerCase() === values.model?.toString().toLowerCase()
+      );
+      const resolvedModelName = resolvedModel?.name || values.model || '';
+
+      const generated = generateCarDescription({
+        year: values.year,
+        make: resolvedMakeName,
+        model: resolvedModelName,
+        name: values.name,
+        condition: values.condition,
+        transmission: values.transmission,
+        fuel_type: values.fuel_type,
+        body_type: values.body_type,
+        mileage: values.mileage,
+        mileage_unit: values.mileage_unit,
+        exterior_color: values.exterior_color,
+        interior_color: values.interior_color,
+        features: selectedFeatures,
+        price: values.price
+      }, aiVariationIndex);
+
+      setFieldValue('description', generated);
+      setAiVariationIndex(prev => prev + 1);
+    } catch (err) {
+      console.error('Error generating AI description:', err);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
 
   const { editMode, productId, productData, formData, isEditing } = useLocalSearchParams<{
     editMode?: string; productId?: string; productData?: string; formData?: string; isEditing?: string;
@@ -561,11 +612,38 @@ const UploadProducts = () => {
                         />
                       </SectionCard>
 
-                      <SectionCard accentColor={PRIMARY} icon="📝" title="Description" subtitle="Sell the story">
+                      <SectionCard 
+                        accentColor={PRIMARY} 
+                        icon="📝" 
+                        title="Description" 
+                        subtitle="Sell the story"
+                        rightAction={
+                          <TouchableOpacity
+                            onPress={() => handleGenerateAIDescription(values, setFieldValue)}
+                            disabled={isGeneratingAI}
+                            activeOpacity={0.8}
+                            className="flex-row items-center px-3 py-1.5 rounded-full bg-gray-900 active:bg-gray-800"
+                          >
+                            {isGeneratingAI ? (
+                              <>
+                                <ActivityIndicator size="small" color="#FFFFFF" style={{ transform: [{ scale: 0.7 }] }} />
+                                <Text className="text-white font-NunitoBold text-[11px] ml-1.5">Writing...</Text>
+                              </>
+                            ) : (
+                              <>
+                                <SparklesIcon size={12} color="#FBBF24" />
+                                <Text className="text-white font-NunitoBold text-[11px] ml-1">
+                                  {values.description ? 'Regenerate' : 'AI Generate'}
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        }
+                      >
                         <FormikTextArea
                           name="description" label="Description"
                           placeholder="Well maintained car with service history. Perfect for city or highway driving with excellent fuel economy…"
-                          numberOfLines={4} maxLength={500}
+                          numberOfLines={5} maxLength={500}
                           helperText="Be specific — buyers love detail."
                         />
                       </SectionCard>

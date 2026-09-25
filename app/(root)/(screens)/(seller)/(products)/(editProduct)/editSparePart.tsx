@@ -4,7 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon } from 'react-native-heroicons/outline'
+import { SparklesIcon } from 'react-native-heroicons/solid'
 import { router, useLocalSearchParams } from 'expo-router'
+import { generateSparePartDescription } from '@/utils/aiDescriptionGenerator'
 import { Formik } from 'formik'
 import * as Yup from 'yup'
 import FormikInput from '@/components/forms/FormikInput'
@@ -23,38 +25,105 @@ interface VehicleCompatibility {
 }
 // import CustomButton from '@/components/CustomButton'
 
-const PRIMARY = '#D30309';
+interface SectionCardProps {
+  number: number | string;
+  badgeBg?: string;
+  title: string;
+  subtitle: string;
+  rightAction?: React.ReactNode;
+  children: React.ReactNode;
+}
 
-const SectionCard = ({ children, title, subtitle, icon, accentColor }: any) => (
-  <View
-    className="bg-white rounded-[16px] p-5 mb-5 border border-gray-100"
-    style={{ borderTopWidth: 3, borderTopColor: accentColor, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 }}
-  >
-    <View className="flex-row items-center mb-5 gap-3">
-      <View style={{ backgroundColor: `${accentColor}1A` }} className="w-10 h-10 rounded-xl items-center justify-center">
-        <Text className="text-[20px]">{icon}</Text>
+const badgeColorMap: Record<string, string> = {
+  '1': 'bg-blue-500',
+  '2': 'bg-green-500',
+  '3': 'bg-orange-500',
+  '4': 'bg-red-500',
+};
+
+const SectionCard = ({ number, badgeBg, title, subtitle, rightAction, children }: SectionCardProps) => {
+  const bgClass = badgeBg || badgeColorMap[String(number)] || 'bg-blue-500';
+  return (
+    <View className="bg-white rounded-2xl p-5 mb-4 border border-gray-200">
+      <View className="flex-row items-center mb-4">
+        <View className={`w-8 h-8 ${bgClass} rounded-lg items-center justify-center mr-3`}>
+          <Text className="text-white font-NunitoBold text-sm">{number}</Text>
+        </View>
+        <View className="flex-1">
+          <Text className="text-lg font-NunitoBold text-gray-900">{title}</Text>
+          <Text className="text-xs text-gray-500 font-NunitoMedium">{subtitle}</Text>
+        </View>
+        {rightAction}
       </View>
-      <View className="flex-1">
-        <Text style={{ color: '#111827' }} className="text-[15px] font-NunitoBold mb-0.5">{title}</Text>
-        <Text className="text-[12px] text-gray-500 font-NunitoMedium">{subtitle}</Text>
+      <View className="gap-4">
+        {children}
       </View>
     </View>
-    <View className="gap-4">
-      {children}
-    </View>
-  </View>
-);
+  );
+};
 
 const EditSparePart = () => {
   const [vehicleCompatibility, setVehicleCompatibility] = useState<VehicleCompatibility[]>([])
   const [showOtherCategory, setShowOtherCategory] = useState(false)
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiVariationIndex, setAiVariationIndex] = useState(0)
+
+  const handleGenerateAISparePartDescription = async (
+    values: any,
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    setIsGeneratingAI(true);
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    try {
+      const compatibleMakeNames: string[] = [];
+      const compatibleModelNames: string[] = [];
+
+      vehicleCompatibility.forEach(vc => {
+        const makeObj = vehicleMakes?.find((m: any) => m.id.toString() === vc.make?.toString());
+        if (makeObj) {
+          compatibleMakeNames.push(makeObj.name);
+          if (Array.isArray(vc.models)) {
+            vc.models.forEach((mId: any) => {
+              const modelObj = makeObj.models?.find((m: any) => m.id.toString() === mId?.toString());
+              if (modelObj) compatibleModelNames.push(modelObj.name);
+            });
+          }
+        }
+      });
+
+      const generated = generateSparePartDescription({
+        name: values.name,
+        category: values.category,
+        condition: values.condition,
+        compatibleMakes: compatibleMakeNames,
+        compatibleModels: compatibleModelNames,
+        price: values.price,
+      }, aiVariationIndex);
+
+      setFieldValue('description', generated);
+      setAiVariationIndex(prev => prev + 1);
+    } catch (err) {
+      console.error('Error generating AI spare part description:', err);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
 
   const { productId, productData } = useLocalSearchParams<{
     productId?: string;
     productData?: string;
   }>();
 
-  const parsedProductData = productData ? JSON.parse(productData) : null;
+  const parsedProductData = React.useMemo(() => {
+    if (!productData) return null;
+    try {
+      return JSON.parse(productData);
+    } catch (e) {
+      console.error("Failed to parse productData", e);
+      return null;
+    }
+  }, [productData]);
 
   // Fetch categories from API
   const { data: categories, isLoading: categoriesLoading } = useCategories();
@@ -126,7 +195,7 @@ const EditSparePart = () => {
     custom_category_name: getCustomCategoryName(),
     condition: parsedProductData?.condition || 'new',
     description: parsedProductData?.description || '',
-    price: parsedProductData?.price?.toString() || '',
+    price: parsedProductData?.price ? Math.round(parseFloat(parsedProductData.price.toString())).toString() : '',
     currency: parsedProductData?.currency || 'NGN',
     stock: parsedProductData?.stock?.toString() || '',
     availability: parsedProductData?.availability || 'in_stock',
@@ -135,18 +204,59 @@ const EditSparePart = () => {
 
   // Initialize vehicle compatibility from parsed data
   useEffect(() => {
-    if (!parsedProductData?.vehicle_compatibility) return;
+    if (!parsedProductData?.vehicle_compatibility || !vehicleMakes) return;
 
     const vehicleCompat = parsedProductData.vehicle_compatibility;
 
     if (Array.isArray(vehicleCompat)) {
-      const mapped = vehicleCompat.map((vc: any) => ({
-        make: vc.make,
-        models: vc.model || vc.models || []
-      }));
+      const mapped = vehicleCompat.map((vc: any) => {
+        let makeId: number = 0;
+        if (typeof vc.make === 'object' && vc.make?.id) {
+          makeId = Number(vc.make.id);
+        } else if (vc.make_id) {
+          makeId = Number(vc.make_id);
+        } else if (typeof vc.make === 'number') {
+          makeId = vc.make;
+        } else if (typeof vc.make === 'string') {
+          if (!isNaN(Number(vc.make))) {
+            makeId = Number(vc.make);
+          } else {
+            const foundMake = vehicleMakes.find(
+              (m: any) => m.name.toLowerCase() === vc.make.toLowerCase()
+            );
+            if (foundMake) makeId = foundMake.id;
+          }
+        }
+
+        const rawModels = vc.models || vc.model || [];
+        const modelList = Array.isArray(rawModels) ? rawModels : [rawModels];
+        const selectedMake = vehicleMakes.find((m: any) => m.id === makeId);
+
+        const modelIds: number[] = modelList
+          .map((m: any) => {
+            if (typeof m === 'object' && m?.id) return Number(m.id);
+            if (typeof m === 'number') return m;
+            if (typeof m === 'string') {
+              if (!isNaN(Number(m))) return Number(m);
+              if (selectedMake?.models) {
+                const foundModel = selectedMake.models.find(
+                  (sm: any) => sm.name.toLowerCase() === m.toLowerCase()
+                );
+                if (foundModel) return foundModel.id;
+              }
+            }
+            return 0;
+          })
+          .filter((id: number) => id > 0);
+
+        return {
+          make: makeId,
+          models: modelIds
+        };
+      });
       setVehicleCompatibility(mapped);
     }
-  }, [parsedProductData?.vehicle_compatibility])
+  }, [parsedProductData?.vehicle_compatibility, vehicleMakes]);
 
   // Check if initial category is "other" and show custom input
   useEffect(() => {
@@ -257,8 +367,17 @@ const EditSparePart = () => {
   };
 
   const getSelectedMake = (index: number) => {
+    if (!vehicleMakes) return undefined;
     const makeId = vehicleCompatibility[index]?.make;
-    return vehicleMakes.find(make => make.id === makeId);
+    return vehicleMakes.find(make => make.id === makeId || make.id?.toString() === makeId?.toString());
+  };
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push(sellerRoutes?.products as any);
+    }
   };
 
   return (
@@ -269,7 +388,7 @@ const EditSparePart = () => {
       <View className="bg-white border-b border-gray-200">
         <View className="flex-row items-center justify-between px-5 py-4">
           <TouchableOpacity
-            onPress={() => router.push(sellerRoutes?.products)}
+            onPress={handleBack}
             className="w-10 h-10 items-center justify-center rounded-xl bg-gray-100"
           >
             <ArrowLeftIcon size={20} color="#374151" />
@@ -317,7 +436,7 @@ const EditSparePart = () => {
 
 
                   {/* Basic Information */}
-                  <SectionCard accentColor={PRIMARY} icon="📋" title="Basic Information" subtitle="Update Product Details">
+                  <SectionCard number={1} title="Basic Information" subtitle="Update Product Details">
 
                     {/* Category */}
                     <SelectField
@@ -361,7 +480,7 @@ const EditSparePart = () => {
                   </SectionCard>
 
                   {/* Vehicle Compatibility */}
-                  <SectionCard accentColor={PRIMARY} icon="🚗" title="Compatible Vehicles" subtitle="Select Makes and Models">
+                  <SectionCard number={2} title="Compatible Vehicles" subtitle="Select Makes and Models">
                     <View className="flex-row items-center justify-end mb-4">
                       <TouchableOpacity
                         onPress={addVehicleCompatibility}
@@ -408,8 +527,8 @@ const EditSparePart = () => {
                                     label: make.name,
                                     value: make.id.toString()
                                   }))}
-                                  value={vc.make.toString()}
-                                  onValueChange={(value) => updateVehicleMake(index, parseInt(value))}
+                                  value={vc.make && vc.make !== 0 ? vc.make.toString() : ''}
+                                  onValueChange={(value) => updateVehicleMake(index, parseInt(value, 10))}
                                   error=""
                                   touched={false}
                                 />
@@ -444,20 +563,45 @@ const EditSparePart = () => {
                   </SectionCard>
 
                   {/* Description */}
-                  <SectionCard accentColor={PRIMARY} icon="📝" title="Description" subtitle="Provide Details About the Product">
-
+                  <SectionCard 
+                    number={3} 
+                    title="Description" 
+                    subtitle="Provide Details About the Product"
+                    rightAction={
+                      <TouchableOpacity
+                        onPress={() => handleGenerateAISparePartDescription(values, setFieldValue)}
+                        disabled={isGeneratingAI}
+                        activeOpacity={0.8}
+                        className="flex-row items-center px-3 py-1.5 rounded-full bg-gray-900 active:bg-gray-800"
+                      >
+                        {isGeneratingAI ? (
+                          <>
+                            <ActivityIndicator size="small" color="#FFFFFF" style={{ transform: [{ scale: 0.7 }] }} />
+                            <Text className="text-white font-NunitoBold text-[11px] ml-1.5">Writing...</Text>
+                          </>
+                        ) : (
+                          <>
+                            <SparklesIcon size={12} color="#FBBF24" />
+                            <Text className="text-white font-NunitoBold text-[11px] ml-1">
+                              {values.description ? 'Regenerate' : 'AI Generate'}
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    }
+                  >
                     <FormikTextArea
                       name="description"
                       label="Description"
                       placeholder="e.g., High-quality brake pads compatible with multiple Toyota and Honda models."
-                      numberOfLines={4}
+                      numberOfLines={5}
                       maxLength={500}
                       helperText="Describe the spare part's features, compatibility, and condition"
                     />
                   </SectionCard>
 
                   {/* Pricing & Availability */}
-                  <SectionCard accentColor={PRIMARY} icon="💰" title="Pricing & Availability" subtitle="Set your Price and Stock">
+                  <SectionCard number={4} title="Pricing & Availability" subtitle="Set your Price and Stock">
                     {/* Price */}
                     <FormikInput
                       name="price"

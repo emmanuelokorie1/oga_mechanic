@@ -133,7 +133,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
           accessibilityLabel={name}
         >
           <Text
-            className={`text-[1.2rem] font-NunitoMedium ${
+            className={`text-[14px] font-NunitoMedium ${
               selectedLabels.length ? "text-gray-900" : "text-gray-400"
             }`}
             numberOfLines={2}
@@ -170,7 +170,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
                   placeholder={`Search ${label.toLowerCase()}...`}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  className="flex-1 ml-2 text-base font-NunitoMedium text-gray-900"
+                  className="flex-1 ml-2 text-[14px] font-NunitoMedium text-gray-900"
                   placeholderTextColor="#9CA3AF"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -190,7 +190,7 @@ const MultiSelectField: React.FC<MultiSelectFieldProps> = ({
                         className="flex-row items-center justify-between py-4 border-b border-gray-100"
                         activeOpacity={0.7}
                       >
-                        <Text className={`text-[16px] ${checked ? 'font-NunitoBold text-primary-600' : 'font-NunitoSemiBold text-gray-800'} flex-1 pr-3`}>
+                        <Text className={`text-[14px] ${checked ? 'font-NunitoBold text-primary-600' : 'font-NunitoMedium text-gray-800'} flex-1 pr-3`}>
                           {option.label}
                         </Text>
                         {checked && <CheckIcon size={20} color="#D30309" strokeWidth={2.5} />}

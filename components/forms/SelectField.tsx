@@ -44,7 +44,10 @@ const SelectField: React.FC<SelectFieldProps> = ({
   const pressAnim = useRef(new Animated.Value(1)).current
   const animationRef = useRef<Animated.CompositeAnimation | null>(null)
 
-  const selectedOption = options.find(option => option.value === value)
+  const selectedOption = options.find(option => 
+    option.value === value || 
+    (value !== undefined && value !== null && value !== '' && option.label && option.label.toLowerCase() === value.toString().toLowerCase())
+  )
   const hasError = touched && error
 
   // Filter options based on search query
@@ -181,7 +184,7 @@ const SelectField: React.FC<SelectFieldProps> = ({
                 <View className={`w-2 h-2 rounded-full mr-3 ${selectedOption ? 'bg-primary-500' : 'bg-gray-300'}`} />
             )}
             <Text
-              className={`text-[16px] font-NunitoSemiBold flex-1 ${selectedOption ? "text-gray-900" : "text-gray-400"}`}
+              className={`text-[14px] font-NunitoMedium flex-1 ${selectedOption ? "text-gray-900" : "text-gray-400"}`}
               numberOfLines={1}
             >
               {selectedOption ? selectedOption.label : placeholder}
@@ -221,7 +224,7 @@ const SelectField: React.FC<SelectFieldProps> = ({
               shadowOffset: { width: 0, height: -10 },
               shadowOpacity: 0.1,
               shadowRadius: 20,
-              elevation: 20,
+              elevation: 2,
             }}
           >
             <Pressable className="flex-1">
@@ -255,7 +258,7 @@ const SelectField: React.FC<SelectFieldProps> = ({
                     placeholder={`Search ${(label || '').toLowerCase()}...`}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
-                    className="flex-1 ml-3 text-[16px] font-NunitoSemiBold text-gray-900"
+                    className="flex-1 ml-3 text-[14px] font-NunitoMedium text-gray-900"
                     placeholderTextColor="#9CA3AF"
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -279,7 +282,8 @@ const SelectField: React.FC<SelectFieldProps> = ({
                 <View className="pt-2">
                   {filteredOptions.length > 0 ? (
                     filteredOptions.map((option, index) => {
-                      const isSelected = value === option.value;
+                      const isSelected = value === option.value || 
+                        (value !== undefined && value !== null && value !== '' && option.label && option.label.toLowerCase() === value.toString().toLowerCase());
                       return (
                         <TouchableOpacity
                           key={option.value}
@@ -298,7 +302,7 @@ const SelectField: React.FC<SelectFieldProps> = ({
                               </View>
                             ) : null}
                             <Text
-                              className={`text-[16px] ${isSelected ? 'font-NunitoBold text-primary-600' : 'font-NunitoSemiBold text-gray-800'}`}
+                              className={`text-[14px] ${isSelected ? 'font-NunitoBold text-primary-600' : 'font-NunitoMedium text-gray-800'}`}
                               numberOfLines={1}
                             >
                               {option.label}

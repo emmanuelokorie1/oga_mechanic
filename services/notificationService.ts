@@ -1,7 +1,28 @@
 import { Platform } from 'react-native';
+import { isRunningInExpoGo } from 'expo';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+
+const isExpoGo = () => {
+  try {
+    if (typeof isRunningInExpoGo === 'function' && isRunningInExpoGo()) {
+      return true;
+    }
+  } catch {
+    // fallback
+  }
+  return (
+    Constants?.appOwnership === 'expo' ||
+    Constants?.executionEnvironment === ExecutionEnvironment.StoreClient
+  );
+};
 
 // Helpers to safely get native modules
 const getNotifications = () => {
+  // Remote notifications were removed from Expo Go on Android in SDK 53+.
+  // Requiring expo-notifications in Expo Go on Android throws a fatal error immediately.
+  if (isExpoGo() && Platform.OS === 'android') {
+    return null;
+  }
   try {
     return require('expo-notifications');
   } catch (e) {

@@ -70,7 +70,7 @@ const ProfileCompletionModal = ({
             shadowOffset: { width: 0, height: 24 },
             shadowOpacity: 0.15,
             shadowRadius: 32,
-            elevation: 10,
+            elevation: 2,
           }}
         >
           {/* Decorative Background Elements */}
@@ -119,7 +119,7 @@ const ProfileCompletionModal = ({
                 shadowOffset: { width: 0, height: 8 },
                 shadowOpacity: 0.3,
                 shadowRadius: 12,
-                elevation: 4,
+                elevation: 2,
               }}
             >
               <Text className="text-white font-NunitoBold text-[16px]">

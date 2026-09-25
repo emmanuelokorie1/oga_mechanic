@@ -40,7 +40,7 @@ const SpecialistIconBtn = ({ count: manualCount, isFloating = false }: Specialis
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.3,
                 shadowRadius: 4.65,
-                elevation: 8,
+                elevation: 2,
               }
             : undefined
         }

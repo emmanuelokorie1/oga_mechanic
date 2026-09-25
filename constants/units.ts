@@ -16,7 +16,7 @@ export const LAYOUT = {
   CONTAINER_PADDING: "px-3",
   CARD_PADDING: 5, // Numeric value for React Native styles
   CARD_GAP: 12,
-  SCROLL_PADDING_BOTTOM: Platform.OS === "android" ? 120 : 100,
+  SCROLL_PADDING_BOTTOM: Platform.OS === "android" ? 145 : 140,
 
   // Animation constants
   ANIMATION_DURATION: {

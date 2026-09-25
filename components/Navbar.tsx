@@ -166,7 +166,7 @@ const Navbar = () => {
         <View className="flex-1">
           <View className="flex flex-row items-center gap-1">
             <Text className="font-NunitoBold text-[1.2rem]" numberOfLines={1} ellipsizeMode="tail">
-              Good {label}, {displayName || 'User'}
+               {label}, {displayName || 'User'}
             </Text>
             {/* {icon} */}
             {/* {isVerified && (

@@ -25,11 +25,17 @@ const FormikInput = forwardRef<TextInput, FormikInputProps>(({ name, type, secur
   // Format number with thousand separators
   const formatNumberWithCommas = (value: string | number): string => {
     if (!value && value !== 0) return ''
-    // Remove all non-digit characters
-    const numericValue = value.toString().replace(/\D/g, '')
-    if (!numericValue) return ''
-    // Add commas for thousands
-    return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    const strValue = value.toString()
+    // Split integer and decimal parts so decimals like .00 aren't stripped into extra zeros
+    const parts = strValue.split('.')
+    const intPart = parts[0].replace(/\D/g, '')
+    if (!intPart) return ''
+    const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
+    if (parts.length > 1 && parts[1] && parts[1] !== '00' && parts[1] !== '0') {
+      return `${formattedInt}.${parts[1].replace(/\D/g, '')}`
+    }
+    return formattedInt
   }
 
   // Remove commas from formatted number

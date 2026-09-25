@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.15,
     shadowRadius: 5,
-    elevation: 4,
+    elevation: 2,
   },
   thumbInner: {
     width: 10,

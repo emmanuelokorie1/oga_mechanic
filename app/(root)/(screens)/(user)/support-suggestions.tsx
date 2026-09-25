@@ -567,7 +567,7 @@ const styles = StyleSheet.create({
   liveChatHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
   liveChatTitle: { fontFamily: 'Nunito-ExtraBold', fontSize: 22, color: '#111827' },
   liveChatSubtitle: { fontFamily: 'Nunito-Medium', fontSize: 13, color: '#94a3b8' },
-  plusFab: { width: 44, height: 44, backgroundColor: '#D30309', borderRadius: 22, alignItems: 'center', justifyContent: 'center', shadowColor: '#D30309', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
+  plusFab: { width: 44, height: 44, backgroundColor: '#D30309', borderRadius: 22, alignItems: 'center', justifyContent: 'center', shadowColor: '#D30309', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 2 },
 
   liveIndicatorContainer: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#f0fdf4', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10b981' },

@@ -56,7 +56,7 @@ const RadioGroup: React.FC<RadioGroupProps> = ({
                   <View className="w-2.5 h-2.5 rounded-full bg-primary-500" />
                 )}
               </View>
-              <Text className={`text-base font-NunitoSemiBold ${
+              <Text className={`text-[14px] font-NunitoSemiBold ${
                 isSelected ? 'text-primary-900' : 'text-gray-600'
               }`}>
                 {option.label}

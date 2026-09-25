@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -29,6 +30,8 @@ import {
 } from "@/hooks/useUserProfile";
 import { useProfileStore } from "@/hooks/useProfileStore";
 import ProfileCompletionModal from "@/components/modals/ProfileCompletionModal";
+import SubscriptionGateModal from "@/components/modals/SubscriptionGateModal";
+import { useSellerUploadGate } from "@/hooks/useSellerUploadGate";
 import KYCBanner from "@/components/KYCBanner";
 import BiddingCarousel from "@/components/bidding/BiddingCarousel";
 import SpecialistIconBtn from "@/components/SpecialistIconBtn";
@@ -144,16 +147,37 @@ interface MetricCardProps {
 }
 
 const MetricCard = ({ label, value, sublabel, accentColor = '#D30309' }: MetricCardProps) => (
-  <View className="flex-1 bg-white rounded-xl border border-gray-200 items-center justify-between h-24 py-3.5 px-2 elevation-1">
-    <Text className="text-[10px] font-NunitoBold text-slate-500 uppercase tracking-wide text-center">
-      {label}
-    </Text>
-    <Text style={{ fontSize: 24, fontFamily: 'NunitoExtraBold', color: accentColor, lineHeight: 28 }}>
+  <View
+    className="flex-1 bg-white rounded-xl border border-gray-200 items-center justify-between py-2.5 px-2 "
+    style={{ minHeight: 110 }}
+  >
+    <View style={{ minHeight: 26, justifyContent: 'center', alignItems: 'center' }}>
+      <Text
+        numberOfLines={2}
+        className="text-[10px] font-NunitoBold text-slate-500 uppercase tracking-wide text-center"
+      >
+        {label}
+      </Text>
+    </View>
+    <Text
+      style={{
+        fontSize: 22,
+        fontFamily: 'NunitoExtraBold',
+        color: accentColor,
+        lineHeight: 26,
+        marginVertical: 2,
+      }}
+    >
       {value}
     </Text>
-    <Text className="text-[11px] font-NunitoMedium text-slate-500 text-center">
-      {sublabel}
-    </Text>
+    <View style={{ minHeight: 26, justifyContent: 'center', alignItems: 'center' }}>
+      <Text
+        numberOfLines={2}
+        className="text-[11px] font-NunitoMedium text-slate-500 text-center leading-tight"
+      >
+        {sublabel}
+      </Text>
+    </View>
   </View>
 );
 
@@ -262,6 +286,13 @@ const ProductListingCard = ({
 const SellerHome = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const {
+    checkUploadPermission,
+    showSubscriptionModal,
+    setShowSubscriptionModal,
+    totalProductsCount,
+  } = useSellerUploadGate();
 
   const setIsProfileComplete = useProfileStore((s) => s.setIsProfileComplete);
   const isNewSwitch = useProfileStore((s) => s.isNewSwitch);
@@ -377,6 +408,10 @@ const SellerHome = () => {
       return;
     }
 
+    if (!checkUploadPermission()) {
+      return;
+    }
+
     if (action === 'uploadSpareParts') {
       router.push(sellerRoutes.uploadSpareParts as any);
       return;
@@ -399,7 +434,7 @@ const SellerHome = () => {
   const totalListings = isVehicleRental
     ? (analyticsData?.rental_analytics?.total_rentals ?? 0)
     : (analyticsData?.product_count ?? 0);
-  const avgRating = analyticsData?.product_performance?.avg_rating ?? 5.0;
+  const avgRating = analyticsData?.product_performance?.avg_rating ?? 0.0;
   const reviewedCount = analyticsData?.product_performance?.products_with_reviews ?? 0;
 
   return (
@@ -413,7 +448,7 @@ const SellerHome = () => {
       <View
         style={{
           position: "absolute",
-          bottom: 100,
+          bottom: Platform.OS === "ios" ? 105 : 100,
           right: 20,
           zIndex: 1000,
         }}
@@ -428,6 +463,10 @@ const SellerHome = () => {
 
       <ScrollView
         style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingBottom: Platform.OS === "ios" ? 100 : 100,
+          flexGrow: 1,
+        }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -596,7 +635,8 @@ const SellerHome = () => {
           )}
         </View>
 
-        <AndroidNavBarSpacer />
+        {/* Bottom spacer for clean clearance above floating tab bar */}
+        <View style={{ height: 24 }} />
       </ScrollView>
 
       <ProfileCompletionModal
@@ -605,6 +645,13 @@ const SellerHome = () => {
         onComplete={() => setShowProfileModal(false)}
         onClose={() => setShowProfileModal(false)}
         isPending={isPendingApproval}
+      />
+
+      <SubscriptionGateModal
+        isVisible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        usedUploads={totalProductsCount}
+        roleName={isVehicleRental ? "vehicle_rental" : "seller"}
       />
     </SafeAreaView>
   );

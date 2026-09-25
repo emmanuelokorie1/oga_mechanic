@@ -1,23 +1,26 @@
-import React, { useState, useCallback } from 'react'
-import { View, Text, TouchableOpacity, Image, ScrollView, FlatList, Dimensions, RefreshControl } from 'react-native'
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { View, Text, TouchableOpacity, Image, FlatList, RefreshControl, Animated } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ArrowLeftIcon, PlusIcon } from 'react-native-heroicons/outline'
-import { images, icons } from '@/constants'
+import { icons } from '@/constants'
 import { router } from 'expo-router'
 import { LAYOUT } from '@/constants/units'
 import { sellerRoutes } from '@/constants/routes'
-import Card1 from '@/components/cards/Card1'
 import SearchBarWithCategories from '@/components/SearchBarWithCategories'
 import DeleteConfirmationModal from '@/components/modals/DeleteConfirmationModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import { useQuery } from '@tanstack/react-query'
 import { productsAPI } from '@/lib/api/products'
-import { useActiveRoleProfile, usePrimaryUserProfile, useMerchantProfile } from '@/hooks/useUserProfile'
-import { useProfileStore } from '@/hooks/useProfileStore'
+import { usePrimaryUserProfile, useMerchantProfile } from '@/hooks/useUserProfile'
 import ProfileCompletionModal from '@/components/modals/ProfileCompletionModal'
+import SubscriptionGateModal from '@/components/modals/SubscriptionGateModal'
+import { useSellerUploadGate } from '@/hooks/useSellerUploadGate'
+import { NairaCurrency } from '@/utils/useCurrencyFormatter'
 
-const { SCROLL_PADDING_BOTTOM, CARD_GAP, CARD_PADDING, CONTAINER_PADDING } = LAYOUT;
+const { SCROLL_PADDING_BOTTOM, CARD_PADDING, CONTAINER_PADDING } = LAYOUT;
+
+const SPARE_PARTS_CATEGORY_ID = 24;
 
 const AllSpareParts = () => {
   const [selectedCategory, setSelectedCategory] = useState('All')
@@ -30,64 +33,45 @@ const AllSpareParts = () => {
   
   const categoryOptions = [
     { name: "All", id: null },
-    { name: "Mercedez", id: 1 },
-    { name: "Porsche", id: 2 },
-    { name: "Hyundai", id: 3 }
+    { name: "Engine Parts", id: 1 },
+    { name: "Brakes & Suspension", id: 2 },
+    { name: "Electrical & Lighting", id: 3 },
+    { name: "Body & Interior", id: 4 },
   ]
   
-  const isProfileComplete = useProfileStore((state) => state.isProfileComplete);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-
-  // Fetch primary profile data
-  const { data: primaryProfileData, isLoading: isProfileLoading } = usePrimaryUserProfile();
-
-  // Extract active role with fallback
-  const activeRoleRaw = primaryProfileData?.active_role || primaryProfileData?.data?.active_role || (primaryProfileData?.data as any)?.current_role;
-  const activeRole = typeof activeRoleRaw === 'object' ? activeRoleRaw?.name : activeRoleRaw;
-
-  // Fetch specific merchant profile to check KYC status
-  const merchantProfileQuery = useMerchantProfile(activeRole === 'merchant' || activeRole === 'seller');
-
-  const isPendingApproval = Boolean(
-    merchantProfileQuery.data?.data?.kyc?.is_complete && 
-    !merchantProfileQuery.data?.data?.merchant_profile?.is_approved
-  );
-
-  // Fetch user profile based on active role to get merchant ID
-  const { data: profileData } = useActiveRoleProfile();
-  
-  // Extract merchant ID safely from different profile structures
-  const merchantId = (activeRole === 'merchant' || activeRole === 'vehicle_rental')
-    ? (profileData?.data as any)?.user?.id || (profileData?.data as any)?.user_id
-    : (profileData?.data as any)?.user_id;
-  
-  // Fetch spare parts using TanStack Query with merchant_id filter
   const {
-    data: spareParts = [],
+    checkUploadPermission,
+    showSubscriptionModal,
+    setShowSubscriptionModal,
+    showProfileModal,
+    setShowProfileModal,
+    isPendingApproval,
+    totalProductsCount,
+    roleName,
+    merchantId,
+  } = useSellerUploadGate();
+
+  const activeRole = roleName;
+  
+  // Fetch spare parts using TanStack Query with merchant_id filter matching product.tsx
+  const {
+    data: allSpareParts = [],
     isLoading: loading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['products', merchantId, 'spareParts'], // Unique key for spare parts only
+    queryKey: ['products', merchantId, 'spareParts', SPARE_PARTS_CATEGORY_ID],
     queryFn: async () => {
       const response = await productsAPI.getProducts(
-        undefined, // categoryId
+        SPARE_PARTS_CATEGORY_ID, // categoryId - filter by spare parts category (24)
         undefined, // minPrice
         undefined, // maxPrice
         undefined, // offset
         undefined, // limit
         merchantId  // merchantId
-      )
-      // Handle both array and paginated response formats
+      );
       const data = response.data;
-      const allFetchedProducts = Array.isArray(data) ? data : (data?.results || []);
-
-      // Filter for spare parts only
-      const sparePartProducts = allFetchedProducts.filter((product: any) => 
-        product.category?.name?.toLowerCase().includes('spare') || 
-        product.category?.name?.toLowerCase().includes('part')
-      )
-      return sparePartProducts
+      return Array.isArray(data) ? data : (data?.results || []);
     },
     enabled: !!merchantId, // Only fetch when we have merchantId
     staleTime: 0,
@@ -95,24 +79,25 @@ const AllSpareParts = () => {
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
-  })
+  });
 
   // Pull-to-refresh functionality
   const onRefresh = useCallback(async () => {
-    setRefreshing(true)
+    setRefreshing(true);
     try {
-      await refetch()
+      await refetch();
     } catch (error) {
+      console.error('❌ Error during refresh:', error);
     } finally {
-      setRefreshing(false)
+      setRefreshing(false);
     }
-  }, [refetch])
+  }, [refetch]);
 
   const handleSearchChange = useCallback((text: string) => {
     setInputQuery(text);
   }, []);
 
-  const handleCategoryChange = useCallback((categoryName: string, categoryId?: number | null) => {
+  const handleCategoryChange = useCallback((categoryName: string) => {
     setSelectedCategory(categoryName);
   }, []);
 
@@ -125,6 +110,7 @@ const AllSpareParts = () => {
   }, []);
 
   const handleApplySearch = () => {
+    // Reactive via useMemo
   };
 
   const handleResetSearch = () => {
@@ -135,7 +121,7 @@ const AllSpareParts = () => {
   };
 
   const handleFilterPress = () => {
-    console.log("Filter pressed");
+    // Filter logic
   };
 
   const handleDeleteItem = (item: any) => {
@@ -143,43 +129,141 @@ const AllSpareParts = () => {
     setShowDeleteModal(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     setShowDeleteModal(false);
-    // In real app, call delete API here
-    
-    // Navigate to success page
-    setTimeout(() => {
-      router.push({
-        pathname: sellerRoutes.deleteSuccess as any,
-        params: { itemType: 'sparePart' }
-      });
-    }, 300);
+    if (!selectedItem?.id) return;
+    try {
+      await productsAPI.deleteProduct(selectedItem.id);
+      await refetch();
+      setTimeout(() => {
+        router.push({
+          pathname: sellerRoutes.deleteSuccess as any,
+          params: { itemType: 'sparePart' }
+        });
+      }, 300);
+    } catch (err) {
+      console.error('❌ Failed to delete spare part:', err);
+    }
   };
 
-  const renderSparePartCard = ({ item, index }: { item: any; index: number }) => {
-    const productImage = item.images && item.images.length > 0 ? item.images[0].image : null;
-    
+  // Check if item has active bidding
+  const isActiveAuction = (item: any) => {
+    return Boolean(
+      item.bidding_window && 
+      !item.bidding_window.is_closed && 
+      item.bidding_window.is_active
+    );
+  };
+
+  // Live Pulsating Indicator
+  const LiveIndicator = () => {
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+    useEffect(() => {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    }, []);
     return (
-    <View className="w-1/2 px-2 mb-4">
+      <View className="flex-row items-center bg-red-600 px-2 py-1 rounded-lg absolute top-2 right-2 z-10 shadow-sm border border-red-500/50">
+        <Animated.View style={{ opacity: pulseAnim }} className="w-1.5 h-1.5 rounded-full bg-white mr-1.5" />
+        <Text className="text-[9px] font-NunitoExtraBold text-white uppercase tracking-widest">Live Auction</Text>
+      </View>
+    );
+  };
+
+  const renderStars = (rating: number) => {
+    const stars = [];
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 !== 0;
+    
+    for (let i = 0; i < fullStars; i++) {
+      stars.push(<Text key={i} className="text-yellow-400">★</Text>);
+    }
+    if (hasHalfStar) {
+      stars.push(<Text key="half" className="text-yellow-400">★</Text>);
+    }
+    const emptyStars = 5 - Math.ceil(rating);
+    for (let i = 0; i < emptyStars; i++) {
+      stars.push(<Text key={`empty-${i}`} className="text-gray-300">★</Text>);
+    }
+    return stars;
+  };
+
+  // Filtered spare parts based on search query, category, and price
+  const filteredSpareParts = useMemo(() => {
+    let result = allSpareParts;
+
+    // Filter by selected category chip if not 'All'
+    if (selectedCategory && selectedCategory !== 'All') {
+      const catLower = selectedCategory.toLowerCase();
+      result = result.filter((item: any) => {
+        const name = (item.name || '').toLowerCase();
+        const description = (item.description || '').toLowerCase();
+        const catName = (typeof item.category === 'string' ? item.category : item.category?.name || '').toLowerCase();
+        return name.includes(catLower) || description.includes(catLower) || catName.includes(catLower);
+      });
+    }
+
+    // Filter by text search query
+    if (inputQuery.trim()) {
+      const query = inputQuery.toLowerCase().trim();
+      result = result.filter((item: any) => {
+        const name = (item.name || '').toLowerCase();
+        const description = (item.description || '').toLowerCase();
+        const partNumber = (item.part_number || '').toLowerCase();
+        return name.includes(query) || description.includes(query) || partNumber.includes(query);
+      });
+    }
+
+    // Filter by price range
+    if (minPrice.trim()) {
+      const min = parseFloat(minPrice);
+      if (!isNaN(min)) {
+        result = result.filter((item: any) => parseFloat(item.price) >= min);
+      }
+    }
+    if (maxPrice.trim()) {
+      const max = parseFloat(maxPrice);
+      if (!isNaN(max)) {
+        result = result.filter((item: any) => parseFloat(item.price) <= max);
+      }
+    }
+
+    return result;
+  }, [allSpareParts, selectedCategory, inputQuery, minPrice, maxPrice]);
+
+  const renderSparePartCard = ({ item }: { item: any; index: number }) => {
+    const productImage = item.images && item.images.length > 0 ? item.images[0].image : null;
+    const isAuction = isActiveAuction(item);
+
+    return (
+      <View className="w-1/2 px-2 mb-4">
         <TouchableOpacity 
-          className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
-            onPress={() => {
-              router.push({
-                pathname: sellerRoutes.productDetailsDetailed as any,
-                params: { 
-                  productType: 'sparePart',
-                  productId: item.id 
-                }
-              });
-            }}
+          className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm relative"
+          activeOpacity={0.8}
+          onPress={() => {
+            router.push({
+              pathname: sellerRoutes.productDetailsDetailed as any,
+              params: { 
+                productType: 'sparePart',
+                productId: item.id 
+              }
+            });
+          }}
         >
-          <View className="w-full h-[160px]">
+          {isAuction && <LiveIndicator />}
+          <View className="w-full h-[150px] bg-gray-100">
             {productImage ? (
               <Image source={{ uri: productImage }} className="w-full h-full" resizeMode="cover" />
             ) : (
-              <View className="w-full h-full bg-gray-200 items-center justify-center">
-                <icons.empty width={60} height={60} />
-                <Text className="text-gray-500 text-xs mt-2">No Image</Text>
+              <View className="w-full h-full items-center justify-center">
+                <icons.empty width={50} height={50} />
+                <Text className="text-gray-400 text-xs mt-1">No Image</Text>
               </View>
             )}
           </View>
@@ -187,18 +271,19 @@ const AllSpareParts = () => {
             <Text className="font-NunitoBold text-gray-900 text-sm mb-1" numberOfLines={1}>
               {item.name}
             </Text>
-            <View className="flex-row items-center mb-2">
-              <Text className="text-yellow-400 text-sm">★</Text>
+            <View className="flex-row items-center mb-1.5">
+              {renderStars(item.rating || 0)}
               <Text className="text-gray-500 text-xs ml-1">({item.reviews?.length || 0})</Text>
             </View>
-            <Text className="font-NunitoBold text-gray-900">
-              NGN {parseFloat(item.price).toLocaleString()}
-            </Text>
+            <NairaCurrency 
+              value={parseFloat(item.price)} 
+              className="font-NunitoBold text-gray-900"
+            />
           </View>
         </TouchableOpacity>
-    </View>
+      </View>
     );
-  }
+  };
 
   return (
     <SafeAreaView className="bg-white flex-1" edges={["top"]}>
@@ -212,15 +297,13 @@ const AllSpareParts = () => {
         <Text className="text-lg font-NunitoBold text-gray-900">All Uploaded Spare Parts</Text>
         <TouchableOpacity 
           onPress={() => {
-            if (!isProfileComplete || isPendingApproval) {
-              setShowProfileModal(true);
-              return;
-            }
-            router.push('/upload-sparePart' as any);
+            if (!checkUploadPermission()) return;
+            router.push(sellerRoutes.uploadSpareParts as any);
           }}
-          className="p-2 bg-primary-500 rounded-full items-center justify-center"
-          >
-            <PlusIcon size={25} color="white" />
+          disabled={isPendingApproval}
+          className={`p-2 rounded-full items-center justify-center ${isPendingApproval ? 'bg-gray-300' : 'bg-primary-500'}`}
+        >
+          <PlusIcon size={25} color="white" />
         </TouchableOpacity>
       </View>
 
@@ -264,13 +347,13 @@ const AllSpareParts = () => {
             </TouchableOpacity>
           </View>
         </View>
-      ) : spareParts.length > 0 ? (
-      <FlatList
-        data={spareParts}
-        renderItem={renderSparePartCard}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        showsVerticalScrollIndicator={false}
+      ) : filteredSpareParts.length > 0 ? (
+        <FlatList
+          data={filteredSpareParts}
+          renderItem={renderSparePartCard}
+          keyExtractor={(item) => String(item.id)}
+          numColumns={2}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -281,15 +364,33 @@ const AllSpareParts = () => {
               titleColor="#6B7280"
             />
           }
-        contentContainerStyle={{
-          paddingHorizontal: CARD_PADDING,
-          paddingBottom: SCROLL_PADDING_BOTTOM,
-        }}
-        initialNumToRender={8}
-        maxToRenderPerBatch={8}
-        windowSize={7}
-        removeClippedSubviews={true}
-          />
+          contentContainerStyle={{
+            paddingHorizontal: CARD_PADDING,
+            paddingBottom: SCROLL_PADDING_BOTTOM,
+          }}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews={true}
+        />
+      ) : allSpareParts.length > 0 ? (
+        <View className="flex-1 items-center justify-center px-8">
+          <View className="bg-gray-50 rounded-3xl p-8 items-center w-full">
+            <View className="w-20 h-20 bg-gray-200 rounded-full items-center justify-center mb-6">
+              <icons.empty width={40} height={40} />
+            </View>
+            <Text className="text-gray-700 font-NunitoBold text-lg mb-2">No Matching Spare Parts</Text>
+            <Text className="text-gray-500 text-center mb-6">
+              No spare parts match your search criteria. Try adjusting your filters.
+            </Text>
+            <TouchableOpacity 
+              onPress={handleResetSearch}
+              className="bg-primary-500 px-6 py-3 rounded-xl"
+            >
+              <Text className="text-white font-NunitoMedium">Clear Filters</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       ) : (
         <View className="flex-1 items-center justify-center px-8">
           <View className="bg-gray-50 rounded-3xl p-8 items-center">
@@ -302,10 +403,7 @@ const AllSpareParts = () => {
             </Text>
             <TouchableOpacity 
               onPress={() => {
-                if (!isProfileComplete || isPendingApproval) {
-                  setShowProfileModal(true);
-                  return;
-                }
+                if (!checkUploadPermission()) return;
                 router.push(sellerRoutes.uploadSpareParts);
               }}
               className="bg-primary-500 px-6 py-3 rounded-xl"
@@ -316,24 +414,31 @@ const AllSpareParts = () => {
         </View>
       )}
 
-          {/* Delete Confirmation Modal */}
-          <DeleteConfirmationModal
-            visible={showDeleteModal}
-            onClose={() => setShowDeleteModal(false)}
-            onConfirm={handleConfirmDelete}
-            itemType="sparePart"
-            itemName={selectedItem?.name || ''}
-          />
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        visible={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleConfirmDelete}
+        itemType="sparePart"
+        itemName={selectedItem?.name || ''}
+      />
 
-          <ProfileCompletionModal
-            isVisible={showProfileModal}
-            roleName={activeRole === 'vehicle_rental' ? 'vehicle_rental' : 'seller'}
-            onComplete={() => setShowProfileModal(false)}
-            onClose={() => setShowProfileModal(false)}
-            isPending={isPendingApproval}
-          />
-        </SafeAreaView>
-      )
-    }
+      <ProfileCompletionModal
+        isVisible={showProfileModal}
+        roleName={roleName}
+        onComplete={() => setShowProfileModal(false)}
+        onClose={() => setShowProfileModal(false)}
+        isPending={isPendingApproval}
+      />
 
-    export default AllSpareParts
+      <SubscriptionGateModal
+        isVisible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        usedUploads={totalProductsCount}
+        roleName={roleName}
+      />
+    </SafeAreaView>
+  )
+}
+
+export default AllSpareParts

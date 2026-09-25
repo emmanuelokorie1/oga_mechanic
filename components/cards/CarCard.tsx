@@ -65,7 +65,7 @@ const CarCard: React.FC<CarCardProps> = React.memo(({ item, onPress, isFavorite 
                 shadowRadius: 2,
               },
               android: {
-                elevation: 4,
+                elevation: 2,
               },
             }),
           }}

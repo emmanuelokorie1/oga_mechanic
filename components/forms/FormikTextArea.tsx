@@ -163,7 +163,7 @@ function FormikTextArea({
       >
         {/* Text Input */}
         <TextInput
-          className={`text-[1.2rem] font-NunitoMedium text-gray-900 ${inputStyle}`}
+          className={`text-[14px] font-NunitoMedium text-gray-900 ${inputStyle}`}
           value={values[name] || ''}
           onChangeText={handleFieldChange}
           onFocus={handleFocus}

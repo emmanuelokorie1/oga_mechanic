@@ -98,14 +98,7 @@ const singleInputLoginSchema = Yup.object().shape({
       return isEmail || isPhone;
     }),
   password: Yup.string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password is too long')
-    .required('Password is required')
-    .test('no-common-passwords', 'Password is too common', function (value) {
-      if (!value) return true;
-      const commonPasswords = ['password', '123456', 'qwerty', 'abc123', 'password123'];
-      return !commonPasswords.includes(value.toLowerCase());
-    }),
+    .required('Password is required'),
 });
 
 let hasAutoPromptedBiometrics = false;
@@ -451,8 +444,8 @@ const SignIn = () => {
       <View className="flex-1 justify-center py-8">
         <View className="pt-[2rem] mb-6">
           <HeaderAndDescTextCenter
-            headerStyle="text-[26px]"
-            containerStyle={"px-6"}
+            headerStyle="!text-[24px]"
+            containerStyle={"px-2"}
             header={prefilledIdentifier ? `Welcome back, ${parsedName}!` : (userType ? `Sign in as ${userType.charAt(0).toUpperCase() + userType.slice(1)}` : "Jump right back in.")}
             text1={prefilledIdentifier ? "Please enter your password to continue" : (userType ? `Hi, Welcome back ${userType}.` : "Hi, Welcome back.")}
           />

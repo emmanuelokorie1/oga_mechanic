@@ -144,7 +144,7 @@ const Card1 = memo(({
               shadowRadius: 8,
             },
             android: {
-              elevation: 3,
+              elevation: 1,
             },
           }),
         }}
@@ -193,7 +193,7 @@ const Card1 = memo(({
                       shadowRadius: 2,
                     },
                     android: {
-                      elevation: 4,
+                      elevation: 1,
                     },
                   }),
                 }}

@@ -41,14 +41,7 @@ export const loginSchema = Yup.object().shape({
       otherwise: (schema) => schema.notRequired(),
     }),
   password: Yup.string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password is too long')
-    .required('Password is required')
-    .test('no-common-passwords', 'Password is too common', function(value) {
-      if (!value) return true;
-      const commonPasswords = ['password', '123456', 'qwerty', 'abc123', 'password123'];
-      return !commonPasswords.includes(value.toLowerCase());
-    }),
+    .required('Password is required'),
 });
 
 // Enhanced sign up validation schema

@@ -212,7 +212,7 @@ const SellerProfile = () => {
         className="flex-1"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingBottom: 40,
+          paddingBottom: SCROLL_PADDING_BOTTOM,
         }}
         refreshControl={
           <RefreshControl 

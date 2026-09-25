@@ -96,7 +96,7 @@ const CartItemCard = memo(({
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
         shadowRadius: 12,
-        elevation: 8,
+        elevation: 2,
       }}
     >
       <View className="flex-row items-center p-3">

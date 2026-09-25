@@ -34,7 +34,7 @@ const ProductActionBar: React.FC<ProductActionBarProps> = ({
         shadowOffset: { width: 0, height: -4 },
         shadowOpacity: 0.1,
         shadowRadius: 12,
-        elevation: 10,
+        elevation: 2,
       }}
     >
       <View className="px-4 py-3 flex-row items-center space-x-3 gap-2">

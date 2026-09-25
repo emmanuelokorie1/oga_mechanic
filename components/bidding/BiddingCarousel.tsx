@@ -16,6 +16,217 @@ interface BiddingCarouselProps {
   onSellerAction?: (action: 'uploadSpareParts' | 'uploadCars' | 'kyc') => void;
 }
 
+// ── Skeleton Loader matching the Ads Carousel structure ─────────────────────
+const BiddingCarouselSkeleton: React.FC<{ containerPadding?: number; fallbackVariant?: string }> = ({
+  containerPadding = 0,
+  fallbackVariant = 'user',
+}) => {
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const shimmer = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    shimmer.start();
+    return () => shimmer.stop();
+  }, [shimmerAnim]);
+
+  const shimmerStyle = {
+    opacity: shimmerAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.4, 0.8],
+    }),
+  };
+
+  return (
+    <View
+      className="rounded-2xl mt-4"
+      style={{
+        marginHorizontal: -containerPadding,
+      }}
+    >
+      {/* Card Skeleton */}
+      <View style={{ width: screenWidth, alignItems: 'center' }}>
+        <View
+          style={{
+            width: screenWidth - 18,
+            height: 170,
+            backgroundColor: '#1E293B',
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: '#334155',
+            padding: 14,
+            justifyContent: 'space-between',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Top badges placeholder */}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Animated.View
+              style={[
+                shimmerStyle,
+                { width: 52, height: 22, borderRadius: 8, backgroundColor: '#334155' },
+              ]}
+            />
+            <Animated.View
+              style={[
+                shimmerStyle,
+                { width: 72, height: 22, borderRadius: 8, backgroundColor: '#334155' },
+              ]}
+            />
+          </View>
+
+          {/* Bottom info placeholder */}
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'flex-end',
+              paddingBottom: 8,
+            }}
+          >
+            <View style={{ flex: 1, paddingRight: 16 }}>
+              <Animated.View
+                style={[
+                  shimmerStyle,
+                  { width: 80, height: 10, borderRadius: 4, backgroundColor: '#475569', marginBottom: 6 },
+                ]}
+              />
+              <Animated.View
+                style={[
+                  shimmerStyle,
+                  { width: '75%', height: 18, borderRadius: 6, backgroundColor: '#475569' },
+                ]}
+              />
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Animated.View
+                style={[
+                  shimmerStyle,
+                  { width: 60, height: 10, borderRadius: 4, backgroundColor: '#475569', marginBottom: 6 },
+                ]}
+              />
+              <Animated.View
+                style={[
+                  shimmerStyle,
+                  { width: 80, height: 18, borderRadius: 6, backgroundColor: '#475569' },
+                ]}
+              />
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* Dots indicator skeleton */}
+      <View
+        style={{
+          flexDirection: 'row',
+          width: '100%',
+          justifyContent: 'center',
+          alignItems: 'center',
+          marginTop: 6,
+        }}
+      >
+        <Animated.View
+          style={[
+            shimmerStyle,
+            { width: 16, height: 6, borderRadius: 3, backgroundColor: '#E11D48', marginHorizontal: 3 },
+          ]}
+        />
+        <Animated.View
+          style={[
+            shimmerStyle,
+            { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CBD5E1', marginHorizontal: 3 },
+          ]}
+        />
+        <Animated.View
+          style={[
+            shimmerStyle,
+            { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CBD5E1', marginHorizontal: 3 },
+          ]}
+        />
+      </View>
+
+      {/* Mechanic shortcut pills skeleton */}
+      {fallbackVariant === 'mechanic' && (
+        <View
+          className="flex-row gap-2 mt-3"
+          style={{ paddingHorizontal: containerPadding }}
+        >
+          <View className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-3 py-2.5 min-h-[52px]">
+            <Animated.View
+              style={[shimmerStyle, { width: '65%', height: 14, backgroundColor: '#E2E8F0', borderRadius: 4 }]}
+            />
+            <View className="w-8 h-8 rounded-xl bg-gray-100" />
+          </View>
+          <View className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-3 py-2.5 min-h-[52px]">
+            <Animated.View
+              style={[shimmerStyle, { width: '55%', height: 14, backgroundColor: '#E2E8F0', borderRadius: 4 }]}
+            />
+            <View className="w-8 h-8 rounded-xl bg-gray-100" />
+          </View>
+        </View>
+      )}
+
+      {/* Seller shortcut pills skeleton */}
+      {fallbackVariant === 'seller' && (
+        <View
+          className="flex-row gap-2 mt-3"
+          style={{ paddingHorizontal: containerPadding }}
+        >
+          <View className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-3 py-2.5 min-h-[52px]">
+            <Animated.View
+              style={[shimmerStyle, { width: '65%', height: 14, backgroundColor: '#E2E8F0', borderRadius: 4 }]}
+            />
+            <View className="w-8 h-8 rounded-xl bg-gray-100" />
+          </View>
+          <View className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-3 py-2.5 min-h-[52px]">
+            <Animated.View
+              style={[shimmerStyle, { width: '55%', height: 14, backgroundColor: '#E2E8F0', borderRadius: 4 }]}
+            />
+            <View className="w-8 h-8 rounded-xl bg-gray-100" />
+          </View>
+        </View>
+      )}
+
+      {/* Vehicle Rental shortcut pill skeleton */}
+      {fallbackVariant === 'vehicle_rental' && (
+        <View className="mt-3" style={{ paddingHorizontal: containerPadding }}>
+          <View className="flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-4 py-3">
+            <Animated.View
+              style={[shimmerStyle, { width: 130, height: 14, backgroundColor: '#E2E8F0', borderRadius: 4 }]}
+            />
+            <View className="w-9 h-9 rounded-xl bg-gray-100" />
+          </View>
+        </View>
+      )}
+
+      {/* KYC Incomplete shortcut pill skeleton */}
+      {fallbackVariant === 'kyc_incomplete' && (
+        <View className="mt-3" style={{ paddingHorizontal: containerPadding }}>
+          <View className="flex-row items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+            <Animated.View
+              style={[shimmerStyle, { width: 140, height: 14, backgroundColor: '#FDE68A', borderRadius: 4 }]}
+            />
+            <View className="w-9 h-9 rounded-xl bg-amber-100" />
+          </View>
+        </View>
+      )}
+    </View>
+  );
+};
+
 const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0, onFallbackChange, fallbackVariant = 'user', onSellerAction }) => {
   const { data: activeBiddingRes, isLoading, error } = useActiveBiddingProducts();
 
@@ -41,7 +252,7 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
     isBidding: true
   })).filter((ad: any) => ad.images.length > 0 || ad.image !== null);
 
-  const isFallbackShowing = displayAds.length === 0 || isLoading || !!error;
+  const isFallbackShowing = !isLoading && (displayAds.length === 0 || !!error);
 
   useEffect(() => {
     if (onFallbackChange) {
@@ -105,6 +316,16 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
       </View>
     </View>
   ), []);
+
+  // During initial fetch, display an ads skeleton so the design doesn't flash or jump
+  if (isLoading) {
+    return (
+      <BiddingCarouselSkeleton
+        containerPadding={containerPadding}
+        fallbackVariant={fallbackVariant}
+      />
+    );
+  }
 
   // If there are absolutely no bids to show, render a persistent promotional banner instead of an empty state.
   // This ensures the layout stays stable and provides value to the user.
@@ -431,11 +652,13 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
                 pathname: mechanicRoutes.shop as any,
                 params: { categoryId: '24', category: 'Spare Part' },
               })}
-              className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-4 py-3"
+              className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-3 py-2.5 min-h-[52px]"
             >
-              <Text className="text-[13px] font-NunitoBold text-gray-800">Buy Spare Parts</Text>
-              <View className="w-9 h-9 rounded-xl bg-[#1E293B] items-center justify-center">
-                <MaterialCommunityIcons name="car-cog" size={18} color="#FFFFFF" />
+              <Text numberOfLines={2} className="flex-1 text-[12px] font-NunitoBold text-gray-800 mr-2 leading-[16px]">
+                Buy Spare Parts
+              </Text>
+              <View className="w-8 h-8 rounded-xl bg-[#1E293B] items-center justify-center shrink-0">
+                <MaterialCommunityIcons name="car-cog" size={16} color="#FFFFFF" />
               </View>
             </TouchableOpacity>
 
@@ -446,11 +669,13 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
                 pathname: mechanicRoutes.shop as any,
                 params: { categoryId: '23', category: 'Car' },
               })}
-              className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-4 py-3"
+              className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-3 py-2.5 min-h-[52px]"
             >
-              <Text className="text-[13px] font-NunitoBold text-gray-800">Buy a Car</Text>
-              <View className="w-9 h-9 rounded-xl bg-primary-200 items-center justify-center">
-                <MaterialCommunityIcons name="car" size={18} color="#D30309" />
+              <Text numberOfLines={2} className="flex-1 text-[12px] font-NunitoBold text-gray-800 mr-2 leading-[16px]">
+                Buy a Car
+              </Text>
+              <View className="w-8 h-8 rounded-xl bg-primary-200 items-center justify-center shrink-0">
+                <MaterialCommunityIcons name="car" size={16} color="#D30309" />
               </View>
             </TouchableOpacity>
           </View>
@@ -466,11 +691,13 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => onSellerAction ? onSellerAction('uploadSpareParts') : router.push(sellerRoutes.uploadSpareParts as any)}
-              className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-4 py-3"
+              className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-3 py-2.5 min-h-[52px]"
             >
-              <Text className="text-[13px] font-NunitoBold text-gray-800">Upload Spare Parts</Text>
-              <View className="w-9 h-9 rounded-xl bg-[#1E293B] items-center justify-center">
-                <MaterialCommunityIcons name="cloud-upload" size={18} color="#FFFFFF" />
+              <Text numberOfLines={2} className="flex-1 text-[12px] font-NunitoBold text-gray-800 mr-2 leading-[16px]">
+                Upload Spare Parts
+              </Text>
+              <View className="w-8 h-8 rounded-xl bg-[#1E293B] items-center justify-center shrink-0">
+                <MaterialCommunityIcons name="cloud-upload" size={16} color="#FFFFFF" />
               </View>
             </TouchableOpacity>
 
@@ -478,11 +705,13 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => onSellerAction ? onSellerAction('uploadCars') : router.push(sellerRoutes.uploadCarToRent as any)}
-              className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-4 py-3"
+              className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-3 py-2.5 min-h-[52px]"
             >
-              <Text className="text-[13px] font-NunitoBold text-gray-800">Upload Cars</Text>
-              <View className="w-9 h-9 rounded-xl bg-primary-200 items-center justify-center">
-                <MaterialCommunityIcons name="car" size={18} color="#D30309" />
+              <Text numberOfLines={2} className="flex-1 text-[12px] font-NunitoBold text-gray-800 mr-2 leading-[16px]">
+                Upload Cars
+              </Text>
+              <View className="w-8 h-8 rounded-xl bg-primary-200 items-center justify-center shrink-0">
+                <MaterialCommunityIcons name="car" size={16} color="#D30309" />
               </View>
             </TouchableOpacity>
           </View>

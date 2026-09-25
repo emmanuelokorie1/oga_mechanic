@@ -199,7 +199,7 @@ const GlobalNotificationBanner = () => {
             shadowOffset: { width: 0, height: 8 },
             shadowOpacity: 0.15,
             shadowRadius: 16,
-            elevation: 10,
+            elevation: 2,
           }}
         >
           <View className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#D30309]" />

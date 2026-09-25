@@ -458,7 +458,7 @@ const CarDetail = () => {
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.25,
                 shadowRadius: 8,
-                elevation: 8,
+                elevation: 2,
               }}
             >
               <PencilSquareIcon size={20} color="#FFFFFF" />
@@ -475,7 +475,7 @@ const CarDetail = () => {
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.2,
                 shadowRadius: 8,
-                elevation: 8,
+                elevation: 2,
               }}
             >
               <TrashIcon size={20} color="#EF4444" />

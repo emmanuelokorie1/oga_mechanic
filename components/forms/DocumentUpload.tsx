@@ -226,7 +226,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
                 <DocumentIcon size={24} color="#6B7280" />
               )}
             </View>
-            <Text className="text-base font-NunitoMedium text-gray-700 mb-1">
+            <Text className="text-[14px] font-NunitoMedium text-gray-700 mb-1">
               {isUploading ? 'Uploading...' : placeholder}
             </Text>
             <Text className="text-sm text-gray-500">

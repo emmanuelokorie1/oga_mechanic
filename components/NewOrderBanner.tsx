@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.3,
     shadowRadius: 20,
-    elevation: 10,
+    elevation: 2,
   },
   innerContainer: {
     backgroundColor: '#059669', // Vibrant emerald green

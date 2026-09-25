@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, Switch } from 'react-native'
+import { View, Text, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, Switch, ActivityIndicator } from 'react-native'
 import EditSuccessDrawer from '@/components/modals/EditSuccessDrawer'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon } from 'react-native-heroicons/outline'
+import { SparklesIcon } from 'react-native-heroicons/solid'
 import { router, useLocalSearchParams } from 'expo-router'
+import { generateCarDescription, generateCarDescriptionDetails } from '@/utils/aiDescriptionGenerator'
 import { Formik } from 'formik'
 import * as Yup from 'yup'
 import FormikInput from '@/components/forms/FormikInput'
@@ -13,8 +15,6 @@ import FormikTextArea from '@/components/forms/FormikTextArea'
 import SelectField from '@/components/forms/SelectField'
 import FormikButton from '@/components/forms/FormikButton'
 import FeatureBadges from '@/components/forms/FeatureBadges'
-import VINInput from '@/components/VINInput'
-import { decodeVINWithImage } from '@/utils/vinDecoder'
 import { sellerRoutes } from '@/constants/routes'
 import { useCategories } from '@/hooks/useProducts'
 import { useVehicleMakes } from '@/hooks/useVehicleMakes'
@@ -32,27 +32,47 @@ import CustomButton from '@/components/CustomButton'
 import CustomAlert from '@/components/CustomAlert'
 import { useCustomAlert } from '@/hooks/useCustomAlert'
 
-const PRIMARY = '#D30309';
+interface SectionCardProps {
+  number: number | string;
+  badgeBg?: string;
+  title: string;
+  subtitle: string;
+  rightAction?: React.ReactNode;
+  children: React.ReactNode;
+}
 
-const SectionCard = ({ children, title, subtitle, icon, accentColor }: any) => (
-  <View
-    className="bg-white rounded-[16px] p-5 mb-5 border border-gray-100"
-    style={{ borderTopWidth: 3, borderTopColor: accentColor, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 }}
-  >
-    <View className="flex-row items-center mb-5 gap-3">
-      <View style={{ backgroundColor: `${accentColor}1A` }} className="w-10 h-10 rounded-xl items-center justify-center">
-        <Text className="text-[20px]">{icon}</Text>
+const badgeColorMap: Record<string, string> = {
+  '1': 'bg-blue-500',
+  '2': 'bg-green-500',
+  '3': 'bg-purple-500',
+  '4': 'bg-orange-500',
+  '5': 'bg-amber-500',
+  '6': 'bg-red-500',
+  '7': 'bg-indigo-500',
+};
+
+const SectionCard = ({ number, badgeBg, title, subtitle, rightAction, children }: SectionCardProps) => {
+  const bgClass = badgeBg || badgeColorMap[String(number)] || 'bg-blue-500';
+  return (
+    <View className="bg-white rounded-2xl p-5 mb-4 border border-gray-200">
+      <View className="flex-row items-center justify-between mb-4">
+        <View className="flex-row items-center flex-1 mr-2">
+          <View className={`w-8 h-8 ${bgClass} rounded-lg items-center justify-center mr-3`}>
+            <Text className="text-white font-NunitoBold text-sm">{number}</Text>
+          </View>
+          <View className="flex-1">
+            <Text className="text-lg font-NunitoBold text-gray-900">{title}</Text>
+            <Text className="text-xs text-gray-500 font-NunitoMedium">{subtitle}</Text>
+          </View>
+        </View>
+        {rightAction}
       </View>
-      <View className="flex-1">
-        <Text style={{ color: '#111827' }} className="text-[15px] font-NunitoBold mb-0.5">{title}</Text>
-        <Text className="text-[12px] text-gray-500 font-NunitoMedium">{subtitle}</Text>
+      <View className="gap-4">
+        {children}
       </View>
     </View>
-    <View className="gap-4">
-      {children}
-    </View>
-  </View>
-);
+  );
+};
 
 // Dedicated edit page for updating existing car products
 // This page only handles editing - no creation logic
@@ -62,6 +82,8 @@ const EditProduct = () => {
   const [successDrawerVisible, setSuccessDrawerVisible] = useState(false)
   const [updatedProductData, setUpdatedProductData] = useState<any>(null)
   const [biddingWindow, setBiddingWindow] = useState<any>(null)
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiVariationIndex, setAiVariationIndex] = useState(0)
   const featuresInitialized = useRef(false)
   const { visible, alertConfig, hideAlert, showSuccess, showError, showInfo } = useCustomAlert()
 
@@ -70,18 +92,38 @@ const EditProduct = () => {
     productData?: string;
   }>();
 
-  // Parse the product data passed from navigation
-  const productData = productDataParam ? JSON.parse(productDataParam) : null;
+  // Parse the product data passed from navigation safely
+  const productData = React.useMemo(() => {
+    if (!productDataParam) return null;
+    try {
+      return JSON.parse(productDataParam);
+    } catch (e) {
+      console.error("Failed to parse productData", e);
+      return null;
+    }
+  }, [productDataParam]);
+
+  // Derive current bidding window directly from productData or fetched state
+  const currentBiddingWindow = React.useMemo(() => {
+    return productData?.bidding_window || biddingWindow || null;
+  }, [productData?.bidding_window, biddingWindow]);
 
   // Fetch categories to get car category ID
   const { data: categories } = useCategories();
   const carCategory = categories?.find(cat => cat.name.toLowerCase().includes('car'));
   const carCategoryId = carCategory?.id || 0;
 
-  // Fetch bidding window configuration
+  // Sync bidding window from productData if available
+  useEffect(() => {
+    if (productData?.bidding_window) {
+      setBiddingWindow(productData.bidding_window);
+    }
+  }, [productData?.bidding_window]);
+
+  // Fetch bidding window configuration if not already present in productData
   useEffect(() => {
     const fetchBidding = async () => {
-      if (!productId) return;
+      if (!productId || productData?.bidding_window) return;
       try {
         const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/bidding/`, {
           method: 'GET',
@@ -91,10 +133,10 @@ const EditProduct = () => {
           }
         });
         if (response.ok) {
-          const data = await response.json();
-          // Assuming successful response returns the BiddingWindow object payload
-          if (data) {
-            setBiddingWindow(data);
+          const resJson = await response.json();
+          const bw = resJson.data || resJson;
+          if (bw && (bw.id || bw.duration_days)) {
+            setBiddingWindow(bw);
           }
         }
       } catch (err) {
@@ -102,7 +144,7 @@ const EditProduct = () => {
       }
     };
     fetchBidding();
-  }, [productId]);
+  }, [productId, productData?.bidding_window]);
 
   // Fetch vehicle makes from API
   const { data: vehicleMakes, loading: vehicleMakesLoading, error: vehicleMakesError } = useVehicleMakes();
@@ -113,11 +155,116 @@ const EditProduct = () => {
     value: make.id.toString()
   })) || [];
 
+  // Helper to resolve make ID from productData
+  const initialMakeId = React.useMemo(() => {
+    if (!productData) return '';
+    if (productData.make_id) return productData.make_id.toString();
+    if (typeof productData.make === 'object' && productData.make?.id) {
+      return productData.make.id.toString();
+    }
+    if (productData.make !== undefined && productData.make !== null && typeof productData.make !== 'object' && !isNaN(Number(productData.make)) && productData.make !== '') {
+      return productData.make.toString();
+    }
+    const rawMakeName = typeof productData.make === 'object' ? productData.make?.name : productData.make;
+    if (vehicleMakes && rawMakeName) {
+      const searchStr = rawMakeName.toString().trim().toLowerCase();
+      const found = vehicleMakes.find(
+        (m: any) => m.name.toLowerCase() === searchStr || m.id.toString() === searchStr
+      );
+      if (found) return found.id.toString();
+    }
+    return typeof productData.make === 'string' ? productData.make : '';
+  }, [productData, vehicleMakes]);
+
+  // Helper to resolve model ID from productData
+  const initialModelId = React.useMemo(() => {
+    if (!productData) return '';
+    if (productData.model_id) return productData.model_id.toString();
+    if (typeof productData.model === 'object' && productData.model?.id) {
+      return productData.model.id.toString();
+    }
+    if (productData.model !== undefined && productData.model !== null && typeof productData.model !== 'object' && !isNaN(Number(productData.model)) && productData.model !== '') {
+      return productData.model.toString();
+    }
+    const rawModelName = typeof productData.model === 'object' ? productData.model?.name : productData.model;
+    const rawMakeName = typeof productData.make === 'object' ? productData.make?.name : productData.make;
+    const makeSearch = (initialMakeId || rawMakeName || '').toString().toLowerCase();
+
+    if (vehicleMakes && (makeSearch || rawModelName)) {
+      const selectedMake = vehicleMakes.find(
+        (m: any) => m.id.toString() === makeSearch || m.name.toLowerCase() === makeSearch
+      );
+      if (selectedMake?.models && rawModelName) {
+        const modelSearch = rawModelName.toString().trim().toLowerCase();
+        const found = selectedMake.models.find(
+          (m: any) =>
+            m.name.toLowerCase() === modelSearch ||
+            m.id.toString() === modelSearch ||
+            modelSearch.includes(m.name.toLowerCase())
+        );
+        if (found) return found.id.toString();
+      }
+    }
+    return typeof productData.model === 'string' ? productData.model : '';
+  }, [productData, vehicleMakes, initialMakeId]);
+
   // Get models for selected make
   const getModelsForSelectedMake = (makeId: string) => {
     if (!makeId || !vehicleMakes) return [];
-    const selectedMake = vehicleMakes.find(make => make.id.toString() === makeId);
+    const makeStr = makeId.toString().toLowerCase();
+    const selectedMake = vehicleMakes.find(
+      (make: any) =>
+        make.id.toString() === makeStr ||
+        make.name.toLowerCase() === makeStr
+    );
     return selectedMake?.models || [];
+  };
+
+  // Generate description using AI helper
+  const handleGenerateAIDescription = async (
+    values: any,
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    setIsGeneratingAI(true);
+    // Smooth transition
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    try {
+      const resolvedMake = vehicleMakes?.find(
+        (m: any) => m.id.toString() === values.make?.toString() || m.name.toLowerCase() === values.make?.toString().toLowerCase()
+      );
+      const resolvedMakeName = resolvedMake?.name || (typeof productData?.make === 'object' ? productData?.make?.name : productData?.make) || '';
+
+      const availableModels = resolvedMake?.models || [];
+      const resolvedModel = availableModels.find(
+        (m: any) => m.id.toString() === values.model?.toString() || m.name.toLowerCase() === values.model?.toString().toLowerCase()
+      );
+      const resolvedModelName = resolvedModel?.name || (typeof productData?.model === 'object' ? productData?.model?.name : productData?.model) || '';
+
+      const result = generateCarDescriptionDetails({
+        year: values.year,
+        make: resolvedMakeName,
+        model: resolvedModelName,
+        name: values.name,
+        condition: values.condition,
+        transmission: values.transmission,
+        fuel_type: values.fuel_type,
+        body_type: values.body_type,
+        mileage: values.mileage,
+        mileage_unit: values.mileage_unit,
+        exterior_color: values.exterior_color,
+        interior_color: values.interior_color,
+        features: selectedFeatures,
+        price: values.price
+      }, aiVariationIndex);
+
+      setFieldValue('description', result.text);
+      setAiVariationIndex(prev => prev + 1);
+    } catch (err) {
+      console.error('Error generating AI description:', err);
+    } finally {
+      setIsGeneratingAI(false);
+    }
   };
 
 
@@ -191,47 +338,18 @@ const EditProduct = () => {
     router.back();
   };
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push(sellerRoutes?.products as any);
+    }
+  };
+
   const handleCloseDrawer = () => {
     setSuccessDrawerVisible(false);
     setUpdatedProductData(null);
   };
-
-  const handleVINLookup = useCallback(async (vin: string, setFieldValue: any) => {
-    try {
-      const info = await decodeVINWithImage(vin);
-      if (!info) return;
-
-      const matchedMake = vehicleMakes?.find(m =>
-        m.name.toLowerCase() === info.make.toLowerCase()
-      );
-
-      if (matchedMake) {
-        setFieldValue('make', matchedMake.id.toString());
-
-        const nhtsaModel = info.model.toLowerCase();
-        const makeName = info.make.toLowerCase();
-        const cleanModelName = nhtsaModel.startsWith(makeName)
-          ? nhtsaModel.replace(makeName, '').trim()
-          : nhtsaModel;
-
-        const matchedModel = matchedMake.models.find(m =>
-          m.name.toLowerCase() === cleanModelName || m.name.toLowerCase() === nhtsaModel
-        );
-
-        if (matchedModel) {
-          setFieldValue('model', matchedModel.id.toString());
-        }
-      }
-
-      if (info.modelYear) {
-        setFieldValue('year', info.modelYear);
-      }
-
-      showSuccess("Success", `Vehicle details found: ${info.make} ${info.model} (${info.modelYear})`);
-    } catch (error) {
-      console.error("VIN Lookup error:", error);
-    }
-  }, [vehicleMakes]);
 
   const handleFeatureToggle = (feature: string) => {
     setSelectedFeatures(prev =>
@@ -268,12 +386,29 @@ const EditProduct = () => {
         blind_spot_monitor: selectedFeatures.includes('Blind Spot Monitor'),
       }
 
+      const resolveMakeInt = (val?: string) => {
+        if (!val) return null;
+        const parsed = parseInt(val, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+        const found = vehicleMakes?.find((m: any) => m.name.toLowerCase() === val.toLowerCase());
+        return found ? found.id : null;
+      };
+
+      const resolveModelInt = (makeVal?: string, modelVal?: string) => {
+        if (!modelVal) return null;
+        const parsed = parseInt(modelVal, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+        const makeModels = getModelsForSelectedMake(makeVal || '');
+        const found = makeModels.find((m: any) => m.name.toLowerCase() === modelVal.toLowerCase());
+        return found ? found.id : null;
+      };
+
       const payload = {
         data: {
           category_id: carCategoryId,
           name: values.name,
-          make: parseInt(values.make),
-          model: parseInt(values.model),
+          make: resolveMakeInt(values.make),
+          model: resolveModelInt(values.make, values.model),
           year: parseInt(values.year),
           condition: values.condition,
           body_type: values.body_type,
@@ -339,8 +474,9 @@ const EditProduct = () => {
 
       // Process bidding window state updates
       try {
+        const activeBw = currentBiddingWindow || biddingWindow || productData?.bidding_window;
         if (values.enable_bidding && productId) {
-          if (biddingWindow) {
+          if (activeBw) {
             // PATCH an existing bidding window to update duration or reopen
             const patchRes = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/bidding/`, {
               method: 'PATCH',
@@ -373,7 +509,7 @@ const EditProduct = () => {
             });
             if (!postRes.ok) throw new Error('Failed to post bidding window');
           }
-        } else if (!values.enable_bidding && biddingWindow && !biddingWindow.is_closed) {
+        } else if (!values.enable_bidding && activeBw && !activeBw.is_closed) {
           // PATCH to close bidding window since user turned it off
           const patchCloseRes = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/bidding/`, {
             method: 'PATCH',
@@ -441,12 +577,12 @@ const EditProduct = () => {
 
   const initialValues = {
     name: productData.name || '',
-    make: productData.make?.toString() || '',
-    model: productData.model?.toString() || '',
+    make: initialMakeId,
+    model: initialModelId,
     year: productData.year?.toString() || '',
     condition: productData.condition || 'new',
     body_type: productData.body_type || '',
-    mileage: productData.mileage?.toString() || '',
+    mileage: productData.mileage ? Math.round(parseFloat(productData.mileage.toString())).toString() : '',
     mileage_unit: productData.mileage_unit || 'km',
     transmission: productData.transmission || 'automatic',
     fuel_type: productData.fuel_type || '',
@@ -456,7 +592,7 @@ const EditProduct = () => {
     number_of_doors: productData.number_of_doors?.toString() || '',
     number_of_seats: productData.number_of_seats?.toString() || '',
     description: productData.description || '',
-    price: productData.price?.toString() || '',
+    price: productData.price ? Math.round(parseFloat(productData.price.toString())).toString() : '',
     currency: productData.currency || 'NGN',
     stock: productData.stock?.toString() || '',
     availability: productData.availability || 'in_stock',
@@ -464,8 +600,8 @@ const EditProduct = () => {
     negotiable: productData.negotiable || false,
     is_rental: productData.is_rental || false,
     vin: productData.vin || '',
-    enable_bidding: biddingWindow && !biddingWindow.is_closed ? true : false,
-    duration_days: biddingWindow?.duration_days ? biddingWindow.duration_days.toString() : '',
+    enable_bidding: Boolean(currentBiddingWindow),
+    duration_days: currentBiddingWindow?.duration_days ? currentBiddingWindow.duration_days.toString() : '',
   }
 
   return (
@@ -473,10 +609,10 @@ const EditProduct = () => {
       <StatusBar style="dark" />
 
       {/* Header */}
-      <View className="bg-white border-b border-gray-200">
+      <View className="bg-white border-b border-gray-200 mb-4">
         <View className="flex-row items-center justify-between px-5 py-4">
           <TouchableOpacity
-            onPress={() => router.push(sellerRoutes?.products)}
+            onPress={handleBack}
             className="w-10 h-10 items-center justify-center rounded-xl bg-gray-100"
           >
             <ArrowLeftIcon size={20} color="#374151" />
@@ -520,15 +656,7 @@ const EditProduct = () => {
               return (
                 <View className="space-y-6">
                   {/* Basic Information */}
-                  <SectionCard accentColor={PRIMARY} icon="📋" title="Basic Information" subtitle="Update only the fields you want to change">
-
-                    {/* VIN */}
-                    <VINInput
-                      name="vin"
-                      label="VIN"
-                      placeholder="Vehicle Identification Number"
-                      onVINLookup={handleVINLookup}
-                    />
+                  <SectionCard number={1} title="Basic Information" subtitle="Update only the fields you want to change">
                     
                     {/* Name of car */}
                     <FormikInput
@@ -592,7 +720,7 @@ const EditProduct = () => {
                   </SectionCard>
 
                   {/* Vehicle Details */}
-                  <SectionCard accentColor={PRIMARY} icon="🚗" title="Vehicle Details" subtitle="All fields optional - update what you need">
+                  <SectionCard number={2} title="Vehicle Details" subtitle="All fields optional - update what you need">
 
                     {/* Body type */}
                     <SelectField
@@ -611,7 +739,7 @@ const EditProduct = () => {
                       <Text className="text-base font-NunitoSemiBold text-gray-700 mb-3">
                         Mileage
                       </Text>
-                      <View className="flex-row gap-3">
+                      <View className="flex-row gap-3 items-center">
                         <View className="flex-1">
                           <FormikInput
                             name="mileage"
@@ -697,7 +825,7 @@ const EditProduct = () => {
                   </SectionCard>
 
                   {/* Appearance */}
-                  <SectionCard accentColor={PRIMARY} icon="✨" title="Appearance" subtitle="Colors and styling (all optional)">
+                  <SectionCard number={3} title="Appearance" subtitle="Colors and styling (all optional)">
 
                     {/* Exterior color */}
                     <FormikInput
@@ -739,7 +867,7 @@ const EditProduct = () => {
                   </SectionCard>
 
                   {/* Features */}
-                  <SectionCard accentColor={PRIMARY} icon="💎" title="Features" subtitle="Select/deselect features (optional)">
+                  <SectionCard number={4} title="Features" subtitle="Select/deselect features (optional)">
 
                     <FeatureBadges
                       features={featureOptions}
@@ -750,20 +878,45 @@ const EditProduct = () => {
                   </SectionCard>
 
                   {/* Description */}
-                  <SectionCard accentColor={PRIMARY} icon="📝" title="Description" subtitle="Update description (optional)">
-
+                  <SectionCard 
+                    number={5} 
+                    title="Description" 
+                    subtitle="Update description (optional)"
+                    rightAction={
+                      <TouchableOpacity
+                        onPress={() => handleGenerateAIDescription(values, setFieldValue)}
+                        disabled={isGeneratingAI}
+                        activeOpacity={0.8}
+                        className="flex-row items-center px-3 py-1.5 rounded-full bg-gray-900 active:bg-gray-800"
+                      >
+                        {isGeneratingAI ? (
+                          <>
+                            <ActivityIndicator size="small" color="#FFFFFF" style={{ transform: [{ scale: 0.7 }] }} />
+                            <Text className="text-white font-NunitoBold text-[11px] ml-1.5">Writing...</Text>
+                          </>
+                        ) : (
+                          <>
+                            <SparklesIcon size={12} color="#FBBF24" />
+                            <Text className="text-white font-NunitoBold text-[11px] ml-1">
+                              {values.description ? 'Regenerate' : 'AI Generate'}
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    }
+                  >
                     <FormikTextArea
                       name="description"
                       label="Description"
                       placeholder="e.g., Well maintained car with regular service history. Perfect for daily commuting with excellent fuel economy."
-                      numberOfLines={4}
+                      numberOfLines={5}
                       maxLength={500}
                       helperText="Describe your car's condition, features, and what makes it special"
                     />
                   </SectionCard>
 
                   {/* Pricing & Availability */}
-                  <SectionCard accentColor={PRIMARY} icon="💰" title="Pricing & Availability" subtitle="Update price and availability (all optional)">
+                  <SectionCard number={6} title="Pricing & Availability" subtitle="Update price and availability (all optional)">
 
                     {/* Price */}
                     <FormikInput
@@ -809,12 +962,74 @@ const EditProduct = () => {
                   </SectionCard>
 
                   {/* Bidding */}
-                  <SectionCard accentColor={PRIMARY} icon="⚖️" title="Bidding" subtitle="Let buyers compete">
+                  <SectionCard number={7} title="Bidding" subtitle="Let buyers compete">
+                    {/* Existing Auction Info Summary */}
+                    {currentBiddingWindow && (
+                      <View className="mb-4 p-3.5 bg-gray-50 rounded-xl border border-gray-200">
+                        <View className="flex-row items-center justify-between mb-2">
+                          <Text className="text-xs font-NunitoBold text-gray-500 uppercase tracking-wider">
+                            Current Auction Status
+                          </Text>
+                          <View className={`px-2.5 py-0.5 rounded-full ${
+                            currentBiddingWindow.is_active && !currentBiddingWindow.is_closed 
+                              ? 'bg-green-100 border border-green-200' 
+                              : 'bg-gray-200 border border-gray-300'
+                          }`}>
+                            <Text className={`text-[10px] font-NunitoBold ${
+                              currentBiddingWindow.is_active && !currentBiddingWindow.is_closed 
+                                ? 'text-green-800' 
+                                : 'text-gray-600'
+                            }`}>
+                              {currentBiddingWindow.is_active && !currentBiddingWindow.is_closed 
+                                ? 'LIVE AUCTION' 
+                                : 'AUCTION CLOSED'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {currentBiddingWindow.start_time && (
+                          <View className="flex-row justify-between items-center py-1 border-b border-gray-100">
+                            <Text className="text-xs text-gray-500 font-NunitoMedium">Auction Start</Text>
+                            <Text className="text-xs font-NunitoBold text-gray-800">
+                              {new Date(currentBiddingWindow.start_time).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </Text>
+                          </View>
+                        )}
+
+                        {currentBiddingWindow.end_time && (
+                          <View className="flex-row justify-between items-center py-1 border-b border-gray-100">
+                            <Text className="text-xs text-gray-500 font-NunitoMedium">Auction End</Text>
+                            <Text className="text-xs font-NunitoBold text-gray-800">
+                              {new Date(currentBiddingWindow.end_time).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </Text>
+                          </View>
+                        )}
+
+                        {currentBiddingWindow.duration_days && (
+                          <View className="flex-row justify-between items-center py-1">
+                            <Text className="text-xs text-gray-500 font-NunitoMedium">Configured Duration</Text>
+                            <Text className="text-xs font-NunitoBold text-gray-800">
+                              {currentBiddingWindow.duration_days} Days
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
 
                     <View className="flex-row items-center justify-between py-3 border-b border-gray-100">
                       <View className="flex-1">
                         <Text className="text-sm font-NunitoSemiBold text-gray-900">Enable Bidding</Text>
-                        <Text className="text-xs font-NunitoMedium text-gray-500 mt-1">Allow customers to place bids on this car</Text>
+                        <Text className="text-xs font-NunitoMedium text-gray-500 mt-1">
+                          {currentBiddingWindow ? "Keep bidding open or activate new window" : "Allow customers to place bids on this car"}
+                        </Text>
                       </View>
                       <Switch
                         value={values.enable_bidding as boolean}
@@ -832,6 +1047,9 @@ const EditProduct = () => {
                           keyboardType="numeric"
                           type="text"
                         />
+                        <Text className="text-[11px] font-NunitoMedium text-gray-500 mt-1">
+                          Updating duration will reactivate and adjust the auction timeline.
+                        </Text>
                       </View>
                     )}
                   </SectionCard>

@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { View, Text, TouchableOpacity, Image, ScrollView, Dimensions, Animated, Linking, Platform } from 'react-native'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { View, Text, TouchableOpacity, Image, ScrollView, Dimensions, Animated, Linking, Platform, BackHandler, Modal } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { 
   ArrowLeftIcon, 
   TrashIcon, 
@@ -18,15 +18,19 @@ import {
   ShieldCheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  PhotoIcon
+  PhotoIcon,
+  ArrowsPointingOutIcon,
+  ArrowsPointingInIcon,
+  ClockIcon
 } from 'react-native-heroicons/outline'
 import { SparklesIcon, StarIcon } from 'react-native-heroicons/solid'
 import { icons } from '@/constants'
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router'
 import { NairaCurrency } from '@/utils/useCurrencyFormatter'
 import DeleteConfirmationModal from '@/components/modals/DeleteConfirmationModal'
+import EditProductOptionsModal from '@/components/modals/EditProductOptionsModal'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import { sellerRoutes } from '@/constants/routes'
+import { sellerRoutes, SellerRouteValues } from '@/constants/routes'
 import { productsAPI } from '@/lib/api/products'
 import { useProductBids, useUpdateBid } from '@/hooks/useProducts'
 import MerchantBidActionModal from '@/components/modals/MerchantBidActionModal'
@@ -36,6 +40,7 @@ import CustomButton from '@/components/CustomButton'
 const { width: screenWidth } = Dimensions.get("window");
 
 const ProductDetails = () => {
+  const insets = useSafeAreaInsets();
   const { productType, productId } = useLocalSearchParams<{
     productType: 'sparePart' | 'car' | 'rentedCar';
     productId: string;
@@ -44,18 +49,35 @@ const ProductDetails = () => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEditOptionsModal, setShowEditOptionsModal] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const [productData, setProductData] = useState<any>(null);
   const [selectedBid, setSelectedBid] = useState<any>(null);
   const [showBidActionModal, setShowBidActionModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const biddingWindow = productData?.bidding_window || productData?.bidding || null;
+  const biddingWindowId = biddingWindow?.id ? String(biddingWindow.id) : '';
+
   // Fetch bids if auction is active
-  const { data: bidsData } = useProductBids(productData?.bidding_window?.id || '');
-  const bids = bidsData?.data || [];
+  const { data: bidsData, refetch: refetchBids } = useProductBids(biddingWindowId);
+  const bids: any[] = Array.isArray(bidsData?.data)
+    ? bidsData.data
+    : Array.isArray(bidsData?.results)
+      ? bidsData.results
+      : Array.isArray(bidsData)
+        ? bidsData
+        : [];
+
+  const isAuctionActive = Boolean(
+    biddingWindow &&
+    biddingWindow.is_active &&
+    !biddingWindow.is_closed
+  );
 
   // Bid update mutation
-  const updateBidMutation = useUpdateBid(productData?.bidding_window?.id || '');
+  const updateBidMutation = useUpdateBid(biddingWindowId);
 
   const handleBidClick = (bid: any) => {
     setSelectedBid(bid);
@@ -65,10 +87,12 @@ const ProductDetails = () => {
   const handleBidStatusUpdate = async (status: 'accepted' | 'rejected') => {
     if (!selectedBid) return;
     
-    return updateBidMutation.mutateAsync({
+    await updateBidMutation.mutateAsync({
       bidId: selectedBid.id,
       payload: { status }
     });
+    refetchBids();
+    refetchProductDetails();
   };
 
   // Animation values
@@ -76,44 +100,63 @@ const ProductDetails = () => {
   const slideAnim = useRef(new Animated.Value(30)).current;
   const scaleAnim = useRef(new Animated.Value(0.98)).current;
 
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(sellerRoutes.home as any);
+    }
+  }, []);
+
   // Fetch product details from API
-  const fetchProductDetails = async () => {
+  const fetchProductDetails = async (isSilent = false) => {
     if (!productId) return;
 
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       setError(null);
       const response = await productsAPI.getProductById(productId);
       setProductData(response.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch product details');
+      if (!isSilent) setError(err instanceof Error ? err.message : 'Failed to fetch product details');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   // Refetch function to reload data after successful operations
   const refetchProductDetails = async () => {
-    await fetchProductDetails();
+    await fetchProductDetails(true);
   };
 
   useEffect(() => {
-    fetchProductDetails();
+    fetchProductDetails(false);
   }, [productId]);
 
-  // Track if this is the initial load
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  // Track initial load with a ref to avoid infinite re-trigger cycles
+  const isInitialLoadRef = useRef(true);
 
-  // Refetch data when screen comes into focus (e.g., returning from edit screens)
+  // Refetch data silently when screen comes into focus and handle Android hardware back
   useFocusEffect(
-    React.useCallback(() => {
-      // Only refetch if this is NOT the initial load
-      if (!isInitialLoad) {
+    useCallback(() => {
+      if (!isInitialLoadRef.current) {
         refetchProductDetails();
       } else {
-        setIsInitialLoad(false);
+        isInitialLoadRef.current = false;
       }
-    }, [isInitialLoad])
+
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress
+      );
+
+      return () => subscription.remove();
+    }, [handleBack])
   );
 
   // Animation effects - only start when data is loaded
@@ -147,14 +190,41 @@ const ProductDetails = () => {
   const handleEdit = () => {
     if (!productData) return;
 
+    let targetRoute: SellerRouteValues = sellerRoutes.editProduct;
+    if (productData?.is_rental) {
+      targetRoute = sellerRoutes.editCarToRent;
+    } else if (
+      productData?.category?.name?.toLowerCase().includes('car') ||
+      productData?.body_type ||
+      productData?.vin
+    ) {
+      targetRoute = sellerRoutes.editProduct;
+    } else {
+      targetRoute = sellerRoutes.editSparePart;
+    }
+
     router.push({
-      pathname: sellerRoutes?.editCarToRent,
+      pathname: targetRoute as any,
       params: {
         editMode: 'true',
         isEditing: 'true',
         productId: productData.id,
         productData: JSON.stringify(productData)
       }
+    });
+  };
+
+  const handleOpenEditDetails = () => {
+    setShowEditOptionsModal(false);
+    handleEdit();
+  };
+
+  const handleOpenEditImages = () => {
+    setShowEditOptionsModal(false);
+    if (!productData) return;
+    router.push({
+      pathname: sellerRoutes.editImage as any,
+      params: { productId: productData.id, productData: JSON.stringify(productData) }
     });
   };
 
@@ -239,7 +309,7 @@ const ProductDetails = () => {
             <Text className="text-gray-500 text-center mb-8 leading-5 font-NunitoMedium">
               {error || "We couldn't find the vehicle you're looking for. It might have been removed."}
             </Text>
-            <TouchableOpacity onPress={() => router.back()} className="bg-primary-500 px-8 py-4 rounded-2xl shadow-lg shadow-primary-200">
+            <TouchableOpacity onPress={handleBack} className="bg-primary-500 px-8 py-4 rounded-2xl shadow-lg shadow-primary-200">
               <Text className="text-white font-NunitoExtraBold">Back to Rentals</Text>
             </TouchableOpacity>
           </View>
@@ -255,7 +325,7 @@ const ProductDetails = () => {
       {/* Modern Header */}
       <View className="flex-row items-center justify-between bg-white px-6 py-4 border-b border-gray-50">
         <TouchableOpacity 
-          onPress={() => router.back()}
+          onPress={handleBack}
           className="w-10 h-10 bg-gray-50 rounded-full items-center justify-center"
         >
           <ArrowLeftIcon size={20} color="#000" />
@@ -264,18 +334,22 @@ const ProductDetails = () => {
           {productData.is_rental ? 'Rental Details' : 'Vehicle Details'}
         </Text>
         <TouchableOpacity 
-          onPress={handleEdit}
+          onPress={() => setShowEditOptionsModal(true)}
           className="w-10 h-10 bg-primary-50 rounded-full items-center justify-center"
         >
           <PencilSquareIcon size={18} color="#D30309" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* Premium Image Gallery */}
-        <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: scaleAnim }] }} className="relative bg-white pb-6 pt-2">
-          <View className="mx-4 bg-white rounded-[32px] overflow-hidden shadow-2xl shadow-gray-400/30 border border-gray-50">
-            <View className="w-full h-[280px] bg-gray-50">
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+        {/* Compact Premium Image Gallery */}
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: scaleAnim }] }} className="relative bg-white pb-2 pt-1">
+          <View className="mx-4 bg-white rounded-[24px] overflow-hidden shadow-xl shadow-gray-400/25 border border-gray-100">
+            <TouchableOpacity 
+              activeOpacity={0.95}
+              onPress={() => productData?.images?.length > 0 && setIsFullScreen(true)}
+              className="w-full h-[210px] bg-gray-50"
+            >
               {productData.images && productData.images.length > 0 && !imageErrors.has(selectedImageIndex) ? (
                 <Image
                   source={{ uri: productData.images[selectedImageIndex].image }}
@@ -285,30 +359,43 @@ const ProductDetails = () => {
                 />
               ) : (
                 <View className="w-full h-full items-center justify-center">
-                  <PhotoIcon size={64} color="#E5E7EB" />
-                  <Text className="text-gray-400 font-NunitoBold mt-2">No Visuals Available</Text>
+                  <PhotoIcon size={56} color="#E5E7EB" />
+                  <Text className="text-gray-400 font-NunitoBold mt-2 text-xs">No Visuals Available</Text>
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
 
             {/* Category Overlay */}
-            <View className="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/50">
-              <Text className="text-[10px] font-NunitoExtraBold text-gray-900 uppercase tracking-widest">
+            <View className="absolute top-3 left-3 bg-white/90 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/60 shadow-sm pointer-events-none">
+              <Text className="text-[10px] font-NunitoExtraBold text-gray-900 uppercase tracking-wider">
                 {productData.body_type?.replace('_', ' ') || 'Vehicle'}
               </Text>
             </View>
 
-            {/* Image Navigation */}
+            {/* View Full Screen Button */}
+            {productData.images && productData.images.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setIsFullScreen(true)}
+                activeOpacity={0.8}
+                className="absolute top-3 right-3 bg-black/45 backdrop-blur-md px-2.5 py-1.5 rounded-full flex-row items-center border border-white/20 shadow-sm"
+              >
+                <ArrowsPointingOutIcon size={12} color="#FFFFFF" strokeWidth={2.5} />
+                <Text className="text-white text-[11px] font-NunitoBold ml-1">Full View</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Compact Image Navigation */}
             {productData.images && productData.images.length > 1 && (
-              <View className="absolute bottom-4 inset-x-0 flex-row justify-between px-4">
+              <View className="absolute bottom-3 inset-x-0 flex-row justify-between items-center px-3">
                 <TouchableOpacity
                   onPress={() => setSelectedImageIndex(Math.max(0, selectedImageIndex - 1))}
-                  className="w-10 h-10 bg-white/80 backdrop-blur-md rounded-full items-center justify-center"
+                  className="w-8 h-8 bg-white/85 backdrop-blur-md rounded-full items-center justify-center shadow-sm"
                   disabled={selectedImageIndex === 0}
+                  activeOpacity={0.7}
                 >
-                  <ChevronLeftIcon size={20} color={selectedImageIndex === 0 ? "#D1D5DB" : "#000"} />
+                  <ChevronLeftIcon size={16} color={selectedImageIndex === 0 ? "#D1D5DB" : "#111827"} strokeWidth={2.5} />
                 </TouchableOpacity>
-                <View className="flex-row items-center space-x-1.5 bg-black/20 backdrop-blur-md px-3 rounded-full">
+                <View className="flex-row items-center space-x-1.5 bg-black/25 backdrop-blur-md px-2.5 py-1 rounded-full">
                   {productData.images.map((_: any, index: number) => (
                     <View 
                       key={index} 
@@ -318,10 +405,11 @@ const ProductDetails = () => {
                 </View>
                 <TouchableOpacity
                   onPress={() => setSelectedImageIndex(Math.min(productData.images.length - 1, selectedImageIndex + 1))}
-                  className="w-10 h-10 bg-white/80 backdrop-blur-md rounded-full items-center justify-center"
+                  className="w-8 h-8 bg-white/85 backdrop-blur-md rounded-full items-center justify-center shadow-sm"
                   disabled={selectedImageIndex === productData.images.length - 1}
+                  activeOpacity={0.7}
                 >
-                  <ChevronRightIcon size={20} color={selectedImageIndex === productData.images.length - 1 ? "#D1D5DB" : "#000"} />
+                  <ChevronRightIcon size={16} color={selectedImageIndex === productData.images.length - 1 ? "#D1D5DB" : "#111827"} strokeWidth={2.5} />
                 </TouchableOpacity>
               </View>
             )}
@@ -337,7 +425,7 @@ const ProductDetails = () => {
           <View className="bg-white rounded-[26px] p-4 shadow-xs border border-gray-200 mb-4">
             <View className="flex-row justify-between items-start mb-4">
               <View className="flex-1">
-                <Text className="text-[22px] font-NunitoExtraBold text-gray-900 leading-tight mb-2">
+                <Text className="text-[20px] font-NunitoExtraBold text-gray-900 leading-tight mb-2">
                   {productData.name}
                 </Text>
                 <View className="flex-row items-center">
@@ -356,10 +444,14 @@ const ProductDetails = () => {
             <View className="bg-primary-50 rounded-[24px] p-4 flex-row items-center justify-between border border-primary-100/50">
               <View>
                 <Text className="text-primary-400 font-NunitoBold text-[10px] uppercase tracking-widest mb-1">
-                  {productData.is_rental ? 'Rental Daily Rate' : 'Market Price'}
+                  {productData.is_rental 
+                    ? 'Rental Daily Rate' 
+                    : biddingWindow 
+                      ? 'Starting / Base Price' 
+                      : 'Market Price'}
                 </Text>
                 <View className="flex-row items-baseline">
-                  <Text className="text-primary-700 font-NunitoExtraBold text-[28px]">
+                  <Text className="text-primary-700 font-NunitoExtraBold text-[24px]">
                     ₦{parseFloat(productData.price).toLocaleString()}
                   </Text>
                   {productData.is_rental && (
@@ -367,15 +459,197 @@ const ProductDetails = () => {
                   )}
                 </View>
               </View>
-              {productData.stock > 0 && (
+              {biddingWindow ? (
+                <View className={`px-3 py-1.5 rounded-full border ${isAuctionActive ? 'bg-red-50 border-red-200' : 'bg-gray-100 border-gray-200'}`}>
+                  <View className="flex-row items-center">
+                    {isAuctionActive && <View className="w-2 h-2 rounded-full bg-red-600 mr-1.5" />}
+                    <Text className={`${isAuctionActive ? 'text-red-700' : 'text-gray-600'} font-NunitoExtraBold text-[11px] uppercase tracking-wider`}>
+                      {isAuctionActive ? 'Live Auction' : 'Auction Closed'}
+                    </Text>
+                  </View>
+                </View>
+              ) : productData.stock > 0 ? (
                 <View className="bg-white/60 backdrop-blur-md px-3 py-2 rounded-2xl border border-white">
                   <Text className="text-primary-600 font-NunitoExtraBold text-[11px]">
                     {productData.stock} In Stock
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
           </View>
+
+          {/* Bidding Information Section */}
+          {biddingWindow && (
+            <View className="bg-white rounded-[26px] p-5 shadow-xs border border-gray-200 mb-4">
+              {/* Header */}
+              <View className="flex-row items-center justify-between pb-3.5 mb-3.5 border-b border-gray-100">
+                <View className="flex-row items-center">
+                  <View className="w-10 h-10 rounded-2xl bg-red-50 items-center justify-center mr-3 border border-red-100">
+                    <ClockIcon size={20} color="#DC2626" />
+                  </View>
+                  <View>
+                    <Text className="text-[16px] font-NunitoExtraBold text-gray-900">
+                      Bidding Window
+                    </Text>
+                    <Text className="text-[11px] font-NunitoMedium text-gray-400 mt-0.5">
+                      Buyer auction schedule & overview
+                    </Text>
+                  </View>
+                </View>
+                <View className={`px-3 py-1 rounded-full border ${isAuctionActive ? 'bg-red-50 border-red-200' : 'bg-gray-100 border-gray-200'}`}>
+                  <View className="flex-row items-center">
+                    {isAuctionActive && <View className="w-1.5 h-1.5 rounded-full bg-red-600 mr-1.5" />}
+                    <Text className={`${isAuctionActive ? 'text-red-700' : 'text-gray-500'} text-[10px] font-NunitoExtraBold uppercase tracking-wider`}>
+                      {isAuctionActive ? 'LIVE AUCTION' : 'CLOSED'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Stats Timeline Grid */}
+              <View className="flex-row gap-2 mb-2">
+                <View className="flex-1 bg-gray-50 rounded-2xl p-3 border border-gray-100">
+                  <Text className="text-[10px] font-NunitoBold text-gray-400 uppercase tracking-wider mb-1">
+                    Start Date
+                  </Text>
+                  <Text className="text-[13px] font-NunitoBold text-gray-900" numberOfLines={1}>
+                    {biddingWindow.start_time
+                      ? new Date(biddingWindow.start_time).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })
+                      : 'N/A'}
+                  </Text>
+                </View>
+
+                <View className="flex-1 bg-gray-50 rounded-2xl p-3 border border-gray-100">
+                  <Text className="text-[10px] font-NunitoBold text-gray-400 uppercase tracking-wider mb-1">
+                    End Date
+                  </Text>
+                  <Text className="text-[13px] font-NunitoBold text-gray-900" numberOfLines={1}>
+                    {biddingWindow.end_time
+                      ? new Date(biddingWindow.end_time).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })
+                      : 'N/A'}
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row gap-2">
+                <View className="flex-1 bg-gray-50 rounded-2xl p-3 border border-gray-100">
+                  <Text className="text-[10px] font-NunitoBold text-gray-400 uppercase tracking-wider mb-1">
+                    Duration
+                  </Text>
+                  <Text className="text-[13px] font-NunitoBold text-gray-900">
+                    {biddingWindow.duration_days ? `${biddingWindow.duration_days} Days` : 'N/A'}
+                  </Text>
+                </View>
+
+                <View className="flex-1 bg-primary-50/60 rounded-2xl p-3 border border-primary-100/60">
+                  <Text className="text-[10px] font-NunitoBold text-primary-600 uppercase tracking-wider mb-1">
+                    {bids.length > 0 ? 'Highest Offer' : 'Total Offers'}
+                  </Text>
+                  <Text className="text-[13px] font-NunitoExtraBold text-primary-700">
+                    {bids.length > 0
+                      ? `₦${Math.max(...bids.map((b: any) => parseFloat(b.amount || '0'))).toLocaleString()}`
+                      : '0 Received'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Buyer Offers & Bids Section */}
+          {biddingWindow && (
+            <View className="bg-white rounded-[26px] p-5 shadow-xs border border-gray-200 mb-4">
+              <View className="flex-row items-center justify-between pb-3.5 mb-3.5 border-b border-gray-100">
+                <View>
+                  <Text className="text-[16px] font-NunitoExtraBold text-gray-900">
+                    Offers & Bids
+                  </Text>
+                  <Text className="text-[11px] font-NunitoMedium text-gray-400 mt-0.5">
+                    {bids.length > 0 ? 'Tap an offer to review, accept, or reject' : 'Active buyer offers'}
+                  </Text>
+                </View>
+                <View className="bg-primary-50 px-3 py-1 rounded-full border border-primary-100">
+                  <Text className="text-primary-700 text-xs font-NunitoBold">
+                    {bids.length} {bids.length === 1 ? 'Bid' : 'Bids'}
+                  </Text>
+                </View>
+              </View>
+
+              {bids.length > 0 ? (
+                <View className="space-y-2.5">
+                  {bids.map((bid: any) => (
+                    <TouchableOpacity
+                      key={bid.id}
+                      onPress={() => handleBidClick(bid)}
+                      activeOpacity={0.75}
+                      className="flex-row items-center justify-between p-3.5 bg-gray-50 rounded-2xl border border-gray-100 active:bg-gray-100"
+                    >
+                      <View className="flex-row items-center flex-1 mr-2">
+                        <View className="w-10 h-10 rounded-full bg-primary-100 items-center justify-center mr-3 border border-primary-200">
+                          <Text className="text-primary-700 font-NunitoExtraBold text-xs uppercase">
+                            {bid.bidder?.first_name?.[0] || 'U'}{bid.bidder?.last_name?.[0] || 'S'}
+                          </Text>
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-sm font-NunitoBold text-gray-900" numberOfLines={1}>
+                            {bid.bidder?.first_name} {bid.bidder?.last_name}
+                          </Text>
+                          <Text className="text-[10px] text-gray-400 font-NunitoMedium mt-0.5">
+                            {bid.created_at ? formatDistanceToNow(new Date(bid.created_at), { addSuffix: true }) : ''}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View className="items-end">
+                        <Text className="text-sm font-NunitoExtraBold text-gray-900">
+                          ₦{parseFloat(bid.amount || '0').toLocaleString()}
+                        </Text>
+                        <View className="flex-row items-center mt-1">
+                          <View
+                            className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                              bid.status === 'pending'
+                                ? 'bg-yellow-500'
+                                : bid.status === 'accepted'
+                                  ? 'bg-green-500'
+                                  : 'bg-red-500'
+                            }`}
+                          />
+                          <Text
+                            className={`text-[10px] font-NunitoBold capitalize ${
+                              bid.status === 'pending'
+                                ? 'text-yellow-600'
+                                : bid.status === 'accepted'
+                                  ? 'text-green-600'
+                                  : 'text-red-600'
+                            }`}
+                          >
+                            {bid.status || 'pending'}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <View className="py-6 items-center justify-center bg-gray-50/70 rounded-2xl border border-dashed border-gray-200">
+                  <View className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mb-2">
+                    <ClockIcon size={20} color="#9CA3AF" />
+                  </View>
+                  <Text className="text-sm font-NunitoBold text-gray-700">No Bids Placed Yet</Text>
+                  <Text className="text-xs font-NunitoMedium text-gray-400 text-center px-6 mt-1">
+                    Buyer offers will appear here as soon as they are submitted during the auction.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Specifications Grid */}
           <View className="mb-8">
@@ -445,48 +719,66 @@ const ProductDetails = () => {
               </Text>
             </View>
           </View>
-
-          {/* Action Footer */}
-          <View className="mt-4 space-y-3">
-            <TouchableOpacity 
-              onPress={handleEdit}
-              className="bg-gray-900 rounded-[22px] py-4 items-center shadow-lg shadow-gray-300"
-            >
-              <View className="flex-row items-center">
-                <PencilSquareIcon size={18} color="white" />
-                <Text className="text-white font-NunitoExtraBold text-[16px] ml-2">Edit Vehicle Details</Text>
-              </View>
-            </TouchableOpacity>
-
-            <View className="flex-row gap-3 mt-4">
-              <TouchableOpacity 
-                onPress={() => {
-                  router.push({
-                    pathname: sellerRoutes.editImage as any,
-                    params: { productId: productData.id, productData: JSON.stringify(productData) }
-                  });
-                }}
-                className="flex-1 bg-white border border-gray-200 rounded-[22px] py-4 items-center"
-              >
-                <View className="flex-row items-center">
-                  <PhotoIcon size={18} color="#4B5563" />
-                  <Text className="text-gray-700 font-NunitoExtraBold text-[14px] ml-2">Images</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                onPress={handleDelete}
-                className="flex-1 bg-red-50 border border-red-100 rounded-[22px] py-4 items-center"
-              >
-                <View className="flex-row items-center">
-                  <TrashIcon size={18} color="#D30309" />
-                  <Text className="text-red-600 font-NunitoExtraBold text-[14px] ml-2">Delete</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </View>
         </Animated.View>
       </ScrollView>
+
+      {/* Sticky Action Footer */}
+      <View 
+        className="bg-white border-t border-gray-100 px-5 pt-3 shadow-lg shadow-black/5"
+        style={{
+          paddingBottom: Math.max(insets.bottom, 16),
+          ...Platform.select({
+            ios: {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: -3 },
+              shadowOpacity: 0.06,
+              shadowRadius: 6,
+            },
+            android: {
+              elevation: 8,
+            },
+          }),
+        }}
+      >
+        <View className="flex-row gap-3">
+          <TouchableOpacity 
+            onPress={() => setShowEditOptionsModal(true)}
+            activeOpacity={0.85}
+            className="flex-1 bg-gray-900 rounded-[22px] py-3.5 items-center shadow-md shadow-gray-400"
+          >
+            <View className="flex-row items-center">
+              <PencilSquareIcon size={18} color="white" />
+              <Text className="text-white font-NunitoExtraBold text-[15px] ml-2">
+                {productData?.is_rental 
+                  ? 'Edit Rental' 
+                  : productData?.category?.name?.toLowerCase().includes('part') 
+                    ? 'Edit Part' 
+                    : 'Edit Vehicle'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            onPress={handleDelete}
+            activeOpacity={0.8}
+            className="flex-1 bg-red-50 border border-red-100 rounded-[22px] py-3.5 items-center"
+          >
+            <View className="flex-row items-center">
+              <TrashIcon size={18} color="#D30309" />
+              <Text className="text-red-600 font-NunitoExtraBold text-[15px] ml-2">Delete</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Edit Options Bottom Drawer */}
+      <EditProductOptionsModal
+        visible={showEditOptionsModal}
+        onClose={() => setShowEditOptionsModal(false)}
+        onEditDetails={handleOpenEditDetails}
+        onEditImages={handleOpenEditImages}
+        productData={productData}
+      />
 
       {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal
@@ -496,6 +788,109 @@ const ProductDetails = () => {
         itemType={productData?.is_rental ? 'rentedCar' : 'car'}
         itemName={productData?.name || ''}
       />
+
+      {/* Merchant Bid Action Modal */}
+      <MerchantBidActionModal
+        visible={showBidActionModal}
+        onClose={() => setShowBidActionModal(false)}
+        onAction={handleBidStatusUpdate}
+        isLoading={updateBidMutation.isPending}
+        bid={selectedBid}
+      />
+
+      {/* Fullscreen Image Viewer Modal */}
+      <Modal
+        visible={isFullScreen}
+        transparent={false}
+        animationType="fade"
+        onRequestClose={() => setIsFullScreen(false)}
+        statusBarTranslucent
+      >
+        <View 
+          className="flex-1 bg-black justify-between" 
+          style={{ 
+            paddingTop: Math.max(insets.top, 14), 
+            paddingBottom: Math.max(insets.bottom, 20) 
+          }}
+        >
+          <StatusBar style="light" />
+
+          {/* Fullscreen Top Bar */}
+          <View className="flex-row items-center justify-between px-5 py-2.5 z-10">
+            <View className="bg-white/15 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10">
+              <Text className="text-white text-xs font-NunitoBold">
+                {productData?.images && productData.images.length > 0 
+                  ? `${selectedImageIndex + 1} / ${productData.images.length}` 
+                  : '1 / 1'}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setIsFullScreen(false)}
+              activeOpacity={0.8}
+              className="flex-row items-center bg-white/20 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 active:bg-white/30"
+            >
+              <ArrowsPointingInIcon size={15} color="#FFFFFF" strokeWidth={2.5} />
+              <Text className="text-white text-xs font-NunitoBold ml-1.5">Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Fullscreen Image Canvas */}
+          <View className="flex-1 items-center justify-center relative px-2">
+            {productData?.images && productData.images.length > 0 && !imageErrors.has(selectedImageIndex) ? (
+              <Image
+                source={{ uri: productData.images[selectedImageIndex].image }}
+                className="w-full h-full"
+                resizeMode="contain"
+              />
+            ) : (
+              <View className="items-center justify-center">
+                <PhotoIcon size={64} color="#6B7280" />
+                <Text className="text-gray-400 font-NunitoBold mt-2">No Visuals Available</Text>
+              </View>
+            )}
+
+            {/* Left Nav Arrow */}
+            {productData?.images && productData.images.length > 1 && selectedImageIndex > 0 && (
+              <TouchableOpacity
+                onPress={() => setSelectedImageIndex(selectedImageIndex - 1)}
+                activeOpacity={0.8}
+                className="absolute left-4 w-11 h-11 bg-white/20 backdrop-blur-md rounded-full items-center justify-center active:bg-white/30"
+              >
+                <ChevronLeftIcon size={24} color="#FFFFFF" strokeWidth={2.5} />
+              </TouchableOpacity>
+            )}
+
+            {/* Right Nav Arrow */}
+            {productData?.images && productData.images.length > 1 && selectedImageIndex < productData.images.length - 1 && (
+              <TouchableOpacity
+                onPress={() => setSelectedImageIndex(selectedImageIndex + 1)}
+                activeOpacity={0.8}
+                className="absolute right-4 w-11 h-11 bg-white/20 backdrop-blur-md rounded-full items-center justify-center active:bg-white/30"
+              >
+                <ChevronRightIcon size={24} color="#FFFFFF" strokeWidth={2.5} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Fullscreen Dots Navigation */}
+          {productData?.images && productData.images.length > 1 && (
+            <View className="py-2 items-center">
+              <View className="flex-row items-center space-x-2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
+                {productData.images.map((_: any, index: number) => (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => setSelectedImageIndex(index)}
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      index === selectedImageIndex ? 'w-6 bg-white' : 'w-2 bg-white/40'
+                    }`}
+                  />
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };

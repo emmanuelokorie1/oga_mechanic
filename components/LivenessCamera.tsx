@@ -137,7 +137,7 @@ export default function LivenessCamera({ onCapture, onCancel }: LivenessCameraPr
          </View>
          
           {/* Top Bar - Adjusted for easier clipping and tap targets */}
-         <View className="absolute top-6 right-6 z-[999]" style={{ elevation: 10 }}>
+         <View className="absolute top-6 right-6 z-[999]" style={{ elevation: 2 }}>
              <TouchableOpacity 
                  onPress={onCancel} 
                  className="bg-black/60 p-3 rounded-full"

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,49 +6,33 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-  Animated,
-  Dimensions,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import {
   ArrowLeftIcon,
-  CheckCircleIcon,
-  SparklesIcon,
   LockClosedIcon,
-  BoltIcon,
   ShieldCheckIcon,
-  ChartBarIcon,
-  StarIcon,
-  RocketLaunchIcon,
   ClockIcon,
+  ArrowPathIcon,
 } from 'react-native-heroicons/outline';
 import { CheckCircleIcon as CheckCircleIconSolid } from 'react-native-heroicons/solid';
-import { icons } from '@/constants';
 import { productsAPI } from '@/lib/api/products';
 import { sellerRoutes } from '@/constants/routes';
 import { useActiveRoleProfile } from '@/hooks/useUserProfile';
 import LoadingOverlay from '@/components/LoadingOverlay';
+import AndroidNavBarSpacer from '@/components/AndroidNavBarSpacer';
 
 const SUBSCRIPTION_AMOUNT = 15000;
-const { width } = Dimensions.get('window');
-
-const FREE_FEATURES = (isVehicleRental: boolean) => [
-  { label: `2 ${isVehicleRental ? 'car' : 'product'} listings`, icon: null },
-  { label: 'Basic analytics', icon: null },
-  { label: 'Standard support', icon: null },
-];
 
 const PRO_FEATURES = (isVehicleRental: boolean) => [
-  { label: `Unlimited ${isVehicleRental ? 'vehicle' : 'product'} listings`, icon: RocketLaunchIcon },
-  { label: 'Priority placement in search', icon: BoltIcon },
-  { label: 'Full sales analytics & insights', icon: ChartBarIcon },
-  { label: 'Pro seller badge & verified tag', icon: ShieldCheckIcon },
-  { label: 'Dedicated customer support', icon: StarIcon },
-  { label: 'Early access to new features', icon: SparklesIcon },
+  `Unlimited ${isVehicleRental ? 'vehicle' : 'car & spare part'} listings`,
+  'Priority search placement & buyer discovery',
+  'Verified Pro Seller trust badge on listings',
+  'Full listing views & sales performance insights',
+  'Dedicated customer & mechanic support',
+  'Early access to live auction & bidding tools',
 ];
 
 const SellerSubscription = () => {
@@ -58,26 +42,18 @@ const SellerSubscription = () => {
   const { data: roleProfile, isVehicleRental, isLoading: isProfileLoading } = useActiveRoleProfile();
 
   // Extract subscription data based on role
-  const profile = roleProfile?.data?.merchant_profile || roleProfile?.data?.vehicle_rental_profile || roleProfile?.data?.mechanic_profile;
-  // const isSubscribed = true;
+  const profile =
+    roleProfile?.data?.merchant_profile ||
+    roleProfile?.data?.vehicle_rental_profile ||
+    roleProfile?.data?.mechanic_profile;
   const isSubscribed = profile?.is_subscribed || false;
-  // const expiresAt = 5;
   const expiresAt = profile?.subscription_expires_at;
-
-  // Animations
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.96)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Calculate days remaining
   const getDaysRemaining = () => {
     if (!expiresAt) return null;
-    
-    // If it's already a number (e.g. 20)
     if (typeof expiresAt === 'number') return expiresAt;
-    
-    // If it's a date string
+
     const expiry = new Date(expiresAt);
     const now = new Date();
     const diffTime = expiry.getTime() - now.getTime();
@@ -86,28 +62,6 @@ const SellerSubscription = () => {
   };
 
   const daysRemaining = getDaysRemaining();
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
-    ]).start();
-
-    // Pulse the CTA button subtly
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.015, duration: 1400, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1400, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
-  };
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, tension: 200 }).start();
-  };
 
   const handleSubscribe = async () => {
     setIsLoading(true);
@@ -146,466 +100,305 @@ const SellerSubscription = () => {
 
   if (isProfileLoading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <SafeAreaView className="flex-1 bg-white" edges={['top']}>
+        <View className="flex-1 justify-center items-center">
           <ActivityIndicator size="large" color="#D30309" />
-          <Text style={{ marginTop: 12, fontFamily: 'NunitoMedium', color: '#6B7280' }}>Loading subscription details...</Text>
+          <Text className="mt-3 font-NunitoMedium text-gray-500 text-sm">
+            Loading subscription details...
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const freeRemaining = Math.max(0, 2 - usedFreeUploads);
-  const usagePercent = (usedFreeUploads / 2) * 100;
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FAFAFA' }} edges={['top']}>
+    <SafeAreaView className="flex-1 bg-gray-50" edges={['top']}>
       <StatusBar style="dark" />
 
       {/* Header */}
-      <View style={{
-        backgroundColor: '#FFFFFF',
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 14,
-        borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6',
-      }}>
+      <View className="bg-white flex-row items-center px-5 py-3.5 border-b border-gray-100">
         <TouchableOpacity
           onPress={() => router.back()}
-          style={{
-            width: 40, height: 40,
-            backgroundColor: '#F9FAFB',
-            borderRadius: 20,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 12,
-          }}
+          className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center mr-3"
+          activeOpacity={0.7}
         >
           <ArrowLeftIcon size={18} color="#1F2937" />
         </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontFamily: 'NunitoExtraBold', color: '#111827', flex: 1 }}>
-          {isSubscribed ? "My Subscription" : "Seller Plans"}
+        <Text className="text-lg font-NunitoExtraBold text-gray-900 flex-1">
+          {isSubscribed ? 'My Subscription' : 'Seller Membership'}
         </Text>
+        {isSubscribed && (
+          <View className="flex-row items-center bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+            <View className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5" />
+            <Text className="text-[11px] font-NunitoBold text-emerald-700 uppercase">
+              Pro Active
+            </Text>
+          </View>
+        )}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: Platform.OS === 'android' ? 80 : 50 }}>
-        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
-
-          {/* ── Hero Banner ── */}
-          <View style={{ marginHorizontal: 20, marginTop: 16, marginBottom: 20 }}>
-            <LinearGradient
-              colors={isSubscribed ? ['#111827', '#1F2937'] : ['#FFFFFF', '#F9FAFB']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                borderRadius: 28,
-                padding: 24,
-                borderWidth: 1,
-                borderColor: isSubscribed ? '#374151' : '#F3F4F6',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 10 },
-                shadowOpacity: isSubscribed ? 0.3 : 0.05,
-                shadowRadius: 20,
-                elevation: 5,
-              }}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <View style={{
-                  width: 56, height: 56,
-                  backgroundColor: isSubscribed ? 'rgba(211, 3, 9, 0.15)' : '#FFECED',
-                  borderRadius: 18,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: 16,
-                  borderWidth: 1,
-                  borderColor: isSubscribed ? 'rgba(211, 3, 9, 0.3)' : 'transparent',
-                }}>
-                  <icons.activeProductTab width={28} height={28} color={isSubscribed ? "#D30309" : undefined} />
+      {/* Main Scrollable Content */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 16,
+          paddingBottom: 24,
+        }}
+      >
+        {/* If Subscribed: Active Status Card */}
+        {isSubscribed ? (
+          <View className="bg-emerald-50/70 rounded-2xl p-5 mb-5 border border-emerald-200 shadow-sm">
+            <View className="flex-row justify-between items-start mb-3">
+              <View>
+                <View className="flex-row items-center mb-1">
+                  <View className="w-2 h-2 rounded-full bg-emerald-500 mr-2" />
+                  <Text className="text-[11px] font-NunitoBold text-emerald-800 uppercase tracking-wider">
+                    Current Plan
+                  </Text>
                 </View>
-                
-                {isSubscribed && (
-                  <View style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)', 
-                    paddingHorizontal: 12, 
-                    paddingVertical: 6, 
-                    borderRadius: 100,
-                    borderWidth: 1,
-                    borderColor: 'rgba(16, 185, 129, 0.2)'
-                  }}>
-                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 6 }} />
-                    <Text style={{ fontSize: 11, fontFamily: 'NunitoBold', color: '#10B981', textTransform: 'uppercase' }}>Active Pro</Text>
-                  </View>
-                )}
+                <Text className="text-xl font-NunitoExtraBold text-gray-900">
+                  Pro Seller Membership
+                </Text>
               </View>
-
-              <Text style={{
-                fontSize: 24,
-                fontFamily: 'NunitoExtraBold',
-                color: isSubscribed ? '#FFFFFF' : '#111827',
-                lineHeight: 32,
-                marginBottom: 8,
-              }}>
-                {isSubscribed ? "Pro Seller Dashboard" : "Level Up Your Selling"}
-              </Text>
-              <Text style={{
-                fontSize: 14,
-                fontFamily: 'NunitoMedium',
-                color: isSubscribed ? '#9CA3AF' : '#6B7280',
-                lineHeight: 22,
-                marginBottom: 20,
-              }}>
-                {isSubscribed 
-                  ? "Enjoy unlimited access to all premium tools, priority search rankings, and exclusive seller analytics."
-                  : "Upgrade to Pro to list unlimited products and access premium administrative tools."}
-              </Text>
-
-              {/* Usage bar or Subscription Status */}
-              {!isSubscribed ? (
-                <View style={{ backgroundColor: 'rgba(0,0,0,0.03)', padding: 18, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.02)' }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <Text style={{ fontSize: 12, fontFamily: 'NunitoBold', color: '#6B7280', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                      Listing Capacity
-                    </Text>
-                    <Text style={{ fontSize: 12, fontFamily: 'NunitoExtraBold', color: usedFreeUploads >= 2 ? '#D30309' : '#10B981' }}>
-                      {usedFreeUploads} / 2 Listings
-                    </Text>
-                  </View>
-                  <View style={{ height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden' }}>
-                    <LinearGradient
-                      colors={usedFreeUploads >= 2 ? ['#EF4444', '#D30309'] : ['#10B981', '#059669']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={{ height: '100%', width: `${usagePercent}%` }}
-                    />
-                  </View>
-                  {freeRemaining === 0 && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14, backgroundColor: '#FFECED', padding: 10, borderRadius: 12 }}>
-                      <LockClosedIcon size={16} color="#D30309" />
-                      <Text style={{ marginLeft: 8, fontSize: 12, fontFamily: 'NunitoBold', color: '#D30309' }}>
-                        Free limit reached — Upgrade for more
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              ) : (
-                <View style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: 18, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                     <View>
-                       <Text style={{ fontSize: 11, fontFamily: 'NunitoBold', color: '#9CA3AF', letterSpacing: 1, textTransform: 'uppercase' }}>
-                         Current Plan
-                       </Text>
-                       <Text style={{ fontSize: 17, fontFamily: 'NunitoExtraBold', color: '#FFFFFF', marginTop: 4 }}>
-                         Monthly Pro Membership
-                       </Text>
-                     </View>
-                     <SparklesIcon size={24} color="#D30309" />
-                  </View>
-                  
-                  {daysRemaining !== null && (
-                    <View style={{ marginTop: 18, paddingTop: 18, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.1)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 }}>
-                          <ClockIcon size={16} color="#F59E0B" />
-                          <Text style={{ marginLeft: 8, fontSize: 13, fontFamily: 'NunitoBold', color: '#F59E0B' }}>
-                            {daysRemaining} Days Left
-                          </Text>
-                        </View>
-                        <TouchableOpacity style={{ backgroundColor: '#D30309', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
-                          <Text style={{ fontSize: 12, fontFamily: 'NunitoExtraBold', color: '#FFFFFF' }}>Renew Plan</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              )}
-            </LinearGradient>
-          </View>
-
-          {/* ── Plan Comparison Row (Only for non-subscribed) ── */}
-          {!isSubscribed && (
-            <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
-              <Text style={{ fontSize: 13, fontFamily: 'NunitoBold', color: '#111827', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 16, marginLeft: 4 }}>
-                Available Plans
-              </Text>
-
-              <View style={{ flexDirection: 'row', gap: 14 }}>
-
-                {/* Free Card */}
-                <View style={{
-                  flex: 1,
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 24,
-                  padding: 20,
-                  borderWidth: 1,
-                  borderColor: '#E5E7EB',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.03,
-                  shadowRadius: 10,
-                  elevation: 2,
-                }}>
-                  <View style={{
-                    backgroundColor: '#F3F4F6',
-                    alignSelf: 'flex-start',
-                    paddingHorizontal: 12,
-                    paddingVertical: 5,
-                    borderRadius: 10,
-                    marginBottom: 14,
-                  }}>
-                    <Text style={{ fontSize: 10, fontFamily: 'NunitoExtraBold', color: '#6B7280', letterSpacing: 0.5 }}>
-                      STARTER
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 2 }}>
-                    <Text style={{ fontSize: 26, fontFamily: 'NunitoExtraBold', color: '#111827' }}>₦0</Text>
-                    <Text style={{ fontSize: 12, fontFamily: 'NunitoMedium', color: '#9CA3AF', marginLeft: 2 }}>/free</Text>
-                  </View>
-                  <Text style={{ fontSize: 11, fontFamily: 'NunitoMedium', color: '#9CA3AF', marginBottom: 18 }}>Basic features included</Text>
-                  
-                  <View style={{ gap: 12, marginBottom: 20 }}>
-                    {FREE_FEATURES(isVehicleRental).map((f, i) => (
-                      <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <CheckCircleIconSolid size={16} color="#10B981" />
-                        <Text style={{ marginLeft: 8, fontSize: 12, fontFamily: 'NunitoSemiBold', color: '#4B5563', flex: 1 }} numberOfLines={1}>
-                          {f.label}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <View style={{
-                    marginTop: 'auto',
-                    backgroundColor: '#F9FAFB',
-                    borderRadius: 14,
-                    paddingVertical: 12,
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: '#F3F4F6',
-                  }}>
-                    <Text style={{ fontSize: 12, fontFamily: 'NunitoExtraBold', color: '#9CA3AF' }}>Current Plan</Text>
-                  </View>
-                </View>
-
-                {/* Pro Card */}
-                <LinearGradient
-                  colors={['#D30309', '#990206']}
-                  style={{
-                    flex: 1,
-                    borderRadius: 24,
-                    padding: 20,
-                    shadowColor: '#D30309',
-                    shadowOffset: { width: 0, height: 8 },
-                    shadowOpacity: 0.25,
-                    shadowRadius: 15,
-                    elevation: 8,
-                  }}
-                >
-                  <View style={{
-                    backgroundColor: 'rgba(255,255,255,0.2)',
-                    alignSelf: 'flex-start',
-                    paddingHorizontal: 12,
-                    paddingVertical: 5,
-                    borderRadius: 10,
-                    marginBottom: 14,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}>
-                    <SparklesIcon size={12} color="#FFFFFF" />
-                    <Text style={{ fontSize: 10, fontFamily: 'NunitoExtraBold', color: '#FFFFFF', marginLeft: 6, letterSpacing: 0.5 }}>
-                      MOST POPULAR
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 2 }}>
-                    <Text style={{ fontSize: 26, fontFamily: 'NunitoExtraBold', color: '#FFFFFF' }}>₦{(SUBSCRIPTION_AMOUNT / 1000).toFixed(0)}k</Text>
-                    <Text style={{ fontSize: 12, fontFamily: 'NunitoMedium', color: 'rgba(255,255,255,0.7)', marginLeft: 2 }}>/mo</Text>
-                  </View>
-                  <Text style={{ fontSize: 11, fontFamily: 'NunitoMedium', color: 'rgba(255,255,255,0.7)', marginBottom: 18 }}>Everything in Starter +</Text>
-                  
-                  <View style={{ gap: 12, marginBottom: 20 }}>
-                    {PRO_FEATURES(isVehicleRental).slice(0, 3).map((f, i) => (
-                      <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <CheckCircleIconSolid size={16} color="#FFFFFF" />
-                        <Text style={{ marginLeft: 8, fontSize: 12, fontFamily: 'NunitoSemiBold', color: '#FFFFFF', flex: 1 }} numberOfLines={1}>
-                          {f.label}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <View style={{
-                    marginTop: 'auto',
-                    backgroundColor: 'rgba(255,255,255,0.15)',
-                    borderRadius: 14,
-                    paddingVertical: 12,
-                    alignItems: 'center',
-                  }}>
-                    <Text style={{ fontSize: 12, fontFamily: 'NunitoExtraBold', color: '#FFFFFF' }}>Go Pro</Text>
-                  </View>
-                </LinearGradient>
+              <View className="w-9 h-9 rounded-xl bg-emerald-100 items-center justify-center">
+                <ShieldCheckIcon size={20} color="#059669" />
               </View>
             </View>
-          )}
 
-          {/* ── Full Pro Features ── */}
-          <View style={{
-            marginHorizontal: 20,
-            backgroundColor: '#FFFFFF',
-            borderRadius: 28,
-            padding: 24,
-            marginBottom: 24,
-            borderWidth: 1,
-            borderColor: '#F3F4F6',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.02,
-            shadowRadius: 10,
-            elevation: 2,
-          }}>
-            <Text style={{ fontSize: 13, fontFamily: 'NunitoExtraBold', color: '#D30309', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 20 }}>
-              {isSubscribed ? "Active Pro Features" : "Full Pro Membership Perks"}
+            <Text className="text-xs font-NunitoMedium text-gray-600 leading-5 mb-4">
+              You have unlimited listing capacity, priority search discovery, and verified seller status active.
             </Text>
-            {PRO_FEATURES(isVehicleRental).map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <View key={i} style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingVertical: 14,
-                  borderBottomWidth: i < PRO_FEATURES(isVehicleRental).length - 1 ? 1 : 0,
-                  borderBottomColor: '#F9FAFB',
-                }}>
-                  <View style={{
-                    width: 40, height: 40,
-                    backgroundColor: '#FFECED',
-                    borderRadius: 14,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 16,
-                  }}>
-                    {Icon && <Icon size={18} color="#D30309" />}
-                  </View>
-                  <Text style={{ fontSize: 15, fontFamily: 'NunitoSemiBold', color: '#1F2937', flex: 1 }}>
-                    {f.label}
-                  </Text>
-                  <CheckCircleIconSolid size={20} color="#10B981" />
-                </View>
-              );
-            })}
-          </View>
 
-          {/* ── CTA Container (Only for non-subscribed) ── */}
-          {!isSubscribed && (
-            <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-              <View style={{
-                backgroundColor: '#FFFFFF',
-                borderRadius: 24,
-                padding: 24,
-                marginBottom: 16,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                borderWidth: 1,
-                borderColor: '#E5E7EB',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.05,
-                shadowRadius: 12,
-                elevation: 3,
-              }}>
-                <View>
-                  <Text style={{ fontSize: 12, fontFamily: 'NunitoBold', color: '#6B7280', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                    Total Subscription
+            {/* Countdown / Expiry Pill */}
+            {daysRemaining !== null && (
+              <View className="bg-white rounded-xl p-3.5 flex-row items-center justify-between border border-emerald-100">
+                <View className="flex-row items-center">
+                  <ClockIcon size={16} color="#059669" />
+                  <Text className="text-xs font-NunitoBold text-emerald-900 ml-2">
+                    {daysRemaining} {daysRemaining === 1 ? 'Day' : 'Days'} Remaining
                   </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
-                    <Text style={{ fontSize: 32, fontFamily: 'NunitoExtraBold', color: '#111827' }}>
-                      ₦{SUBSCRIPTION_AMOUNT.toLocaleString()}
-                    </Text>
-                    <Text style={{ fontSize: 14, fontFamily: 'NunitoMedium', color: '#9CA3AF', marginLeft: 4 }}>/mo</Text>
-                  </View>
                 </View>
-                <View style={{
-                  backgroundColor: '#FFECED',
-                  borderRadius: 14,
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderWidth: 1,
-                  borderColor: '#FFE4E6',
-                }}>
-                  <Text style={{ fontSize: 10, fontFamily: 'NunitoExtraBold', color: '#D30309', textAlign: 'center', lineHeight: 14 }}>BILLED{'\n'}MONTHLY</Text>
+                <Text className="text-[11px] font-NunitoMedium text-gray-500">
+                  Renews Monthly
+                </Text>
+              </View>
+            )}
+          </View>
+        ) : (
+          /* If Not Subscribed: Free Limit Capacity Card */
+          <View className="bg-white rounded-2xl p-4 border border-gray-200 mb-5 shadow-sm">
+            <View className="flex-row items-center justify-between mb-3">
+              <View className="flex-row items-center flex-1 pr-2">
+                <View className="w-9 h-9 rounded-xl bg-red-50 items-center justify-center mr-3">
+                  <LockClosedIcon size={18} color="#D30309" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-NunitoBold text-gray-900">
+                    Free Listing Capacity
+                  </Text>
+                  <Text className="text-xs font-NunitoMedium text-gray-500">
+                    {usedFreeUploads} of 2 free uploads used
+                  </Text>
                 </View>
               </View>
-
-              {/* CTA Button */}
-              <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <TouchableOpacity
-                  onPress={handleSubscribe}
-                  onPressIn={handlePressIn}
-                  onPressOut={handlePressOut}
-                  disabled={isLoading}
-                  activeOpacity={0.9}
-                >
-                  <LinearGradient
-                    colors={['#D30309', '#990206']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={{
-                      borderRadius: 22,
-                      paddingVertical: 20,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexDirection: 'row',
-                      shadowColor: '#D30309',
-                      shadowOffset: { width: 0, height: 8 },
-                      shadowOpacity: 0.3,
-                      shadowRadius: 12,
-                      elevation: 8,
-                    }}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator size="small" color="white" />
-                    ) : (
-                      <>
-                        <SparklesIcon size={20} color="#FFFFFF" />
-                        <Text style={{
-                          marginLeft: 12,
-                          fontSize: 18,
-                          fontFamily: 'NunitoExtraBold',
-                          color: '#FFFFFF',
-                          letterSpacing: 0.5,
-                        }}>
-                          Upgrade to Pro Now
-                        </Text>
-                      </>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </Animated.View>
-
-              {/* Trust signals */}
-              <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20, gap: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <ShieldCheckIcon size={14} color="#9CA3AF" />
-                  <Text style={{ marginLeft: 6, fontSize: 12, fontFamily: 'NunitoMedium', color: '#9CA3AF' }}>Secure Paystack</Text>
-                </View>
-                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB' }} />
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <CheckCircleIcon size={14} color="#9CA3AF" />
-                  <Text style={{ marginLeft: 6, fontSize: 12, fontFamily: 'NunitoMedium', color: '#9CA3AF' }}>Cancel Anytime</Text>
-                </View>
+              <View className={`px-2.5 py-1 rounded-full ${usedFreeUploads >= 2 ? 'bg-red-50 border border-red-200' : 'bg-emerald-50 border border-emerald-200'}`}>
+                <Text className={`text-[10px] font-NunitoBold ${usedFreeUploads >= 2 ? 'text-red-700' : 'text-emerald-700'}`}>
+                  {usedFreeUploads >= 2 ? 'Limit Reached' : `${Math.max(0, 2 - usedFreeUploads)} Left`}
+                </Text>
               </View>
             </View>
-          )}
 
-        </Animated.View>
+            {/* Progress Bar */}
+            <View className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <View
+                style={{ width: `${Math.min(100, (usedFreeUploads / 2) * 100)}%` }}
+                className={`h-full rounded-full ${usedFreeUploads >= 2 ? 'bg-primary-500' : 'bg-emerald-500'}`}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* Hero Plan Showcase Card */}
+        <View className="bg-white rounded-2xl p-5 mb-5 border-2 border-primary-500 shadow-sm relative overflow-hidden">
+          {/* Top Badge & Duration */}
+          <View className="flex-row items-center justify-between mb-3.5">
+            <View className="bg-red-50 border border-red-200 px-3 py-1 rounded-full">
+              <Text className="text-[11px] font-NunitoBold text-primary-600 uppercase tracking-wider">
+                {isSubscribed ? 'Active Plan' : 'Pro Membership'}
+              </Text>
+            </View>
+            <Text className="text-xs font-NunitoSemiBold text-gray-400">Billed monthly</Text>
+          </View>
+
+          {/* Pricing Header */}
+          <View className="mb-4">
+            <View className="flex-row items-baseline">
+              <Text className="text-3xl font-NunitoExtraBold text-gray-900 tracking-tight">
+                ₦{SUBSCRIPTION_AMOUNT.toLocaleString()}
+              </Text>
+              <Text className="text-sm font-NunitoMedium text-gray-500 ml-1.5">/ month</Text>
+            </View>
+            <Text className="text-xs font-NunitoMedium text-gray-600 mt-1 leading-4">
+              Unlimited uploads, priority search discovery, and verified merchant credentials.
+            </Text>
+          </View>
+
+          <View className="h-px bg-gray-100 mb-4" />
+
+          {/* Feature List */}
+          <View className="space-y-3 gap-3">
+            {PRO_FEATURES(isVehicleRental).map((feature, i) => (
+              <View key={i} className="flex-row items-center">
+                <CheckCircleIconSolid size={18} color="#059669" />
+                <Text className="text-[13px] font-NunitoSemiBold text-gray-800 ml-2.5 flex-1 leading-5">
+                  {feature}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Plan Comparison Table */}
+        {!isSubscribed && (
+          <View className="bg-white rounded-2xl p-5 border border-gray-200 mb-5 shadow-sm">
+            <Text className="text-xs font-NunitoBold text-gray-400 uppercase tracking-wider mb-4">
+              Why Upgrade to Pro?
+            </Text>
+
+            {/* Header row */}
+            <View className="flex-row items-center pb-2.5 border-b border-gray-100">
+              <Text className="flex-1 text-xs font-NunitoBold text-gray-700">Feature</Text>
+              <Text className="w-16 text-center text-xs font-NunitoBold text-gray-400">Starter</Text>
+              <Text className="w-16 text-center text-xs font-NunitoBold text-primary-600">Pro</Text>
+            </View>
+
+            {/* Row 1 */}
+            <View className="flex-row items-center py-2.5 border-b border-gray-50">
+              <Text className="flex-1 text-xs font-NunitoMedium text-gray-700">Listing Limit</Text>
+              <Text className="w-16 text-center text-xs font-NunitoMedium text-gray-500">2 Items</Text>
+              <Text className="w-16 text-center text-xs font-NunitoBold text-primary-600">Unlimited</Text>
+            </View>
+
+            {/* Row 2 */}
+            <View className="flex-row items-center py-2.5 border-b border-gray-50">
+              <Text className="flex-1 text-xs font-NunitoMedium text-gray-700">Search Ranking</Text>
+              <Text className="w-16 text-center text-xs font-NunitoMedium text-gray-500">Standard</Text>
+              <Text className="w-16 text-center text-xs font-NunitoBold text-primary-600">Priority ⚡</Text>
+            </View>
+
+            {/* Row 3 */}
+            <View className="flex-row items-center py-2.5 border-b border-gray-50">
+              <Text className="flex-1 text-xs font-NunitoMedium text-gray-700">Pro Verified Badge</Text>
+              <Text className="w-16 text-center text-xs text-gray-300">—</Text>
+              <View className="w-16 items-center">
+                <CheckCircleIconSolid size={16} color="#10B981" />
+              </View>
+            </View>
+
+            {/* Row 4 */}
+            <View className="flex-row items-center py-2.5 border-b border-gray-50">
+              <Text className="flex-1 text-xs font-NunitoMedium text-gray-700">Sales Analytics</Text>
+              <Text className="w-16 text-center text-xs font-NunitoMedium text-gray-500">Basic</Text>
+              <Text className="w-16 text-center text-xs font-NunitoBold text-primary-600">Full Access</Text>
+            </View>
+
+            {/* Row 5 */}
+            <View className="flex-row items-center pt-2.5">
+              <Text className="flex-1 text-xs font-NunitoMedium text-gray-700">Direct Support</Text>
+              <Text className="w-16 text-center text-xs font-NunitoMedium text-gray-500">Standard</Text>
+              <View className="w-16 items-center">
+                <CheckCircleIconSolid size={16} color="#10B981" />
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Trust Badges */}
+        <View className="bg-gray-100/70 rounded-2xl p-4 border border-gray-200">
+          <View className="flex-row items-center mb-1.5">
+            <ShieldCheckIcon size={16} color="#4B5563" />
+            <Text className="text-xs font-NunitoBold text-gray-700 ml-1.5">
+              Safe & Flexible Billing
+            </Text>
+          </View>
+          <Text className="text-[11px] font-NunitoMedium text-gray-500 leading-4">
+            Payments are processed securely via Paystack. Your plan activates immediately and you can cancel future renewals at any time.
+          </Text>
+        </View>
       </ScrollView>
-      
-      <LoadingOverlay 
-        visible={isLoading} 
-        title="Securing your checkout..." 
+
+      {/* ── Sticky Bottom Action Bar ── */}
+      <View
+        className="bg-white border-t border-gray-100 px-5 pt-3 pb-4"
+        style={{
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.08,
+          shadowRadius: 10,
+          elevation: 8,
+        }}
+      >
+        {!isSubscribed ? (
+          <>
+            <View className="flex-row items-center justify-between mb-2.5">
+              <View>
+                <Text className="text-[11px] font-NunitoBold text-gray-400 uppercase tracking-wider">
+                  Total Due
+                </Text>
+                <View className="flex-row items-baseline">
+                  <Text className="text-2xl font-NunitoExtraBold text-gray-900">
+                    ₦{SUBSCRIPTION_AMOUNT.toLocaleString()}
+                  </Text>
+                  <Text className="text-xs font-NunitoMedium text-gray-500 ml-1">/ month</Text>
+                </View>
+              </View>
+              <View className="flex-row items-center bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
+                <ShieldCheckIcon size={13} color="#059669" />
+                <Text className="text-[11px] font-NunitoBold text-emerald-700 ml-1">Secure Paystack</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              onPress={handleSubscribe}
+              disabled={isLoading}
+              activeOpacity={0.88}
+              className="bg-primary-500 py-3.5 rounded-2xl items-center justify-center flex-row shadow-lg shadow-red-500/25"
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text className="text-white font-NunitoBold text-[16px]">
+                  Upgrade to Pro Now
+                </Text>
+              )}
+            </TouchableOpacity>
+          </>
+        ) : (
+          <TouchableOpacity
+            onPress={handleSubscribe}
+            disabled={isLoading}
+            activeOpacity={0.88}
+            className="bg-primary-500 py-3.5 rounded-2xl items-center justify-center flex-row shadow-lg shadow-red-500/25"
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <ArrowPathIcon size={18} color="#FFFFFF" />
+                <Text className="text-white font-NunitoBold text-[16px] ml-2">
+                  Renew Pro Membership
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+        <AndroidNavBarSpacer />
+      </View>
+
+      <LoadingOverlay
+        visible={isLoading}
+        title="Securing your checkout..."
         subtitle="We're preparing your payment gateway. Please don't close the app."
       />
     </SafeAreaView>

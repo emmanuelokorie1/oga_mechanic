@@ -135,8 +135,10 @@ const AddressInput: React.FC<AddressInputProps> = ({
     }
 
     debounceTimeoutRef.current = setTimeout(async () => {
-      if (!ENV_CONFIG.MAPBOX_ACCESS_TOKEN) {
-        setFetchError('Mapbox access token missing. Set EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN in your environment.')
+      const googleApiKey =
+        ENV_CONFIG.GOOGLE_MAPS_AUTOCOMPLETE_API_KEY || ENV_CONFIG.GOOGLE_MAPS_API_KEY
+      if (!googleApiKey && !ENV_CONFIG.MAPBOX_ACCESS_TOKEN) {
+        setFetchError('Location autocomplete service not configured.')
         setSuggestions([])
         return
       }
@@ -152,44 +154,88 @@ const AddressInput: React.FC<AddressInputProps> = ({
       setFetchError(null)
 
       try {
-        const encodedQuery = encodeURIComponent(searchQuery.trim())
-        const searchParams: any = {
-          access_token: ENV_CONFIG.MAPBOX_ACCESS_TOKEN,
-          autocomplete: 'true',
-          country: 'ng',
-          limit: '6',
-          language: 'en',
-          types: 'address,place,poi'
+        if (googleApiKey) {
+          // Google Places Autocomplete API
+          const searchParams: any = {
+            input: searchQuery.trim(),
+            key: googleApiKey,
+            components: 'country:ng',
+            language: 'en',
+          }
+
+          if (userCoords) {
+            searchParams.location = `${userCoords.latitude},${userCoords.longitude}`
+            searchParams.radius = '50000'
+          }
+
+          const params = new URLSearchParams(searchParams)
+          const response = await fetch(
+            `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`,
+            { signal: controller.signal }
+          )
+
+          if (!response.ok) {
+            throw new Error(`Google Places request failed with status ${response.status}`)
+          }
+
+          const data = await response.json()
+
+          if (data.status === 'OK' || data.status === 'ZERO_RESULTS') {
+            const mappedSuggestions = (data.predictions || []).map((pred: any) => ({
+              id: pred.place_id,
+              placeId: pred.place_id,
+              name: pred.structured_formatting?.main_text || pred.description,
+              address: pred.description || '',
+              secondaryText: pred.structured_formatting?.secondary_text || '',
+            }))
+            setSuggestions(mappedSuggestions)
+          } else {
+            console.warn('Google Places Autocomplete status:', data.status, data.error_message)
+            if (data.error_message) {
+              setFetchError(data.error_message)
+            }
+            setSuggestions([])
+          }
+        } else {
+          // Fallback to Mapbox if Google key is missing
+          const encodedQuery = encodeURIComponent(searchQuery.trim())
+          const searchParams: any = {
+            access_token: ENV_CONFIG.MAPBOX_ACCESS_TOKEN,
+            autocomplete: 'true',
+            country: 'ng',
+            limit: '6',
+            language: 'en',
+            types: 'address,place,poi'
+          }
+
+          if (userCoords) {
+            searchParams.proximity = `${userCoords.longitude},${userCoords.latitude}`
+          }
+
+          const params = new URLSearchParams(searchParams)
+          const response = await fetch(
+            `${ENV_CONFIG.MAPBOX_PLACES_ENDPOINT}/${encodedQuery}.json?${params.toString()}`,
+            { signal: controller.signal }
+          )
+
+          if (!response.ok) {
+            throw new Error(`Mapbox request failed with status ${response.status}`)
+          }
+
+          const data = await response.json()
+          const mappedSuggestions =
+            data?.features?.map((feature: any) => ({
+              id: feature.id,
+              name: feature.text || feature.place_name || searchQuery.trim(),
+              address: feature.place_name || '',
+              latitude: feature.center?.[1],
+              longitude: feature.center?.[0],
+              placeId: feature.id,
+              context: feature.context
+            })) ?? []
+
+          setSuggestions(mappedSuggestions)
         }
-
-        if (userCoords) {
-          searchParams.proximity = `${userCoords.longitude},${userCoords.latitude}`
-        }
-
-        const params = new URLSearchParams(searchParams)
-
-        const response = await fetch(
-          `${ENV_CONFIG.MAPBOX_PLACES_ENDPOINT}/${encodedQuery}.json?${params.toString()}`,
-          { signal: controller.signal }
-        )
-
-        if (!response.ok) {
-          throw new Error(`Mapbox request failed with status ${response.status}`)
-        }
-
-        const data = await response.json()
-        const mappedSuggestions =
-          data?.features?.map((feature: any) => ({
-            id: feature.id,
-            name: feature.text || feature.place_name || searchQuery.trim(),
-            address: feature.place_name || '',
-            latitude: feature.center?.[1],
-            longitude: feature.center?.[0],
-            placeId: feature.id,
-            context: feature.context
-          })) ?? []
-
-        setSuggestions(mappedSuggestions)
       } catch (err: any) {
         if (err.name === 'AbortError') {
           return
@@ -209,7 +255,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
         clearTimeout(geocodeTimeoutRef.current)
       }
     }
-  }, [searchQuery])
+  }, [searchQuery, userCoords])
 
   const handleLocationPress = useCallback(async () => {
     if (isFetchingCurrentLocation) return
@@ -269,46 +315,96 @@ const AddressInput: React.FC<AddressInputProps> = ({
     }
   }, [isFetchingCurrentLocation, onChangeText, onLocationSelect])
 
+  const fetchPlaceDetails = useCallback(async (placeId: string) => {
+    const googleApiKey =
+      ENV_CONFIG.GOOGLE_MAPS_AUTOCOMPLETE_API_KEY || ENV_CONFIG.GOOGLE_MAPS_API_KEY
+    if (!googleApiKey || !placeId) return null
+
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,name,formatted_address&key=${googleApiKey}`
+      const response = await fetch(url)
+      const data = await response.json()
+      if (data.status === 'OK' && data.result?.geometry?.location) {
+        return {
+          latitude: data.result.geometry.location.lat,
+          longitude: data.result.geometry.location.lng,
+          name: data.result.name,
+          address: data.result.formatted_address,
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching Google Place details:', err)
+    }
+    return null
+  }, [])
+
   const geocodeAddress = useCallback(async (address: string) => {
-    if (!address.trim() || !ENV_CONFIG.MAPBOX_ACCESS_TOKEN) {
+    const googleApiKey =
+      ENV_CONFIG.GOOGLE_MAPS_AUTOCOMPLETE_API_KEY || ENV_CONFIG.GOOGLE_MAPS_API_KEY
+    if (!address.trim()) {
       return null
     }
 
     try {
       setIsGeocoding(true)
-      const encodedQuery = encodeURIComponent(address.trim())
-      const searchParams: any = {
-        access_token: ENV_CONFIG.MAPBOX_ACCESS_TOKEN,
-        country: 'ng',
-        limit: '1',
-        types: 'address,place,poi'
-      }
 
-      if (userCoords) {
-        searchParams.proximity = `${userCoords.longitude},${userCoords.latitude}`
-      }
+      if (googleApiKey) {
+        const encodedAddress = encodeURIComponent(address.trim())
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&components=country:NG&key=${googleApiKey}`
+        const response = await fetch(url)
 
-      const params = new URLSearchParams(searchParams)
+        if (!response.ok) {
+          throw new Error(`Google Geocoding failed with status ${response.status}`)
+        }
 
-      const response = await fetch(
-        `${ENV_CONFIG.MAPBOX_PLACES_ENDPOINT}/${encodedQuery}.json?${params.toString()}`
-      )
+        const data = await response.json()
+        const result = data?.results?.[0]
 
-      if (!response.ok) {
-        throw new Error(`Geocoding failed with status ${response.status}`)
-      }
+        if (result && result.geometry?.location) {
+          return {
+            id: result.place_id,
+            placeId: result.place_id,
+            name: result.formatted_address?.split(',')[0] || address.trim(),
+            address: result.formatted_address || address.trim(),
+            latitude: result.geometry.location.lat,
+            longitude: result.geometry.location.lng,
+          }
+        }
+      } else if (ENV_CONFIG.MAPBOX_ACCESS_TOKEN) {
+        const encodedQuery = encodeURIComponent(address.trim())
+        const searchParams: any = {
+          access_token: ENV_CONFIG.MAPBOX_ACCESS_TOKEN,
+          country: 'ng',
+          limit: '1',
+          types: 'address,place,poi'
+        }
 
-      const data = await response.json()
-      const feature = data?.features?.[0]
+        if (userCoords) {
+          searchParams.proximity = `${userCoords.longitude},${userCoords.latitude}`
+        }
 
-      if (feature && feature.center) {
-        return {
-          name: feature.text || address.trim(),
-          address: feature.place_name || address.trim(),
-          latitude: feature.center[1],
-          longitude: feature.center[0],
-          placeId: feature.id,
-          context: feature.context
+        const params = new URLSearchParams(searchParams)
+
+        const response = await fetch(
+          `${ENV_CONFIG.MAPBOX_PLACES_ENDPOINT}/${encodedQuery}.json?${params.toString()}`
+        )
+
+        if (!response.ok) {
+          throw new Error(`Geocoding failed with status ${response.status}`)
+        }
+
+        const data = await response.json()
+        const feature = data?.features?.[0]
+
+        if (feature && feature.center) {
+          return {
+            name: feature.text || address.trim(),
+            address: feature.place_name || address.trim(),
+            latitude: feature.center[1],
+            longitude: feature.center[0],
+            placeId: feature.id,
+            context: feature.context
+          }
         }
       }
 
@@ -319,7 +415,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
     } finally {
       setIsGeocoding(false)
     }
-  }, [])
+  }, [userCoords])
 
   const handleInputFocus = useCallback(
     (e: any) => {
@@ -417,139 +513,186 @@ const AddressInput: React.FC<AddressInputProps> = ({
   )
 
   const handleSuggestionSelect = useCallback(
-    (suggestion: any) => {
+    async (suggestion: any) => {
       if (blurTimeoutRef.current) {
         clearTimeout(blurTimeoutRef.current)
       }
-      setInputValue(suggestion.address || suggestion.name)
-      setSearchQuery(suggestion.address || suggestion.name)
+      const selectedText = suggestion.address || suggestion.name
+      setInputValue(selectedText)
+      setSearchQuery(selectedText)
       setShowSuggestions(false)
-      onChangeText?.(suggestion.address || suggestion.name)
-      onLocationSelect?.(suggestion)
+      onChangeText?.(selectedText)
       Keyboard.dismiss()
+
+      // If coordinates are already present (e.g. reverse geocoded or Mapbox)
+      if (suggestion.latitude && suggestion.longitude) {
+        onLocationSelect?.(suggestion)
+        return
+      }
+
+      // Fetch precise coordinates from Google Place Details
+      if (suggestion.placeId) {
+        const details = await fetchPlaceDetails(suggestion.placeId)
+        if (details) {
+          const fullSuggestion = {
+            ...suggestion,
+            latitude: details.latitude,
+            longitude: details.longitude,
+            address: details.address || suggestion.address,
+            name: details.name || suggestion.name,
+          }
+          setInputValue(fullSuggestion.address)
+          setSearchQuery(fullSuggestion.address)
+          onChangeText?.(fullSuggestion.address)
+          onLocationSelect?.(fullSuggestion)
+          return
+        }
+      }
+
+      // Fallback: geocode the selected address string
+      const geocoded = await geocodeAddress(selectedText)
+      if (geocoded) {
+        onLocationSelect?.(geocoded)
+      } else {
+        onLocationSelect?.(suggestion)
+      }
     },
-    [onChangeText, onLocationSelect]
+    [onChangeText, onLocationSelect, fetchPlaceDetails, geocodeAddress]
   )
 
   return (
-        <View
-          ref={containerRef}
-          className={clsx("w-full", containerStyle1, !noMargin && "mb-4")}
-        >
-          {/* Label */}
-          {label && (
-            <View className="mb-3 flex-row items-end justify-between">
-              <Text className={`text-base font-NunitoSemiBold text-gray-700 ${labelClassName}`}>
-                {label}
-                {required && <Text className="text-red-500 ml-1">*</Text>}
-              </Text>
-              {showCurrentLocationButton && (
-                <TouchableOpacity
-                  onPress={handleLocationPress}
-                  disabled={disabled || isFetchingCurrentLocation}
-                  className={`flex-row items-center px-4 py-2 rounded-xl ${
-                    isFetchingCurrentLocation ? 'bg-gray-100' : 'bg-primary-50'
-                  }`}
-                  activeOpacity={0.7}
-                  style={{
-                    shadowColor: '#D30309',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: isFetchingCurrentLocation ? 0 : 0.08,
-                    shadowRadius: 8,
-                    elevation: isFetchingCurrentLocation ? 0 : 2,
-                  }}
-                >
-                  <MapPinIcon size={14} color={isFetchingCurrentLocation ? "#9CA3AF" : "#D30309"} />
-                  <Text className={`text-sm font-NunitoBold ml-1.5 ${
-                    isFetchingCurrentLocation ? 'text-gray-400' : 'text-primary-600'
-                  }`}>
-                    {isFetchingCurrentLocation ? 'Searching...' : 'Use current location'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-
-          <Animated.View
-            className={`flex flex-row items-center bg-gray-50 rounded-xl px-4 py-1 ${containerStyle}`}
-            style={{
-              borderWidth: 1,
-              borderColor: borderColor,
-              ...Platform.select({
-                ios: {
-                  shadowColor: "transparent",
-                  shadowOffset: { width: 0, height: 0 },
-                  shadowOpacity: 0,
-                  shadowRadius: 0,
-                },
-                android: {
-                  elevation: 0,
-                },
-              }),
-            }}
-          >
-            <TextInput
-              ref={inputRef}
-              value={inputValue}
-              onChangeText={handleTextChange}
-              placeholder={placeholder}
-              placeholderTextColor="#9CA3AF"
-              multiline={false}
-              editable={!disabled}
-              onFocus={handleInputFocus}
-              onBlur={handleInputBlur}
-              className={`flex-1 py-3 text-[1.2rem] font-NunitoMedium text-gray-900 ${inputClassName}`}
-              style={{ textAlignVertical: 'center' }}
-              textBreakStrategy="simple"
-              returnKeyType="search"
-            />
-
-            <View className="ml-3">
-              {isFetchingCurrentLocation ? (
-                <ActivityIndicator size="small" color="#D30309" />
-              ) : inputValue.length > 0 ? (
-                <TouchableOpacity 
-                  className={`p-2 rounded-xl bg-gray-50`}
-                  onPress={() => {
-                    setInputValue('');
-                    setSearchQuery('');
-                    setShowSuggestions(false);
-                    onChangeText?.('');
-                    if (abortControllerRef.current) {
-                      abortControllerRef.current.abort();
-                    }
-                  }}
-                >
-                  <XMarkIcon size={20} color="#6B7280" />
-                </TouchableOpacity>
-              ) : (
-                <View className={`p-2 rounded-xl ${isFocused ? 'bg-primary-50' : 'bg-gray-50'}`}>
-                  <MapPinIcon size={20} color={isFocused ? "#D30309" : "#9CA3AF"} />
-                </View>
-              )}
-            </View>
-          </Animated.View>
-
-          {/* Inline suggestions dropdown */}
-          {showSuggestions && (
-            <View
-              className="mt-2 bg-white rounded-[20px] overflow-hidden"
+    <View
+      ref={containerRef}
+      className={clsx("w-full", containerStyle1, !noMargin && "mb-4")}
+      style={{
+        position: 'relative',
+        zIndex: showSuggestions ? 9999 : 1,
+        elevation: showSuggestions ? 50 : 0,
+      }}
+    >
+      {/* Label */}
+      {label && (
+        <View className="mb-3 flex-row items-end justify-between">
+          <Text className={`text-base font-NunitoSemiBold text-gray-700 ${labelClassName}`}>
+            {label}
+            {required && <Text className="text-red-500 ml-1">*</Text>}
+          </Text>
+          {showCurrentLocationButton && (
+            <TouchableOpacity
+              onPress={handleLocationPress}
+              disabled={disabled || isFetchingCurrentLocation}
+              className={`flex-row items-center px-4 py-2 rounded-xl ${
+                isFetchingCurrentLocation ? 'bg-gray-100' : 'bg-primary-50'
+              }`}
+              activeOpacity={0.7}
               style={{
-                maxHeight: 260,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.1,
-                shadowRadius: 20,
-                elevation: 10,
-                borderWidth: 1,
-                borderColor: '#F3F4F6',
+                shadowColor: '#D30309',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: isFetchingCurrentLocation ? 0 : 0.08,
+                shadowRadius: 8,
+                elevation: isFetchingCurrentLocation ? 0 : 2,
               }}
             >
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
+              <MapPinIcon size={14} color={isFetchingCurrentLocation ? "#9CA3AF" : "#D30309"} />
+              <Text className={`text-sm font-NunitoBold ml-1.5 ${
+                isFetchingCurrentLocation ? 'text-gray-400' : 'text-primary-600'
+              }`}>
+                {isFetchingCurrentLocation ? 'Searching...' : 'Use current location'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Input & Floating Dropdown Container */}
+      <View style={{ position: 'relative', zIndex: showSuggestions ? 9999 : 1 }}>
+        <Animated.View
+          className={`flex flex-row items-center bg-gray-50 rounded-xl px-4 py-1 ${containerStyle}`}
+          style={{
+            borderWidth: 1,
+            borderColor: borderColor,
+            ...Platform.select({
+              ios: {
+                shadowColor: "transparent",
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0,
+                shadowRadius: 0,
+              },
+              android: {
+                elevation: 0,
+              },
+            }),
+          }}
+        >
+          <TextInput
+            ref={inputRef}
+            value={inputValue}
+            onChangeText={handleTextChange}
+            placeholder={placeholder}
+            placeholderTextColor="#9CA3AF"
+            multiline={false}
+            editable={!disabled}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
+            className={`flex-1 py-3 text-[14px] font-NunitoMedium text-gray-900 ${inputClassName}`}
+            style={{ textAlignVertical: 'center' }}
+            textBreakStrategy="simple"
+            returnKeyType="search"
+          />
+
+          <View className="ml-3">
+            {isFetchingCurrentLocation ? (
+              <ActivityIndicator size="small" color="#D30309" />
+            ) : inputValue.length > 0 ? (
+              <TouchableOpacity 
+                className={`p-2 rounded-xl bg-gray-50`}
+                onPress={() => {
+                  setInputValue('');
+                  setSearchQuery('');
+                  setShowSuggestions(false);
+                  onChangeText?.('');
+                  if (abortControllerRef.current) {
+                    abortControllerRef.current.abort();
+                  }
+                }}
               >
+                <XMarkIcon size={20} color="#6B7280" />
+              </TouchableOpacity>
+            ) : (
+              <View className={`p-2 rounded-xl ${isFocused ? 'bg-primary-50' : 'bg-gray-50'}`}>
+                <MapPinIcon size={20} color={isFocused ? "#D30309" : "#9CA3AF"} />
+              </View>
+            )}
+          </View>
+        </Animated.View>
+
+        {/* Floating suggestions dropdown overlay */}
+        {showSuggestions && (
+          <View
+            className="bg-white rounded-[20px] overflow-hidden"
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              marginTop: 6,
+              maxHeight: 260,
+              zIndex: 99999,
+              elevation: 99,
+              backgroundColor: '#FFFFFF',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.15,
+              shadowRadius: 20,
+              borderWidth: 1,
+              borderColor: '#E5E7EB',
+            }}
+          >
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
                 {isLoadingSuggestions && (
                   <View className="flex-row items-center gap-3 px-6 py-5 bg-gray-50/50">
                     <ActivityIndicator size="small" color="#D30309" />
@@ -577,7 +720,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
                       <MapPinIcon size={20} color="#D30309" />
                     </View>
                     <View className="ml-4 flex-1">
-                      <Text className="text-base font-NunitoBold text-gray-900 leading-tight">
+                      <Text className="text-[14px] font-NunitoBold text-gray-900 leading-tight">
                         {suggestion.name}
                       </Text>
                       <Text className="text-xs font-NunitoMedium text-gray-400 mt-0.5" numberOfLines={1}>
@@ -589,17 +732,18 @@ const AddressInput: React.FC<AddressInputProps> = ({
               </ScrollView>
             </View>
           )}
-
-          {/* Error */}
-          {hasError && (
-            <View className="flex-row items-center mt-1">
-              <View className="w-1 h-1 bg-red-500 rounded-full mr-2" />
-              <Text className="text-md font-NunitoMedium text-red-500 flex-1">
-                {String(error)}
-              </Text>
-            </View>
-          )}
         </View>
+
+        {/* Error */}
+        {hasError && (
+          <View className="flex-row items-center mt-1">
+            <View className="w-1 h-1 bg-red-500 rounded-full mr-2" />
+            <Text className="text-md font-NunitoMedium text-red-500 flex-1">
+              {String(error)}
+            </Text>
+          </View>
+        )}
+      </View>
   )
 }
 

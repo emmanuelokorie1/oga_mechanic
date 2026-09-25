@@ -242,7 +242,7 @@ const Home = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [isSwitchRoleVisible, setIsSwitchRoleVisible] = useState(false);
   const [isVinSearchVisible, setIsVinSearchVisible] = useState(false);
-  const [isMechanicCardShowing, setIsMechanicCardShowing] = useState(true);
+  const [isMechanicCardShowing, setIsMechanicCardShowing] = useState(false);
 
   const { data: homeProducts, refetch: refetchHomeProducts } = useHomeProducts();
   const { data: activeBiddingRes, refetch: refetchActiveBidding } = useActiveBiddingProducts();

@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
-    elevation: 8,
+    elevation: 2,
   },
   buttonPressed: {
     opacity: 0.8,

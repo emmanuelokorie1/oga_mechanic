@@ -32,7 +32,7 @@ const MechanicCard: React.FC<MechanicCardProps> = React.memo(({ item, onPress, c
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.05,
       shadowRadius: 12,
-      elevation: 4,
+      elevation: 2,
     }}
     activeOpacity={0.9}
   >

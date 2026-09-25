@@ -151,7 +151,7 @@ const InputFieldPassword = forwardRef<TextInput, InputFieldProps & {
           >
             <TextInput
               ref={ref}
-              className={`flex-1 py-3 text-[1.2rem] font-NunitoMedium text-gray-900 ${inputStyle}`}
+              className={`flex-1 py-3 text-[14px] font-NunitoMedium text-gray-900 ${inputStyle}`}
               secureTextEntry={secureTextEntry}
               placeholder={placeholder}
               placeholderTextColor="#9CA3AF"

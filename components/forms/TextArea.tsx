@@ -100,7 +100,7 @@ const TextArea = ({
           numberOfLines={rows}
           placeholder={placeholder}
           placeholderTextColor="#9CA3AF"
-          className="flex-1 py-3 text-[1.2rem] font-NunitoMedium text-gray-900"
+          className="flex-1 py-3 text-[14px] font-NunitoMedium text-gray-900"
           style={{
             textAlignVertical: 'top',
           }}

@@ -13,10 +13,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useActiveRoleProfile, usePrimaryUserProfile, useMerchantProfile } from '@/hooks/useUserProfile'
 import { useCategories, useProducts } from '@/hooks/useProducts'
 import { productsAPI } from '@/lib/api/products'
-import { useProfileStore } from '@/hooks/useProfileStore'
 import ProfileCompletionModal from '@/components/modals/ProfileCompletionModal'
+import SubscriptionGateModal from '@/components/modals/SubscriptionGateModal'
+import { useSellerUploadGate } from '@/hooks/useSellerUploadGate'
 
 const { CONTAINER_PADDING } = LAYOUT;
+
+const CAR_CATEGORY_ID = 23;
 
 const AllRentedCars = () => {
   const [inputQuery, setInputQuery] = useState("")
@@ -27,34 +30,19 @@ const AllRentedCars = () => {
   const [refreshing, setRefreshing] = useState(false)
   const [showFilterModal, setShowFilterModal] = useState(false)
 
-  const isProfileComplete = useProfileStore((state) => state.isProfileComplete);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  const {
+    checkUploadPermission,
+    showSubscriptionModal,
+    setShowSubscriptionModal,
+    showProfileModal,
+    setShowProfileModal,
+    isPendingApproval,
+    totalProductsCount,
+    roleName,
+    merchantId,
+  } = useSellerUploadGate();
 
-  // Fetch primary profile data
-  const { data: primaryProfileData, isLoading: isProfileLoading } = usePrimaryUserProfile();
-
-  // Extract active role with fallback
-  const activeRoleRaw = primaryProfileData?.active_role || primaryProfileData?.data?.active_role || (primaryProfileData?.data as any)?.current_role;
-  const activeRole = typeof activeRoleRaw === 'object' ? activeRoleRaw?.name : activeRoleRaw;
-
-  // Fetch specific merchant profile to check KYC status
-  const merchantProfileQuery = useMerchantProfile(activeRole === 'merchant' || activeRole === 'seller');
-
-  const isPendingApproval = Boolean(
-    merchantProfileQuery.data?.data?.kyc?.is_complete && 
-    !merchantProfileQuery.data?.data?.merchant_profile?.is_approved
-  );
-
-  // Use specific car category ID as provided in product.tsx
-  const CAR_CATEGORY_ID = 23;
-
-  // Fetch user profile based on active role to get merchant ID
-  const { data: profileData } = useActiveRoleProfile();
-
-  // Extract merchant ID safely from primary profile data (consistent with product.tsx)
-  const merchantId = (activeRole === 'merchant' || activeRole === 'vehicle_rental')
-    ? (primaryProfileData?.data as any)?.user?.id || (primaryProfileData?.data as any)?.user_id
-    : (primaryProfileData?.data as any)?.user_id;
+  const activeRole = roleName;
 
   // Fetch rental cars from API with search and filter parameters
   const {
@@ -219,11 +207,8 @@ const AllRentedCars = () => {
       </Text>
       <TouchableOpacity
         onPress={() => {
-          if (!isProfileComplete || isPendingApproval) {
-            setShowProfileModal(true);
-            return;
-          }
-          router.push('/uploadCarToRent' as any);
+          if (!checkUploadPermission()) return;
+          router.push(sellerRoutes.uploadCarToRent as any);
         }}
         className="bg-primary-500 px-6 py-3 rounded-xl flex-row items-center"
       >
@@ -245,13 +230,11 @@ const AllRentedCars = () => {
         <Text className="text-lg font-NunitoBold text-gray-900">All Rented Cars</Text>
         <TouchableOpacity
           onPress={() => {
-            if (!isProfileComplete || isPendingApproval) {
-              setShowProfileModal(true);
-              return;
-            }
-            router.push('/uploadCarToRent' as any);
+            if (!checkUploadPermission()) return;
+            router.push(sellerRoutes.uploadCarToRent as any);
           }}
-          className="p-2 bg-primary-500 rounded-full items-center justify-center"
+          disabled={isPendingApproval}
+          className={`p-2 rounded-full items-center justify-center ${isPendingApproval ? 'bg-gray-300' : 'bg-primary-500'}`}
         >
           <PlusIcon size={25} color="white" />
         </TouchableOpacity>
@@ -450,10 +433,17 @@ const AllRentedCars = () => {
 
           <ProfileCompletionModal
             isVisible={showProfileModal}
-            roleName={activeRole === 'vehicle_rental' ? 'vehicle_rental' : 'seller'}
+            roleName={roleName}
             onComplete={() => setShowProfileModal(false)}
             onClose={() => setShowProfileModal(false)}
             isPending={isPendingApproval}
+          />
+
+          <SubscriptionGateModal
+            isVisible={showSubscriptionModal}
+            onClose={() => setShowSubscriptionModal(false)}
+            usedUploads={totalProductsCount}
+            roleName={roleName}
           />
         </SafeAreaView>
       )

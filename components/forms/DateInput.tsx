@@ -174,7 +174,7 @@ const DateInput: React.FC<DateInputProps> = ({
           className="flex-1 flex-row items-center justify-between py-3"
           activeOpacity={0.7}
         >
-          <Text className={`text-[1.2rem] font-NunitoMedium ${value ? "text-gray-900" : "text-gray-400"}`}>
+          <Text className={`text-[14px] font-NunitoMedium ${value ? "text-gray-900" : "text-gray-400"}`}>
             {formatDate(value)}
           </Text>
           <CalendarIcon size={20} color="#9CA3AF" />

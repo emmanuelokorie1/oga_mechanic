@@ -4,7 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon } from 'react-native-heroicons/outline'
+import { SparklesIcon } from 'react-native-heroicons/solid'
 import { router, useLocalSearchParams } from 'expo-router'
+import { generateRentalCarDescription } from '@/utils/aiDescriptionGenerator'
 import { Formik, useFormikContext } from 'formik'
 import * as Yup from 'yup'
 import FormikInput from '@/components/forms/FormikInput'
@@ -125,8 +127,52 @@ const UploadCarToRent = () => {
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiVariationIndex, setAiVariationIndex] = useState(0);
   const { visible, alertConfig, hideAlert, showSuccess, showError } = useCustomAlert()
   const featuresInitialized = useRef(false);
+
+  const handleGenerateAIRentalDescription = async (
+    values: any,
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    setIsGeneratingAI(true);
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    try {
+      const resolvedMake = vehicleMakes?.find(
+        (m: any) => m.id.toString() === values.make?.toString() || m.name.toLowerCase() === values.make?.toString().toLowerCase()
+      );
+      const resolvedMakeName = resolvedMake?.name || values.make || '';
+
+      const availableModels = resolvedMake?.models || [];
+      const resolvedModel = availableModels.find(
+        (m: any) => m.id.toString() === values.model?.toString() || m.name.toLowerCase() === values.model?.toString().toLowerCase()
+      );
+      const resolvedModelName = resolvedModel?.name || values.model || '';
+
+      const generated = generateRentalCarDescription({
+        year: values.year,
+        make: resolvedMakeName,
+        model: resolvedModelName,
+        name: values.name,
+        body_type: values.body_type,
+        transmission: values.transmission,
+        fuel_type: values.fuel_type,
+        seats: values.number_of_seats,
+        exterior_color: values.exterior_color,
+        features: selectedFeatures,
+        price: values.price,
+      }, aiVariationIndex);
+
+      setFieldValue('description', generated);
+      setAiVariationIndex(prev => prev + 1);
+    } catch (err) {
+      console.error('Error generating AI rental description:', err);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
 
   const { editMode, productId, productData, isEditing } = useLocalSearchParams<{
     editMode?: string;
@@ -503,7 +549,40 @@ const UploadCarToRent = () => {
                       </>
                     )}
                     
-                    <FormikInput name="description" label="Description (Optional)" multiline numberOfLines={4} type="text" placeholder={(values.body_type === 'van' || values.body_type === 'truck') ? "Describe your service, capacity, etc." : "e.g. Well maintained car perfect for daily commuting..."} />
+                    <View className="mb-4">
+                      <View className="flex-row items-center justify-between mb-2">
+                        <Text className="text-sm font-NunitoBold text-gray-700">
+                          Description (Optional)
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => handleGenerateAIRentalDescription(values, setFieldValue)}
+                          disabled={isGeneratingAI}
+                          activeOpacity={0.8}
+                          className="flex-row items-center px-3 py-1.5 rounded-full bg-gray-900 active:bg-gray-800"
+                        >
+                          {isGeneratingAI ? (
+                            <>
+                              <ActivityIndicator size="small" color="#FFFFFF" style={{ transform: [{ scale: 0.7 }] }} />
+                              <Text className="text-white font-NunitoBold text-[11px] ml-1.5">Writing...</Text>
+                            </>
+                          ) : (
+                            <>
+                              <SparklesIcon size={12} color="#FBBF24" />
+                              <Text className="text-white font-NunitoBold text-[11px] ml-1">
+                                {values.description ? 'Regenerate' : 'AI Generate'}
+                              </Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                      <FormikTextArea 
+                        name="description" 
+                        placeholder={(values.body_type === 'van' || values.body_type === 'truck') ? "Describe your service, capacity, rental terms, etc." : "e.g. Clean executive ride with cold A/C, perfect for city runs and corporate trips..."} 
+                        numberOfLines={5} 
+                        maxLength={500}
+                        helperText="Highlight rental terms, comfort, and service highlights"
+                      />
+                    </View>
                   </View>
                 )}
 

@@ -4,7 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon, PlusIcon, XMarkIcon } from 'react-native-heroicons/outline'
+import { SparklesIcon } from 'react-native-heroicons/solid'
 import { router, useLocalSearchParams } from 'expo-router'
+import { generateSparePartDescription } from '@/utils/aiDescriptionGenerator'
 import { Formik } from 'formik'
 import * as Yup from 'yup'
 import FormikInput from '@/components/forms/FormikInput'
@@ -25,7 +27,7 @@ import CustomButton from '@/components/CustomButton'
 
 const PRIMARY = '#D30309';
 
-const SectionCard = ({ children, title, subtitle, icon, accentColor }: any) => (
+const SectionCard = ({ children, title, subtitle, icon, accentColor, rightAction }: any) => (
   <View 
     className="bg-white rounded-[16px] p-5 mb-5 border border-gray-100" 
     style={{ borderTopWidth: 3, borderTopColor: accentColor, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 }}
@@ -38,6 +40,7 @@ const SectionCard = ({ children, title, subtitle, icon, accentColor }: any) => (
         <Text style={{ color: '#111827' }} className="text-[15px] font-NunitoBold mb-0.5">{title}</Text>
         <Text className="text-[12px] text-gray-500 font-NunitoMedium">{subtitle}</Text>
       </View>
+      {rightAction}
     </View>
     <View className="gap-4">
       {children}
@@ -48,6 +51,50 @@ const SectionCard = ({ children, title, subtitle, icon, accentColor }: any) => (
 const UploadSparePart = () => {
   const [vehicleCompatibility, setVehicleCompatibility] = useState<VehicleCompatibility[]>([])
   const [showOtherCategory, setShowOtherCategory] = useState(false)
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiVariationIndex, setAiVariationIndex] = useState(0)
+
+  const handleGenerateAISparePartDescription = async (
+    values: any,
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    setIsGeneratingAI(true);
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    try {
+      const compatibleMakeNames: string[] = [];
+      const compatibleModelNames: string[] = [];
+
+      vehicleCompatibility.forEach(vc => {
+        const makeObj = vehicleMakes?.find((m: any) => m.id.toString() === vc.make?.toString());
+        if (makeObj) {
+          compatibleMakeNames.push(makeObj.name);
+          if (Array.isArray(vc.models)) {
+            vc.models.forEach((mId: any) => {
+              const modelObj = makeObj.models?.find((m: any) => m.id.toString() === mId?.toString());
+              if (modelObj) compatibleModelNames.push(modelObj.name);
+            });
+          }
+        }
+      });
+
+      const generated = generateSparePartDescription({
+        name: values.name,
+        category: values.category,
+        condition: values.condition,
+        compatibleMakes: compatibleMakeNames,
+        compatibleModels: compatibleModelNames,
+        price: values.price,
+      }, aiVariationIndex);
+
+      setFieldValue('description', generated);
+      setAiVariationIndex(prev => prev + 1);
+    } catch (err) {
+      console.error('Error generating AI spare part description:', err);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
 
   const { editMode, productId, productData, formData, isEditing } = useLocalSearchParams<{
     editMode?: string;
@@ -450,12 +497,39 @@ const UploadSparePart = () => {
                 </SectionCard>
 
                 {/* Description */}
-                <SectionCard accentColor={PRIMARY} icon="📝" title="Description" subtitle="Provide details about the Product">
+                <SectionCard 
+                  accentColor={PRIMARY} 
+                  icon="📝" 
+                  title="Description" 
+                  subtitle="Provide details about the Product"
+                  rightAction={
+                    <TouchableOpacity
+                      onPress={() => handleGenerateAISparePartDescription(values, setFieldValue)}
+                      disabled={isGeneratingAI}
+                      activeOpacity={0.8}
+                      className="flex-row items-center px-3 py-1.5 rounded-full bg-gray-900 active:bg-gray-800"
+                    >
+                      {isGeneratingAI ? (
+                        <>
+                          <ActivityIndicator size="small" color="#FFFFFF" style={{ transform: [{ scale: 0.7 }] }} />
+                          <Text className="text-white font-NunitoBold text-[11px] ml-1.5">Writing...</Text>
+                        </>
+                      ) : (
+                        <>
+                          <SparklesIcon size={12} color="#FBBF24" />
+                          <Text className="text-white font-NunitoBold text-[11px] ml-1">
+                            {values.description ? 'Regenerate' : 'AI Generate'}
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  }
+                >
                   <FormikTextArea
                     name="description"
                     label="Description"
                     placeholder="e.g., High-quality brake pads compatible with multiple Toyota and Honda models. Includes installation hardware."
-                    numberOfLines={4}
+                    numberOfLines={5}
                     maxLength={500}
                     helperText="Describe the spare part's features, compatibility, and condition"
                   />

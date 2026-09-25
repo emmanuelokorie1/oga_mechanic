@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { View, Text, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native'
+import { View, Text, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native'
 import EditSuccessDrawer from '@/components/modals/EditSuccessDrawer'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon } from 'react-native-heroicons/outline'
+import { SparklesIcon } from 'react-native-heroicons/solid'
 import { router, useLocalSearchParams } from 'expo-router'
+import { generateRentalCarDescription } from '@/utils/aiDescriptionGenerator'
 import { Formik } from 'formik'
 import * as Yup from 'yup'
 import FormikInput from '@/components/forms/FormikInput'
@@ -33,11 +35,55 @@ import { useCustomAlert } from '@/hooks/useCustomAlert'
 const EditRentCar = () => {
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false)
+  const [aiVariationIndex, setAiVariationIndex] = useState(0)
   const [successDrawerVisible, setSuccessDrawerVisible] = useState(false)
   const [updatedProductData, setUpdatedProductData] = useState<any>(null)
   const [hasError, setHasError] = useState(false)
   const featuresInitialized = useRef(false)
   const { visible, alertConfig, hideAlert, showSuccess, showError } = useCustomAlert()
+
+  const handleGenerateAIRentalDescription = async (
+    values: any,
+    setFieldValue: (field: string, value: any) => void
+  ) => {
+    setIsGeneratingAI(true);
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    try {
+      const resolvedMake = vehicleMakes?.find(
+        (m: any) => m.id.toString() === values.make?.toString() || m.name.toLowerCase() === values.make?.toString().toLowerCase()
+      );
+      const resolvedMakeName = resolvedMake?.name || (typeof productData?.make === 'object' ? productData?.make?.name : productData?.make) || values.make || '';
+
+      const availableModels = resolvedMake?.models || [];
+      const resolvedModel = availableModels.find(
+        (m: any) => m.id.toString() === values.model?.toString() || m.name.toLowerCase() === values.model?.toString().toLowerCase()
+      );
+      const resolvedModelName = resolvedModel?.name || (typeof productData?.model === 'object' ? productData?.model?.name : productData?.model) || values.model || '';
+
+      const generated = generateRentalCarDescription({
+        year: values.year,
+        make: resolvedMakeName,
+        model: resolvedModelName,
+        name: values.name,
+        body_type: values.body_type,
+        transmission: values.transmission,
+        fuel_type: values.fuel_type,
+        seats: values.number_of_seats,
+        exterior_color: values.exterior_color,
+        features: selectedFeatures,
+        price: values.price,
+      }, aiVariationIndex);
+
+      setFieldValue('description', generated);
+      setAiVariationIndex(prev => prev + 1);
+    } catch (err) {
+      console.error('Error generating AI rental description:', err);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
 
   // Get navigation parameters
   const { productId, productData: productDataParam } = useLocalSearchParams<{
@@ -76,18 +122,78 @@ const EditRentCar = () => {
     }
   }, [vehicleMakes]);
 
-  const modelOptions = React.useMemo(() => {
-    try {
-      if (!vehicleMakes || !productData?.make) return [];
-      const selectedMake = vehicleMakes.find(make => make.id?.toString() === productData.make?.toString());
-      return selectedMake?.models?.map(model => ({
-        label: model?.name || 'Unknown Model',
-        value: model?.id?.toString() || ''
-      })) || [];
-    } catch (error) {
-      return [];
+  // Helper to resolve make ID from productData
+  const initialMakeId = React.useMemo(() => {
+    if (!productData) return '';
+    if (productData.make_id) return productData.make_id.toString();
+    if (typeof productData.make === 'object' && productData.make?.id) {
+      return productData.make.id.toString();
     }
-  }, [vehicleMakes, productData?.make]);
+    if (productData.make !== undefined && productData.make !== null && typeof productData.make !== 'object' && !isNaN(Number(productData.make)) && productData.make !== '') {
+      return productData.make.toString();
+    }
+    const rawMakeName = typeof productData.make === 'object' ? productData.make?.name : productData.make;
+    if (vehicleMakes && rawMakeName) {
+      const searchStr = rawMakeName.toString().trim().toLowerCase();
+      const found = vehicleMakes.find(
+        (m: any) => m.name.toLowerCase() === searchStr || m.id.toString() === searchStr
+      );
+      if (found) return found.id.toString();
+    }
+    return typeof productData.make === 'string' ? productData.make : '';
+  }, [productData, vehicleMakes]);
+
+  // Helper to resolve model ID from productData
+  const initialModelId = React.useMemo(() => {
+    if (!productData) return '';
+    if (productData.model_id) return productData.model_id.toString();
+    if (typeof productData.model === 'object' && productData.model?.id) {
+      return productData.model.id.toString();
+    }
+    if (productData.model !== undefined && productData.model !== null && typeof productData.model !== 'object' && !isNaN(Number(productData.model)) && productData.model !== '') {
+      return productData.model.toString();
+    }
+    const rawModelName = typeof productData.model === 'object' ? productData.model?.name : productData.model;
+    const rawMakeName = typeof productData.make === 'object' ? productData.make?.name : productData.make;
+    const makeSearch = (initialMakeId || rawMakeName || '').toString().toLowerCase();
+
+    if (vehicleMakes && (makeSearch || rawModelName)) {
+      const selectedMake = vehicleMakes.find(
+        (m: any) => m.id.toString() === makeSearch || m.name.toLowerCase() === makeSearch
+      );
+      if (selectedMake?.models && rawModelName) {
+        const modelSearch = rawModelName.toString().trim().toLowerCase();
+        const found = selectedMake.models.find(
+          (m: any) =>
+            m.name.toLowerCase() === modelSearch ||
+            m.id.toString() === modelSearch ||
+            modelSearch.includes(m.name.toLowerCase())
+        );
+        if (found) return found.id.toString();
+      }
+    }
+    return typeof productData.model === 'string' ? productData.model : '';
+  }, [productData, vehicleMakes, initialMakeId]);
+
+  // Dynamic model options based on selected make
+  const getModelsForMake = React.useCallback(
+    (makeIdentifier?: string | number) => {
+      if (!makeIdentifier || !vehicleMakes) return [];
+      const makeStr = makeIdentifier.toString().toLowerCase();
+      const selectedMake = vehicleMakes.find(
+        (make: any) =>
+          make.id?.toString() === makeStr ||
+          make.name?.toLowerCase() === makeStr
+      );
+      return (
+        selectedMake?.models?.map((model: any) => ({
+          label: model?.name || 'Unknown Model',
+          value: model?.id?.toString() || '',
+        })) || []
+      );
+    },
+    [vehicleMakes]
+  );
 
   const validationSchema = Yup.object().shape({
     body_type: Yup.string().required('Vehicle type is required'),
@@ -164,8 +270,8 @@ const EditRentCar = () => {
 
   const initialValues = {
     name: productData?.name || '',
-    make: productData?.make?.toString() || '',
-    model: productData?.model?.toString() || '',
+    make: initialMakeId,
+    model: initialModelId,
     year: productData?.year?.toString() || '',
     condition: productData?.condition || '',
     body_type: productData?.body_type || '',
@@ -174,7 +280,7 @@ const EditRentCar = () => {
     exterior_color: productData?.exterior_color || '',
     number_of_seats: productData?.number_of_seats?.toString() || '',
     description: productData?.description || '',
-    price: productData?.price || '',
+    price: productData?.price ? Math.round(parseFloat(productData.price.toString())).toString() : '',
     currency: productData?.currency || 'NGN',
     stock: productData?.stock?.toString() || '',
     availability: productData?.availability || '',
@@ -235,12 +341,29 @@ const EditRentCar = () => {
 
       const isUtility = values.body_type === 'van' || values.body_type === 'truck';
 
+      const resolveMakeInt = (val?: string) => {
+        if (!val) return null;
+        const parsed = parseInt(val, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+        const found = vehicleMakes?.find((m: any) => m.name.toLowerCase() === val.toLowerCase());
+        return found ? found.id : null;
+      };
+
+      const resolveModelInt = (makeVal?: string, modelVal?: string) => {
+        if (!modelVal) return null;
+        const parsed = parseInt(modelVal, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+        const makeModels = getModelsForMake(makeVal);
+        const found = makeModels.find((m: any) => m.label.toLowerCase() === modelVal.toLowerCase());
+        return found ? parseInt(found.value, 10) : null;
+      };
+
       const payload = {
         data: {
           category_id: carCategoryId,
           name: values.name || '',
-          make: isUtility ? null : safeParseInt(values.make),
-          model: isUtility ? null : safeParseInt(values.model),
+          make: isUtility ? null : resolveMakeInt(values.make),
+          model: isUtility ? null : resolveModelInt(values.make, values.model),
           year: isUtility ? null : safeParseInt(values.year),
           condition: values.condition || '',
           body_type: values.body_type || '',
@@ -541,11 +664,12 @@ const EditRentCar = () => {
                           name="model"
                           label="Model"
                           placeholder={!values.make ? "Select make first" : "Select model"}
-                          options={modelOptions}
+                          options={getModelsForMake(values.make)}
                           value={values.model}
                           onValueChange={(value) => setFieldValue('model', value)}
                           error={errors.model as string}
                           touched={touched.model as boolean}
+                          disabled={!values.make}
                         />
 
                         {/* Year */}
@@ -667,13 +791,33 @@ const EditRentCar = () => {
                           Additional details about your rental
                         </Text>
                       </View>
+                      <TouchableOpacity
+                        onPress={() => handleGenerateAIRentalDescription(values, setFieldValue)}
+                        disabled={isGeneratingAI}
+                        activeOpacity={0.8}
+                        className="flex-row items-center px-3 py-1.5 rounded-full bg-gray-900 active:bg-gray-800"
+                      >
+                        {isGeneratingAI ? (
+                          <>
+                            <ActivityIndicator size="small" color="#FFFFFF" style={{ transform: [{ scale: 0.7 }] }} />
+                            <Text className="text-white font-NunitoBold text-[11px] ml-1.5">Writing...</Text>
+                          </>
+                        ) : (
+                          <>
+                            <SparklesIcon size={12} color="#FBBF24" />
+                            <Text className="text-white font-NunitoBold text-[11px] ml-1">
+                              {values.description ? 'Regenerate' : 'AI Generate'}
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
                     </View>
 
                     <FormikTextArea
                       name="description"
                       label="Description"
                       placeholder={isUtility ? "Describe your service, capacity, rental terms, etc." : "Describe your rental car, special features, rental terms, etc."}
-                      numberOfLines={4}
+                      numberOfLines={5}
                       maxLength={500}
                       helperText={isUtility ? "Describe capacity, service area, and terms" : "Describe condition, features, and terms"}
                     />

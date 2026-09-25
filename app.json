@@ -80,6 +80,12 @@
         {
           "faceIDPermission": "Allow Oga Mechanic to use Face ID for quick and secure sign-in."
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.TODO_IOS_CLIENT_ID_PREFIX"
+        }
       ]
     ],
     "experiments": {

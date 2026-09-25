@@ -200,7 +200,7 @@ const JobCompletionFormModal: React.FC<JobCompletionFormModalProps> = ({
                         onChangeText={(text) => handleUpdateResolution(index, text)}
                         multiline={true}
                         containerStyle="bg-gray-50/30 border-gray-200"
-                        inputStyle="text-base"
+                        inputStyle="text-[14px]"
                         noMargin={true}
                       />
 
@@ -262,7 +262,7 @@ const JobCompletionFormModal: React.FC<JobCompletionFormModalProps> = ({
                     shadowOffset: { width: 0, height: 6 },
                     shadowOpacity: 0.15,
                     shadowRadius: 12,
-                    elevation: 8
+                    elevation: 2
                   }}
                 >
                   <View className="bg-primary-50 p-1 rounded-full mr-2.5">
