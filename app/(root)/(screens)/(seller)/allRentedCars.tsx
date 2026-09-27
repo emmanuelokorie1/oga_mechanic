@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useEffect } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl, TextInput, Modal } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -40,9 +40,16 @@ const AllRentedCars = () => {
     totalProductsCount,
     roleName,
     merchantId,
+    isVehicleRental,
   } = useSellerUploadGate();
 
   const activeRole = roleName;
+
+  useEffect(() => {
+    if (isVehicleRental === false) {
+      router.replace(sellerRoutes.allCars as any);
+    }
+  }, [isVehicleRental]);
 
   // Fetch rental cars from API with search and filter parameters
   const {

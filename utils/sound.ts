@@ -1,4 +1,4 @@
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
 /**
@@ -11,28 +11,27 @@ export const playMechanicNotificationSound = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // Set audio mode to ensure it plays loudly even in silent mode
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
-      shouldDuckAndroid: true,
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'duckOthers',
     });
 
-    const { sound } = await Audio.Sound.createAsync(
-      require('@/assets/sounds/mechanic-new-notification.mp3'),
-      { 
-        shouldPlay: true,
-        volume: 1.0, // Max software volume
-        isMuted: false,
-      }
+    const player = createAudioPlayer(
+      require('@/assets/sounds/mechanic-new-notification.mp3')
     );
-    
-    // Auto unload when finished
-    sound.setOnPlaybackStatusUpdate(status => {
-      if (status.isLoaded && status.didJustFinish) {
-        sound.unloadAsync();
+    player.volume = 1.0; // Max software volume
+    player.play();
+
+    // Auto release player when playback finishes
+    const subscription = player.addListener('playbackStatusUpdate', status => {
+      if (status.didJustFinish) {
+        subscription.remove();
+        player.release();
       }
     });
   } catch (error) {
     console.warn('Could not play notification sound:', error);
   }
 };
+

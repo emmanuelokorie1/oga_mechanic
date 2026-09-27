@@ -40,7 +40,10 @@ api.interceptors.request.use(
       // Add requestType: "inbound" only to POST/PUT/PATCH requests (skip object-spread on FormData)
       if (['post', 'put', 'patch'].includes(config.method?.toLowerCase() || '')) {
         if (config.data instanceof FormData) {
-          config.data.append('requestType', 'inbound');
+          config.headers['Content-Type'] = 'multipart/form-data';
+          if (!(config.data as any).getAll || (config.data as any).getAll('requestType').length === 0) {
+            config.data.append('requestType', 'inbound');
+          }
         } else if (
           config.data !== undefined &&
           config.data !== null &&

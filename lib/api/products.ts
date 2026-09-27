@@ -135,6 +135,7 @@ export interface ProductDetailResponse {
     ordering: number;
     created_at: string;
   }>;
+  image?: string;
   vehicle_compatibility: any[];
   is_rental: boolean;
   delivery_option: string;

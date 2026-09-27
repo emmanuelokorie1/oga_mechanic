@@ -18,6 +18,8 @@ import { decodeVINWithImage } from '@/utils/vinDecoder'
 import { sellerRoutes } from '@/constants/routes'
 import { useCategories } from '@/hooks/useProducts'
 import { useVehicleMakes } from '@/hooks/useVehicleMakes'
+import { useActiveRoleProfile } from '@/hooks/useUserProfile'
+import { showToast } from '@/utils/toastUtils'
 import CustomAlert from '@/components/CustomAlert'
 import { useCustomAlert } from '@/hooks/useCustomAlert'
 import {
@@ -124,6 +126,15 @@ const FormObserver = ({ vehicleMakes }: { vehicleMakes: any }) => {
 };
 
 const UploadCarToRent = () => {
+  const { isVehicleRental } = useActiveRoleProfile();
+
+  useEffect(() => {
+    if (isVehicleRental === false) {
+      showToast.error("Car rental upload is only available for Vehicle Rental accounts.");
+      router.replace(sellerRoutes.uploadProducts as any);
+    }
+  }, [isVehicleRental]);
+
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);

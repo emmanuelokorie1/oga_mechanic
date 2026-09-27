@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
-import { Formik } from "formik";
+import { Formik, FormikProps } from "formik";
 import * as Yup from "yup";
 import * as ImagePicker from "expo-image-picker";
 import {
@@ -43,6 +43,7 @@ import ProfileCompletionModal from "@/components/modals/ProfileCompletionModal";
 import ExpertiseRecordItem from "@/components/mechanic/ExpertiseRecordItem";
 import SelfieUpload from "@/components/SelfieUpload";
 import CustomAlert from "@/components/CustomAlert";
+import SuccessModal from "@/components/modals/SuccessModal";
 import { useCustomAlert } from "@/hooks/useCustomAlert";
 import { userAPI } from "@/lib/api/user";
 import { mechanicAPI } from "@/lib/api/mechanic";
@@ -99,6 +100,7 @@ const CompleteKYC = () => {
   const submitExpertiseMutation = useSubmitVehicleExpertise();
   
   const [showLivenessModal, setShowLivenessModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const { visible, alertConfig, hideAlert, showSuccess, showError, showWarning } = useCustomAlert()
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isLoadingExpertise, setIsLoadingExpertise] = useState(true);
@@ -136,6 +138,50 @@ const CompleteKYC = () => {
   });
 
   const [isPendingApproval, setIsPendingApproval] = useState(false);
+  const formikRef = useRef<FormikProps<FormValues>>(null);
+
+  const checkIsStep1Valid = () => {
+    const vals = formikRef.current ? formikRef.current.values : initialFormValues;
+    return Boolean(
+      vals.location &&
+      vals.state &&
+      vals.lga &&
+      vals.bio &&
+      vals.nin_number &&
+      vals.specializations &&
+      vals.specializations.length > 0 &&
+      selfie?.uri &&
+      ninDocument?.uri
+    );
+  };
+
+  const handleStepSwitch = (targetStep: number) => {
+    if (targetStep === currentStep) return;
+    if (targetStep === 2) {
+      if (!checkIsStep1Valid()) {
+        showWarning(
+          "Incomplete Profile",
+          "Please complete all required fields and upload documents in Step 1 before proceeding."
+        );
+        return;
+      }
+      if (formikRef.current) {
+        const { dirty } = formikRef.current;
+        const hasNewImages = Boolean(
+          (selfie?.uri && !selfie.uri.startsWith("http")) ||
+          (ninDocument?.uri && !ninDocument.uri.startsWith("http")) ||
+          (certificateOfLearning?.uri && !certificateOfLearning.uri.startsWith("http"))
+        );
+        if (dirty || hasNewImages) {
+          formikRef.current.handleSubmit();
+          return;
+        }
+      }
+      setCurrentStep(2);
+    } else {
+      setCurrentStep(1);
+    }
+  };
 
 
   // Cleanup expertise records on unmount to prevent stale data
@@ -158,16 +204,91 @@ const CompleteKYC = () => {
           
           setIsPendingApproval(Boolean(kyc?.is_complete && !profile?.is_approved));
           
+          // Extract specialization IDs whether they are objects [{ id: 8, name: "..." }] or strings/numbers
+          const extractedSpecs = Array.isArray(profile.specializations)
+            ? profile.specializations.map((item: any) => {
+                if (typeof item === 'object' && item !== null) {
+                  return String(item.id || item.value || '');
+                }
+                return String(item);
+              }).filter(Boolean)
+            : [];
+
+          // Infer state if missing from backend (check Nigerian states by LGA first, then location string)
+          let resolvedState = profile.state || "";
+          if (!resolvedState && profile.lga) {
+            const currentLga = profile.lga.toLowerCase();
+            const matchedState = nigerianStates.find(state => {
+              const lgas = getLGAs(state.name);
+              return lgas.some(lga => lga.toLowerCase() === currentLga);
+            });
+            if (matchedState) {
+              resolvedState = matchedState.name;
+            }
+          }
+          if (!resolvedState && profile.location) {
+            const currentLocation = profile.location.toLowerCase();
+            const matchedState = nigerianStates.find(state => 
+              currentLocation.includes(state.name.toLowerCase())
+            );
+            if (matchedState) {
+              resolvedState = matchedState.name;
+            }
+          }
+
           setInitialFormValues({
             location: profile.location || "",
             latitude: profile.latitude || "",
             longitude: profile.longitude || "",
-            state: profile.state || "",
+            state: resolvedState,
             lga: profile.lga || "",
             bio: profile.bio || "",
             nin_number: profile.nin_number || "",
-            specializations: Array.isArray(profile.specializations) ? profile.specializations.map(String) : [],
+            specializations: extractedSpecs,
           });
+
+          // Preload uploaded documents if already existing on the profile
+          if (profile.selfie) {
+            setSelfie({
+              uri: profile.selfie,
+              name: 'selfie.jpg',
+              type: 'image/jpeg',
+              size: 0,
+            });
+          }
+
+          if (profile.nin_document) {
+            setNinDocument({
+              uri: profile.nin_document,
+              name: 'nin_document.jpg',
+              type: 'image/jpeg',
+              size: 0,
+            });
+          }
+
+          const certOfLearning = (profile as any).certificate_of_learning;
+          if (certOfLearning) {
+            setCertificateOfLearning({
+              uri: certOfLearning,
+              name: 'certificate_of_learning.jpg',
+              type: 'image/jpeg',
+              size: 0,
+            });
+          }
+
+          // Preload vehicle expertise from profile if present
+          if (Array.isArray(profile.vehicle_expertise) && profile.vehicle_expertise.length > 0) {
+            setExpertiseRecords(profile.vehicle_expertise.map((item: any) => ({
+              vehicle_make_id: String(item.vehicle_make_id || item.vehicle_make?.id || ""),
+              years_of_experience: String(item.years_of_experience || ""),
+              certification_level: item.certification_level || "basic"
+            })));
+          }
+
+          // If Step 1 is already complete and user didn't explicitly request ?step=1, default straight to Step 2
+          if (!params.step && kyc?.is_complete && (!profile.vehicle_expertise || profile.vehicle_expertise.length === 0)) {
+            setCurrentStep(2);
+          }
         }
 
         // Fetch Dropdown Options
@@ -400,8 +521,7 @@ const CompleteKYC = () => {
       formData.append('specializations', JSON.stringify(values.specializations));
 
       const getFileObject = (image: any) => {
-        if (!image || !image.uri) return null;
-        if (image.uri.startsWith('http')) return image.uri;
+        if (!image || !image.uri || image.uri.startsWith('http')) return null;
         return {
           uri: image.uri,
           name: image.name || `file_${Date.now()}.jpg`,
@@ -463,12 +583,7 @@ const CompleteKYC = () => {
     submitExpertiseMutation.mutate(payload, {
       onSuccess: () => {
         useProfileStore.getState().setIsProfileComplete(true);
-        showSuccess("Verification Complete! 🎉", "Your profile and vehicle expertise have been submitted successfully. We'll review your application within 24 hours.", {
-            onButtonPress: () => {
-                hideAlert();
-                router.replace(mechanicRoutes.home as any);
-            }
-        });
+        setShowSuccessModal(true);
       },
       onError: (error: any) => {
         const errMsg = error?.response?.data?.message || error?.message || "Failed to save expertise.";
@@ -527,6 +642,94 @@ const CompleteKYC = () => {
         </View>
       </View>
 
+      {/* Interactive Stepper Navigation Bar */}
+      <View className="bg-white px-4 pt-2 pb-3 border-b border-gray-100 flex-row items-center">
+        {/* Step 1 Tab */}
+        <TouchableOpacity
+          onPress={() => handleStepSwitch(1)}
+          activeOpacity={0.7}
+          className={`flex-1 flex-row items-center p-2.5 rounded-xl border ${
+            currentStep === 1
+              ? "bg-primary-50/60 border-primary-500"
+              : "bg-gray-50 border-gray-100"
+          }`}
+        >
+          <View
+            className={`w-7 h-7 rounded-full items-center justify-center mr-2.5 ${
+              currentStep === 1
+                ? "bg-primary-500"
+                : checkIsStep1Valid()
+                ? "bg-emerald-500"
+                : "bg-gray-300"
+            }`}
+          >
+            {checkIsStep1Valid() && currentStep !== 1 ? (
+              <CheckCircleIcon size={16} color="white" strokeWidth={2.5} />
+            ) : (
+              <Text className="text-white text-xs font-NunitoExtraBold">1</Text>
+            )}
+          </View>
+          <View className="flex-1">
+            <Text
+              numberOfLines={1}
+              className={`text-xs font-NunitoBold ${
+                currentStep === 1 ? "text-primary-600" : "text-gray-700"
+              }`}
+            >
+              Profile Info
+            </Text>
+            <Text numberOfLines={1} className="text-[10px] text-gray-400 font-NunitoMedium">
+              {checkIsStep1Valid() ? "Completed" : "Required"}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Arrow Divider */}
+        <View className="px-2">
+          <Text className="text-gray-300 text-xs font-NunitoBold">→</Text>
+        </View>
+
+        {/* Step 2 Tab */}
+        <TouchableOpacity
+          onPress={() => handleStepSwitch(2)}
+          activeOpacity={0.7}
+          className={`flex-1 flex-row items-center p-2.5 rounded-xl border ${
+            currentStep === 2
+              ? "bg-primary-50/60 border-primary-500"
+              : "bg-gray-50 border-gray-100"
+          }`}
+        >
+          <View
+            className={`w-7 h-7 rounded-full items-center justify-center mr-2.5 ${
+              currentStep === 2
+                ? "bg-primary-500"
+                : expertiseRecords.length > 0
+                ? "bg-emerald-500"
+                : "bg-gray-300"
+            }`}
+          >
+            {expertiseRecords.length > 0 && currentStep !== 2 ? (
+              <CheckCircleIcon size={16} color="white" strokeWidth={2.5} />
+            ) : (
+              <Text className="text-white text-xs font-NunitoExtraBold">2</Text>
+            )}
+          </View>
+          <View className="flex-1">
+            <Text
+              numberOfLines={1}
+              className={`text-xs font-NunitoBold ${
+                currentStep === 2 ? "text-primary-600" : "text-gray-700"
+              }`}
+            >
+              Expertise
+            </Text>
+            <Text numberOfLines={1} className="text-[10px] text-gray-400 font-NunitoMedium">
+              {expertiseRecords.length > 0 ? `${expertiseRecords.length} brand(s)` : "Required"}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
       <KeyboardAwareScrollView 
         className="flex-1" 
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 24 }}
@@ -553,12 +756,13 @@ const CompleteKYC = () => {
             )}
 
             <Formik
+              innerRef={formikRef}
               enableReinitialize={true}
               initialValues={initialFormValues}
               validationSchema={step1ValidationSchema}
               onSubmit={handleStep1Submit}
             >
-              {({ handleChange, handleSubmit, values, errors, touched, setFieldValue }) => (
+              {({ handleChange, handleSubmit, values, errors, touched, setFieldValue, dirty }) => (
                 <View className="pb-10">
                   <View className="bg-white px-4 py-2 rounded-2xl mb-5 border border-gray-100 shadow-sm">
                     <SectionHeader icon={UserIcon} title="Professional Profile" />
@@ -674,20 +878,43 @@ const CompleteKYC = () => {
                     </View>
                   </View>
 
-                  <TouchableOpacity
-                    onPress={() => handleSubmit()}
-                    className={`py-4 rounded-xl mb-8 items-center shadow-md ${submitKYCMutation.isPending ? 'bg-primary-300' : 'bg-primary-500'}`}
-                    disabled={submitKYCMutation.isPending}
-                  >
-                    {submitKYCMutation.isPending ? (
-                      <ActivityIndicator color="white" />
-                    ) : (
-                      <Text className="text-white font-NunitoBold text-lg">Next: Vehicle Expertise</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
-            </Formik>
+                    {(() => {
+                      const hasNewImages = Boolean(
+                        (selfie?.uri && !selfie.uri.startsWith("http")) ||
+                        (ninDocument?.uri && !ninDocument.uri.startsWith("http")) ||
+                        (certificateOfLearning?.uri && !certificateOfLearning.uri.startsWith("http"))
+                      );
+                      const hasChanges = dirty || hasNewImages;
+
+                      const handleNext = () => {
+                        if (!hasChanges && checkIsStep1Valid()) {
+                          setCurrentStep(2);
+                        } else {
+                          handleSubmit();
+                        }
+                      };
+
+                      return (
+                        <TouchableOpacity
+                          onPress={handleNext}
+                          className={`py-4 rounded-xl mb-8 items-center shadow-md ${
+                            submitKYCMutation.isPending ? "bg-primary-300" : "bg-primary-500"
+                          }`}
+                          disabled={submitKYCMutation.isPending}
+                        >
+                          {submitKYCMutation.isPending ? (
+                            <ActivityIndicator color="white" />
+                          ) : (
+                            <Text className="text-white font-NunitoBold text-lg">
+                              {hasChanges ? "Save & Continue to Expertise" : "Next: Vehicle Expertise →"}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })()}
+                  </View>
+                )}
+              </Formik>
           </View>
         ) : (
           <View className="pb-10">
@@ -760,7 +987,7 @@ const CompleteKYC = () => {
             <TouchableOpacity
               onPress={handleStep2Submit}
               activeOpacity={0.9}
-              className={`py-5 rounded-2xl mb-12 flex-row items-center justify-center shadow-lg ${
+              className={`py-5 rounded-2xl mb-4 flex-row items-center justify-center ${
                 submitExpertiseMutation.isPending ? 'bg-primary-400' : 'bg-primary-600'
               }`}
               style={{
@@ -780,6 +1007,14 @@ const CompleteKYC = () => {
                   <Text className="text-white font-NunitoExtraBold text-lg ml-3">Complete Verification</Text>
                 </>
               )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setCurrentStep(1)}
+              activeOpacity={0.7}
+              className="py-3 items-center mb-10"
+            >
+              <Text className="text-gray-500 font-NunitoBold text-base">← Back to Profile Info</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -802,6 +1037,17 @@ const CompleteKYC = () => {
           buttonText={alertConfig.buttonText}
         />
       )}
+
+      <SuccessModal
+        isVisible={showSuccessModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          router.replace(mechanicRoutes.home as any);
+        }}
+        title="Verification Complete! 🎉"
+        message="Your profile and vehicle expertise have been submitted successfully. We'll review your application within 24 hours."
+        buttonText="Go to Dashboard"
+      />
     </SafeAreaView>
   );
 };

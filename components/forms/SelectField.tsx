@@ -172,7 +172,7 @@ const SelectField: React.FC<SelectFieldProps> = ({
           className={`flex-row items-center justify-between px-4 py-3.5 ${disabled ? "opacity-50" : ""}`}
         >
           <View className="flex-row items-center flex-1 min-w-0">
-            {selectedOption?.imageUri ? (
+            {selectedOption?.imageUri && (
               <View className="w-9 h-9 rounded-full mr-3 bg-gray-100 overflow-hidden border border-gray-100">
                 <Image
                   source={{ uri: selectedOption.imageUri }}
@@ -180,9 +180,7 @@ const SelectField: React.FC<SelectFieldProps> = ({
                   resizeMode="cover"
                 />
               </View>
-            ) : (
-                <View className={`w-2 h-2 rounded-full mr-3 ${selectedOption ? 'bg-primary-500' : 'bg-gray-300'}`} />
-            )}
+            ) }
             <Text
               className={`text-[14px] font-NunitoMedium flex-1 ${selectedOption ? "text-gray-900" : "text-gray-400"}`}
               numberOfLines={1}

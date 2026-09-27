@@ -398,7 +398,9 @@ const SellerProfileDetails = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingSection, setEditingSection] = useState<string | null>(null);
 
-  const merchantProfile = activeProfileData?.data?.merchant_profile || activeProfileData?.data?.vehicle_rental_profile;
+  const merchantProfile = isVehicleRental
+    ? activeProfileData?.data?.vehicle_rental_profile
+    : activeProfileData?.data?.merchant_profile;
   const userObj = merchantProfile?.user || (primaryProfileData?.data as any);
   const displayName = merchantProfile?.store_name || merchantProfile?.company_name || (userObj?.first_name && userObj?.last_name ? `${userObj.first_name} ${userObj.last_name}`.trim() : "Business");
   const profileImage = merchantProfile?.selfie || merchantProfile?.profile_picture || (userObj as any)?.profileImage || "";

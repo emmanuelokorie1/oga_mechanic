@@ -18,13 +18,15 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // ── Animated Tab Button ──────────────────────────────────────────────────
 const TabButton = ({ focused, icon: Icon, activeIcon: ActiveIcon, label, isShop, onPress }: any) => {
-  const scale = useRef(new Animated.Value(focused ? 1.1 : 0.85)).current;
+  const activeScale = isShop ? 0.98 : 1.1;
+  const inactiveScale = 0.85;
+  const scale = useRef(new Animated.Value(focused ? activeScale : inactiveScale)).current;
   const opacity = useRef(new Animated.Value(focused ? 1 : 0.85)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.spring(scale, {
-        toValue: focused ? 1.1 : 0.85,
+        toValue: focused ? activeScale : inactiveScale,
         friction: 5,
         tension: 60,
         useNativeDriver: true,
@@ -35,7 +37,7 @@ const TabButton = ({ focused, icon: Icon, activeIcon: ActiveIcon, label, isShop,
         useNativeDriver: true,
       }),
     ]).start();
-  }, [focused]);
+  }, [focused, activeScale, inactiveScale]);
 
   if (isShop) {
     return (

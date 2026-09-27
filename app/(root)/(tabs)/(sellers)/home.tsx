@@ -342,7 +342,7 @@ const SellerHome = () => {
         undefined,
         undefined,
         merchantId,
-        isVehicleRental ? true : undefined
+        isVehicleRental ? true : false
       );
       const data = response.data;
       const list = Array.isArray(data) ? data : (data?.results || []);
@@ -383,8 +383,9 @@ const SellerHome = () => {
   const isPendingApproval = Boolean(
     activeProfileQuery.data?.data?.kyc?.is_complete &&
     !(
-      (activeProfileQuery.data?.data as any)?.merchant_profile?.is_approved ||
-      (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_approved
+      isVehicleRental
+        ? (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_approved
+        : (activeProfileQuery.data?.data as any)?.merchant_profile?.is_approved
     )
   );
 
@@ -413,6 +414,10 @@ const SellerHome = () => {
     }
 
     if (action === 'uploadSpareParts') {
+      if (isVehicleRental) {
+        router.push(sellerRoutes.uploadCarToRent as any);
+        return;
+      }
       router.push(sellerRoutes.uploadSpareParts as any);
       return;
     }
@@ -487,7 +492,9 @@ const SellerHome = () => {
             fallbackVariant={
               (!activeProfileQuery.isLoading && (!isProfileComplete || isPendingApproval))
                 ? 'kyc_incomplete'
-                : 'seller'
+                : isVehicleRental
+                  ? 'vehicle_rental'
+                  : 'seller'
             }
             onSellerAction={handleCta}
           />
@@ -555,7 +562,7 @@ const SellerHome = () => {
               <Text className="text-lg font-NunitoBold text-gray-900">
                 {isVehicleRental ? "Latest Rentals" : "Latest Products"}
               </Text>
-              <TouchableOpacity onPress={() => router?.push(sellerRoutes.profile as any)}>
+              <TouchableOpacity onPress={() => router?.push(sellerRoutes.products as any)}>
                 <Text className="text-red-600 font-NunitoBold">Manage all</Text>
               </TouchableOpacity>
             </View>

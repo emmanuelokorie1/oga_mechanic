@@ -84,9 +84,10 @@
       [
         "@react-native-google-signin/google-signin",
         {
-          "iosUrlScheme": "com.googleusercontent.apps.TODO_IOS_CLIENT_ID_PREFIX"
+          "iosUrlScheme": "com.googleusercontent.apps.113954419006-6a0imrer5lb7t626culnfluj0t45mni7"
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

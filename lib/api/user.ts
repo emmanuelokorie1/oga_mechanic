@@ -1156,78 +1156,42 @@ export const userAPI = {
   },
 
   submitMechanicKYC: async (formData: FormData) => {
-    const token = await AsyncStorage.getItem('auth_token');
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/users/profile/mechanic/`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': token ? `Bearer ${token}` : '',
-        'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
-      },
-      body: formData,
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch (e) {
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-      throw { response: { data: errorData } };
+    try {
+      const response = await api.put('/users/profile/mechanic/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
     }
-    
-    return await response.json();
   },
 
   submitMerchantKYC: async (formData: FormData) => {
-    const token = await AsyncStorage.getItem('auth_token');
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/users/profile/merchant/`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': token ? `Bearer ${token}` : '',
-        'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
-      },
-      body: formData,
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch (e) {
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-      throw { response: { data: errorData } };
+    try {
+      const response = await api.put('/users/profile/merchant/', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
     }
-    
-    return await response.json();
   },
 
   submitVehicleRentalKYC: async (formData: FormData) => {
-    const token = await AsyncStorage.getItem('auth_token');
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}${VEHICLE_RENTAL_ENDPOINTS.PROFILE}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': token ? `Bearer ${token}` : '',
-        'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
-      },
-      body: formData,
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch (e) {
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-      throw { response: { data: errorData } };
+    try {
+      const response = await api.put(VEHICLE_RENTAL_ENDPOINTS.PROFILE, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
     }
-    
-    return await response.json();
   },
 
 

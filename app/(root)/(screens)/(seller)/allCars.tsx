@@ -42,9 +42,16 @@ const AllCars = () => {
     totalProductsCount,
     roleName,
     merchantId,
+    isVehicleRental,
   } = useSellerUploadGate();
 
   const activeRole = roleName;
+
+  useEffect(() => {
+    if (isVehicleRental) {
+      router.replace(sellerRoutes.allRentedCars as any);
+    }
+  }, [isVehicleRental]);
 
   // Vehicle makes for filter options
   const { data: vehicleMakes = [] } = useVehicleMakes();
@@ -270,7 +277,7 @@ const AllCars = () => {
           activeOpacity={0.8}
           onPress={() => {
             router.push({
-              pathname: sellerRoutes.productDetailsDetailed as any,
+              pathname: sellerRoutes.productDetails as any,
               params: { 
                 productType: 'car',
                 productId: item.id 

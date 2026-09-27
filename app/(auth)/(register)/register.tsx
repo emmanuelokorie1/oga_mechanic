@@ -16,6 +16,7 @@ import { StatusBar } from "expo-status-bar";
 import { formatPhoneNumber } from "@/utils/phoneUtils";
 import Svg, { Path } from "react-native-svg";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useGoogleSignIn } from "@/hooks/useGoogleSignIn";
 
 const GoogleLogoSvg = ({ size = 20 }: { size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
@@ -126,8 +127,22 @@ const Register = () => {
     }
   };
 
+  const { signIn: googleSignUp, isNativeAvailable: isGoogleAvailable } = useGoogleSignIn();
+
   const handleGoogleSignUp = async () => {
-    showError('Coming Soon', 'Google Sign-Up is currently unavailable.');
+    if (!isGoogleAvailable) {
+      showError('Coming Soon', 'Google Sign-Up is currently unavailable. Please use a development build.');
+      return;
+    }
+    try {
+      const response = await googleSignUp();
+      if (response && response.type === 'success') {
+        router.replace(routes?.userHome as any);
+      }
+    } catch (error) {
+      console.log('Google Sign-Up Error:', error);
+      showError('Sign Up Failed', 'Could not sign up with Google');
+    }
   };
 
   return (
@@ -155,28 +170,24 @@ const Register = () => {
         {() => (
           <View className="px-5">
             {/* Name Fields */}
-            <View className="flex-1">
-              <FormikInput
-                name="first_name"
-                label="First Name"
-                placeholder="John"
-                containerStyle=""
-                required={true}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-            </View>
-            <View className="flex-1">
-              <FormikInput
-                name="last_name"
-                label="Last Name"
-                placeholder="Doe"
-                containerStyle=""
-                required={true}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-            </View>
+            <FormikInput
+              name="first_name"
+              label="First Name"
+              placeholder="John"
+              containerStyle=""
+              required={true}
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
+            <FormikInput
+              name="last_name"
+              label="Last Name"
+              placeholder="Doe"
+              containerStyle=""
+              required={true}
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
 
              {/* Phone Number Input */}
             <FormikInput
@@ -239,6 +250,23 @@ const Register = () => {
               loading={isSubmitting}
               disabled={isSubmitting}
             />
+
+            {/* Divider */}
+            <View className="flex-row items-center my-5">
+              <View className="flex-1 h-[1px] bg-gray-200" />
+              <Text className="mx-4 text-gray-500 font-semibold text-sm">Or sign up with</Text>
+              <View className="flex-1 h-[1px] bg-gray-200" />
+            </View>
+
+            {/* Google Sign-Up Button */}
+            <TouchableOpacity
+              onPress={handleGoogleSignUp}
+              className="w-full flex-row items-center justify-center bg-gray-100 py-3.5 px-6 rounded-xl mb-6 active:opacity-90"
+              activeOpacity={0.7}
+            >
+              <GoogleLogoSvg size={20} />
+              <Text className="ml-3 font-semibold text-gray-700 text-[1.1rem]">Sign up with Google</Text>
+            </TouchableOpacity>
 
             <AuthNavigateLink
               onPress={() => router?.push(routes?.signIn)}

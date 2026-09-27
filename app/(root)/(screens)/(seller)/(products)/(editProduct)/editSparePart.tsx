@@ -45,13 +45,15 @@ const SectionCard = ({ number, badgeBg, title, subtitle, rightAction, children }
   const bgClass = badgeBg || badgeColorMap[String(number)] || 'bg-blue-500';
   return (
     <View className="bg-white rounded-2xl p-5 mb-4 border border-gray-200">
-      <View className="flex-row items-center mb-4">
-        <View className={`w-8 h-8 ${bgClass} rounded-lg items-center justify-center mr-3`}>
-          <Text className="text-white font-NunitoBold text-sm">{number}</Text>
-        </View>
-        <View className="flex-1">
-          <Text className="text-lg font-NunitoBold text-gray-900">{title}</Text>
-          <Text className="text-xs text-gray-500 font-NunitoMedium">{subtitle}</Text>
+      <View className="flex-row items-center justify-between mb-4">
+        <View className="flex-row items-center flex-1 mr-2">
+          <View className={`w-8 h-8 ${bgClass} rounded-lg items-center justify-center mr-3`}>
+            <Text className="text-white font-NunitoBold text-sm">{number}</Text>
+          </View>
+          <View className="flex-1">
+            <Text className="text-lg font-NunitoBold text-gray-900">{title}</Text>
+            <Text className="text-xs text-gray-500 font-NunitoMedium">{subtitle}</Text>
+          </View>
         </View>
         {rightAction}
       </View>

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { createAudioPlayer } from 'expo-audio';
 
 interface NewOrderBannerProps {
   order: {
@@ -21,10 +21,16 @@ export const NewOrderBanner: React.FC<NewOrderBannerProps> = ({ order, onView, o
 
   async function playSound() {
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3' } // A vibrant notification ping
-      );
-      await sound.playAsync();
+      const player = createAudioPlayer({
+        uri: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3',
+      });
+      player.play();
+      const subscription = player.addListener('playbackStatusUpdate', status => {
+        if (status.didJustFinish) {
+          subscription.remove();
+          player.release();
+        }
+      });
     } catch (error) {
       console.log('Error playing sound:', error);
     }

@@ -1,7 +1,8 @@
 import React from "react";
-import { View, Text, TouchableOpacity, TextInput } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { TrashIcon } from "react-native-heroicons/outline";
 import SelectField from "@/components/forms/SelectField";
+import InputField from "@/components/InputField";
 
 interface ExpertiseRecord {
   vehicle_make_id: string;
@@ -70,12 +71,10 @@ const ExpertiseRecordItem: React.FC<ExpertiseRecordItemProps> = ({
       {/* Stats Row */}
       <View className="flex-row space-x-3 gap-3">
         <View className="flex-1">
-          <Text className="text-[13px] font-NunitoBold text-gray-500 uppercase tracking-wider mb-3 ml-1">Experience</Text>
-          <TextInput
-            className="bg-gray-50/50 border border-gray-400 rounded-xl px-4 py-[14px] text-[14px] font-NunitoBold text-gray-900"
+          <InputField
+            label="Experience"
             placeholder="Years"
             keyboardType="numeric"
-            placeholderTextColor="#9CA3AF"
             value={record.years_of_experience}
             onChangeText={(val) => onUpdate("years_of_experience", val)}
           />

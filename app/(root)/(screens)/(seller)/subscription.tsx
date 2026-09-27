@@ -42,10 +42,9 @@ const SellerSubscription = () => {
   const { data: roleProfile, isVehicleRental, isLoading: isProfileLoading } = useActiveRoleProfile();
 
   // Extract subscription data based on role
-  const profile =
-    roleProfile?.data?.merchant_profile ||
-    roleProfile?.data?.vehicle_rental_profile ||
-    roleProfile?.data?.mechanic_profile;
+  const profile = isVehicleRental
+    ? roleProfile?.data?.vehicle_rental_profile
+    : roleProfile?.data?.merchant_profile;
   const isSubscribed = profile?.is_subscribed || false;
   const expiresAt = profile?.subscription_expires_at;
 

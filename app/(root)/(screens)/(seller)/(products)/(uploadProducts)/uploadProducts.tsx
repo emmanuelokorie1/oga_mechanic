@@ -19,6 +19,8 @@ import { decodeVINWithImage } from '@/utils/vinDecoder'
 import { sellerRoutes } from '@/constants/routes'
 import { useCategories } from '@/hooks/useProducts'
 import { useVehicleMakes } from '@/hooks/useVehicleMakes'
+import { useActiveRoleProfile } from '@/hooks/useUserProfile'
+import { showToast } from '@/utils/toastUtils'
 import {
   deliveryOptions,
   engineSizeOptions,
@@ -44,30 +46,47 @@ const STEPS = [
 
 // ─── SectionCard ───────────────────────────────────────────────────────────────
 
-const SectionCard = ({
-  accentColor, icon, title, subtitle, rightAction, children,
-}: {
-  accentColor: string
-  icon: string
-  title: string
-  subtitle: string
-  rightAction?: React.ReactNode
-  children: React.ReactNode
-}) => (
-  <View style={[styles.sectionCard, { borderTopColor: accentColor }]}>
-    <View style={styles.sectionHeader}>
-      <View style={[styles.sectionIcon, { backgroundColor: `${accentColor}18` }]}>
-        <Text style={{ fontSize: 16 }}>{icon}</Text>
+interface SectionCardProps {
+  number: number | string;
+  badgeBg?: string;
+  title: string;
+  subtitle: string;
+  rightAction?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+const badgeColorMap: Record<string, string> = {
+  '1': 'bg-blue-500',
+  '2': 'bg-green-500',
+  '3': 'bg-purple-500',
+  '4': 'bg-orange-500',
+  '5': 'bg-amber-500',
+  '6': 'bg-red-500',
+  '7': 'bg-indigo-500',
+};
+
+const SectionCard = ({ number, badgeBg, title, subtitle, rightAction, children }: SectionCardProps) => {
+  const bgClass = badgeBg || badgeColorMap[String(number)] || 'bg-blue-500';
+  return (
+    <View className="bg-white rounded-2xl p-5 mb-4 border border-gray-200">
+      <View className="flex-row items-center justify-between mb-4">
+        <View className="flex-row items-center flex-1 mr-2">
+          <View className={`w-8 h-8 ${bgClass} rounded-lg items-center justify-center mr-3`}>
+            <Text className="text-white font-NunitoBold text-sm">{number}</Text>
+          </View>
+          <View className="flex-1">
+            <Text className="text-lg font-NunitoBold text-gray-900">{title}</Text>
+            <Text className="text-xs text-gray-500 font-NunitoMedium">{subtitle}</Text>
+          </View>
+        </View>
+        {rightAction}
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+      <View className="gap-4">
+        {children}
       </View>
-      {rightAction}
     </View>
-    {children}
-  </View>
-)
+  );
+};
 
 // ─── TogglePill ────────────────────────────────────────────────────────────────
 
@@ -132,6 +151,15 @@ const Stepper = ({ currentStep }: { currentStep: number }) => (
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
 const UploadProducts = () => {
+  const { isVehicleRental } = useActiveRoleProfile();
+
+  useEffect(() => {
+    if (isVehicleRental) {
+      showToast.error("Car sales upload is only available for Sellers/Merchants.");
+      router.replace(sellerRoutes.uploadCarToRent as any);
+    }
+  }, [isVehicleRental]);
+
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [currentStep, setCurrentStep] = useState(1)
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
@@ -517,7 +545,7 @@ const UploadProducts = () => {
                   {/* STEP 1 */}
                   {currentStep === 1 && (
                     <View style={styles.stepContent}>
-                      <SectionCard accentColor={PRIMARY} icon="🚗" title="Basic Information" subtitle="Make, model & year">
+                      <SectionCard number={1} title="Basic Information" subtitle="Make, model & year">
                         <VINInput name="vin" label="VIN" placeholder="Vehicle Identification Number" onVINLookup={handleVINLookup} />
                         <View className='pt-4'>
                           <SelectField
@@ -545,7 +573,7 @@ const UploadProducts = () => {
                         />
                       </SectionCard>
 
-                      <SectionCard accentColor={PRIMARY} icon="⚙️" title="Specifications" subtitle="Engine & drivetrain">
+                      <SectionCard number={2} title="Specifications" subtitle="Engine & drivetrain">
                         <SelectField
                           name="body_type" label="Body Type" placeholder="Select body type"
                           options={bodyTypeOptions} value={values.body_type}
@@ -590,7 +618,7 @@ const UploadProducts = () => {
                   {/* STEP 2 */}
                   {currentStep === 2 && (
                     <View style={styles.stepContent}>
-                      <SectionCard accentColor={PRIMARY} icon="🎨" title="Appearance" subtitle="Colors & dimensions">
+                      <SectionCard number={3} title="Appearance" subtitle="Colors & dimensions">
                         <FormikInput name="exterior_color" label="Exterior Color" placeholder="e.g. Midnight Black" type="text" />
                         <FormikInput name="interior_color" label="Interior Color" placeholder="e.g. Beige" type="text" />
                         <View style={styles.twoCol}>
@@ -603,7 +631,7 @@ const UploadProducts = () => {
                         </View>
                       </SectionCard>
 
-                      <SectionCard accentColor={PRIMARY} icon="✨" title="Features" subtitle="Amenities & safety tech">
+                      <SectionCard number={4} title="Features" subtitle="Amenities & safety tech">
                         <FeatureBadges
                           features={featureOptions}
                           selectedFeatures={selectedFeatures}
@@ -613,8 +641,7 @@ const UploadProducts = () => {
                       </SectionCard>
 
                       <SectionCard 
-                        accentColor={PRIMARY} 
-                        icon="📝" 
+                        number={5}
                         title="Description" 
                         subtitle="Sell the story"
                         rightAction={
@@ -653,7 +680,7 @@ const UploadProducts = () => {
                   {/* STEP 3 */}
                   {currentStep === 3 && (
                     <View style={styles.stepContent}>
-                      <SectionCard accentColor={PRIMARY} icon="💰" title="Pricing" subtitle="Set your asking price">
+                      <SectionCard number={6} title="Pricing" subtitle="Set your asking price">
                         <FormikInput name="price" label="Price (₦)" placeholder="e.g. 2,500,000" keyboardType="numeric" type="text" />
                         <FormikInput name="stock" label="Stock Quantity" placeholder="e.g. 1" keyboardType="numeric" type="text" />
                         <SelectField
@@ -671,7 +698,7 @@ const UploadProducts = () => {
 
                       </SectionCard>
 
-                      <SectionCard accentColor={PRIMARY} icon="🔨" title="Bidding" subtitle="Let buyers compete">
+                      <SectionCard number={7} title="Bidding" subtitle="Let buyers compete">
                         <View style={styles.switchRow}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.switchLabel}>Enable Bidding</Text>
@@ -787,16 +814,6 @@ const styles = StyleSheet.create({
   contextPct: { fontSize: 12, fontFamily: 'NunitoBold' },
   scrollContent: { padding: 16, paddingBottom: Platform.OS === 'android' ? 70 : 40 },
   stepContent: { gap: 14 },
-  sectionCard: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 18,
-    borderWidth: 1, borderColor: '#F3F4F6', borderTopWidth: 3,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
-  },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 },
-  sectionIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  sectionTitle: { fontSize: 15, fontFamily: 'NunitoBold', color: '#111827' },
-  sectionSubtitle: { fontSize: 11, fontFamily: 'NunitoMedium', color: '#9CA3AF', marginTop: 1 },
   fieldLabel: { fontSize: 14, fontFamily: 'NunitoSemiBold', color: '#374151', marginBottom: 8 },
   mileageRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   twoCol: { flexDirection: 'row', gap: 12 },

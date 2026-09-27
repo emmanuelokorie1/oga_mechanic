@@ -25,13 +25,16 @@ export const useSellerUploadGate = () => {
   const activeProfileQuery = isVehicleRental ? vehicleRentalProfileQuery : merchantProfileQuery;
 
   const isSubscribed = Boolean(
-    (activeProfileQuery.data?.data as any)?.merchant_profile?.is_subscribed ||
-    (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_subscribed
+    isVehicleRental
+      ? (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_subscribed
+      : (activeProfileQuery.data?.data as any)?.merchant_profile?.is_subscribed
   );
 
   const isPendingApproval = Boolean(
     activeProfileQuery.data?.data?.kyc?.is_complete && 
-    !((activeProfileQuery.data?.data as any)?.merchant_profile?.is_approved || (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_approved)
+    !(isVehicleRental
+      ? (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_approved
+      : (activeProfileQuery.data?.data as any)?.merchant_profile?.is_approved)
   );
 
   // 3. Merchant ID safely extracted
@@ -40,17 +43,20 @@ export const useSellerUploadGate = () => {
     ? (profileData?.data as any)?.user?.id || (profileData?.data as any)?.user_id || (profileData as any)?.user_id
     : (profileData?.data as any)?.user_id || (profileData as any)?.user_id;
 
-  // 4. Products query (shares cache with product.tsx)
+  const CAR_CATEGORY_ID = 23;
+
+  // 4. Products query (shares cache with product.tsx, role-isolated)
   const { data: allProducts = [] } = useQuery({
-    queryKey: ['products', merchantId, 'all'],
+    queryKey: ['products', merchantId, isVehicleRental ? 'rentals' : 'seller_products'],
     queryFn: async () => {
       const response = await productsAPI.getProducts(
+        isVehicleRental ? CAR_CATEGORY_ID : undefined,
         undefined,
         undefined,
         undefined,
         undefined,
-        undefined,
-        merchantId
+        merchantId,
+        isVehicleRental ? true : false
       );
       const data = response.data;
       return Array.isArray(data) ? data : (data?.results || []);

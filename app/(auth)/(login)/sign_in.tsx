@@ -16,6 +16,7 @@ import { LoginCredentials } from "@/lib/api/user";
 import { useLogin } from "@/hooks/useLogin";
 import { useCustomAlert } from "@/hooks/useCustomAlert";
 import CustomAlert from "@/components/CustomAlert";
+import { useGoogleSignIn } from "@/hooks/useGoogleSignIn";
 import { ChevronDownIcon } from "react-native-heroicons/outline";
 import CountryStatePicker from "@/components/CountryStatePicker";
 import { Country } from 'react-native-country-picker-modal';
@@ -238,7 +239,6 @@ const SignIn = () => {
       }
 
       // Trigger biometric prompt
-      console.log("[Biometric] Requesting biometric authentication prompt...");
       const authResult = await biometricAuth.authenticate({
         title: 'Biometric Sign In',
         subtitle: 'Use Face ID / Touch ID to sign in',
@@ -327,8 +327,22 @@ const SignIn = () => {
     }
   };
 
+  const { signIn: googleSignIn, isNativeAvailable: isGoogleAvailable } = useGoogleSignIn();
+
   const handleGoogleSignIn = async () => {
-    showError('Coming Soon', 'Google Sign-In is currently unavailable.');
+    if (!isGoogleAvailable) {
+      showError('Coming Soon', 'Google Sign-In is currently unavailable. Please use a development build.');
+      return;
+    }
+    try {
+      const response = await googleSignIn();
+      if (response && response.type === 'success') {
+        router.replace(routes?.userHome as any);
+      }
+    } catch (error) {
+      console.log('Google Sign-In Error:', error);
+      showError('Sign In Failed', 'Could not sign in with Google');
+    }
   };
 
   // Memoize expensive calculations

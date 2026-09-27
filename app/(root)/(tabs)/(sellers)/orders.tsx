@@ -54,8 +54,16 @@ const Orders = () => {
   const allOrderItems: any[] = [];
 
 
+  const isVehicleRental = activeRole === 'vehicle_rental';
+
   orders.forEach((order: any) => {
     order.items?.forEach((item: any) => {
+      // Role isolation: Only include rental vehicles for vehicle_rental role,
+      // and only include non-rental products for merchant/seller role.
+      const isRentalItem = Boolean(item.product?.is_rental);
+      if (isVehicleRental && !isRentalItem) return;
+      if (!isVehicleRental && isRentalItem) return;
+
       allOrderItems.push(transformOrderItem(order, item));
     });
   });

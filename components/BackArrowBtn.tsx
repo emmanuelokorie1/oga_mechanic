@@ -13,7 +13,7 @@ const BackArrowBtn = ({ onPress, text, className }: { onPress?: () => void, text
           router?.back();
         }
       }}
-      className={`flex-row items-center shadow-sm ${className}`}
+      className={`flex-row items-center ${className}`}
     >
       <View className="flex-row items-center justify-center w-12 h-12 bg-white rounded-full">
         <icons.backBtn />

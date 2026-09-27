@@ -53,7 +53,11 @@ const Product = () => {
   const activeProfileQuery = isVehicleRental ? vehicleRentalProfileQuery : merchantProfileQuery;
 
   // Subscription check
-  const isSubscribed = Boolean((activeProfileQuery.data?.data as any)?.merchant_profile?.is_subscribed || (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_subscribed);
+  const isSubscribed = Boolean(
+    isVehicleRental
+      ? (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_subscribed
+      : (activeProfileQuery.data?.data as any)?.merchant_profile?.is_subscribed
+  );
 
   // Extract merchant ID safely from different profile structures
   const profileData = primaryProfileData;
@@ -63,7 +67,9 @@ const Product = () => {
 
   const isPendingApproval = Boolean(
     activeProfileQuery.data?.data?.kyc?.is_complete && 
-    !((activeProfileQuery.data?.data as any)?.merchant_profile?.is_approved || (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_approved)
+    !(isVehicleRental
+      ? (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_approved
+      : (activeProfileQuery.data?.data as any)?.merchant_profile?.is_approved)
   );
 
   const hasShownModalRef = React.useRef(false);
@@ -114,22 +120,23 @@ const Product = () => {
   // Fetch categories for reference (optional)
   const { data: categories } = useCategories();
 
-  // Query 1: Fetch ALL products (no category filter)
+  // Query 1: Fetch role-scoped active products
   const {
     data: allProducts = [],
     isLoading: loadingAll,
     error: errorAll,
     refetch: refetchAll,
   } = useQuery({
-    queryKey: ['products', merchantId, 'all'],
+    queryKey: ['products', merchantId, isVehicleRental ? 'rentals' : 'seller_products'],
     queryFn: async () => {
       const response = await productsAPI.getProducts(
-        undefined, // categoryId - no filter
+        isVehicleRental ? CAR_CATEGORY_ID : undefined, // categoryId
         undefined, // minPrice
         undefined, // maxPrice
         undefined, // offset
         undefined, // limit
-        merchantId  // merchantId
+        merchantId,  // merchantId
+        isVehicleRental ? true : false
       )
       
       const data = response.data;
@@ -143,7 +150,7 @@ const Product = () => {
     refetchOnReconnect: true,
   })
 
-  // Query 2: Fetch ONLY cars (filtered by car category)
+  // Query 2: Fetch ONLY cars (filtered by car category, sellers only)
   const {
     data: carProducts = [],
     isLoading: loadingCars,
@@ -165,7 +172,7 @@ const Product = () => {
       const data = response.data;
       return Array.isArray(data) ? data : (data?.results || []);
     },
-    enabled: !!merchantId,
+    enabled: !!merchantId && isSeller,
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: 'always',
@@ -173,7 +180,7 @@ const Product = () => {
     refetchOnReconnect: true,
   })
 
-  // Query 3: Fetch ONLY spare parts (filtered by spare parts category)
+  // Query 3: Fetch ONLY spare parts (filtered by spare parts category, sellers only)
   const {
     data: sparePartsProducts = [],
     isLoading: loadingSpareParts,
@@ -194,7 +201,7 @@ const Product = () => {
       const data = response.data;
       return Array.isArray(data) ? data : (data?.results || []);
     },
-    enabled: !!merchantId,
+    enabled: !!merchantId && isSeller,
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: 'always',
@@ -202,7 +209,7 @@ const Product = () => {
     refetchOnReconnect: true,
   })
 
-  // Query 4: Fetch ONLY rental cars (filtered by car category with is_rental=true)
+  // Query 4: Fetch ONLY rental cars (filtered by car category with is_rental=true, rentals only)
   const {
     data: rentalCarProducts = [],
     isLoading: loadingRentalCars,
@@ -224,7 +231,7 @@ const Product = () => {
       const data = response.data;
       return Array.isArray(data) ? data : (data?.results || []);
     },
-    enabled: !!merchantId,
+    enabled: !!merchantId && isVehicleRental,
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: 'always',
@@ -350,7 +357,7 @@ const Product = () => {
               className="bg-white rounded-2xl border border-gray-300 mt-4 overflow-hidden relative shadow-sm"
               onPress={() => {
                 router.push({
-                  pathname: sellerRoutes.productDetailsDetailed as any,
+                  pathname: sellerRoutes.productDetails as any,
                   params: { 
                     productType: 'sparePart',
                     productId: item.id 
@@ -400,7 +407,7 @@ const Product = () => {
               className="bg-white rounded-2xl border border-gray-300 mt-4 overflow-hidden relative shadow-sm"
               onPress={() => {
                 router.push({
-                  pathname: sellerRoutes.productDetailsDetailed as any,
+                  pathname: sellerRoutes.productDetails as any,
                   params: { 
                     productType: 'car',
                     productId: item.id 

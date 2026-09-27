@@ -106,7 +106,9 @@ const CompleteKYC = () => {
 
   useEffect(() => {
     if (activeProfileData?.data) {
-      const profile = activeProfileData.data.merchant_profile || activeProfileData.data.vehicle_rental_profile;
+      const profile = isVehicleRental
+        ? activeProfileData.data.vehicle_rental_profile
+        : activeProfileData.data.merchant_profile;
       
       if (profile) {
         const initialValues: FormValues = {

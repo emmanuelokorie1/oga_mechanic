@@ -19,7 +19,7 @@ export const mockRoles: Role[] = [
     description: 'I want to buy',
     icon: 'user',
     color: '#3B82F6',
-    route: routes.userStep1
+    route: routes.userHome
   },
   {
     id: 2,
@@ -28,7 +28,7 @@ export const mockRoles: Role[] = [
     description: 'I want to sell',
     icon: 'shop',
     color: '#10B981',
-    route: sellerRoutes.step1
+    route: sellerRoutes.home
   },
   {
     id: 3,
@@ -37,7 +37,16 @@ export const mockRoles: Role[] = [
     description: 'I want to Offer Services',
     icon: 'wrench',
     color: '#F59E0B',
-    route: mechanicRoutes.step1
+    route: mechanicRoutes.home
+  },
+  {
+    id: 4,
+    name: 'vehicle_rental',
+    title: 'Vehicle Rental',
+    description: 'I want to rent out vehicles',
+    icon: 'car',
+    color: '#8B5CF6',
+    route: sellerRoutes.home
   }
 ];
 

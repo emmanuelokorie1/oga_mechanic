@@ -33,6 +33,7 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import { sellerRoutes, SellerRouteValues } from '@/constants/routes'
 import { productsAPI } from '@/lib/api/products'
 import { useProductBids, useUpdateBid } from '@/hooks/useProducts'
+import { useVehicleMakes } from '@/hooks/useVehicleMakes'
 import MerchantBidActionModal from '@/components/modals/MerchantBidActionModal'
 import { formatDistanceToNow } from 'date-fns'
 import CustomButton from '@/components/CustomButton'
@@ -56,6 +57,43 @@ const ProductDetails = () => {
   const [showBidActionModal, setShowBidActionModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch vehicle makes for name lookup
+  const { data: vehicleMakes } = useVehicleMakes();
+
+  const getMakeName = (makeId: number) => {
+    if (!vehicleMakes || !makeId) return 'N/A';
+    const make = vehicleMakes.find(m => m.id === makeId);
+    return make?.name || 'N/A';
+  };
+
+  const getModelName = (makeId: number, modelId: number) => {
+    if (!vehicleMakes || !makeId || !modelId) return 'N/A';
+    const make = vehicleMakes.find(m => m.id === makeId);
+    const model = make?.models?.find(m => m.id === modelId);
+    return model?.name || 'N/A';
+  };
+
+  const isSparePart = Boolean(
+    !productData?.is_rental && (
+      productType === 'sparePart' ||
+      productData?.category?.name?.toLowerCase().includes('part') ||
+      (!productData?.category?.name?.toLowerCase().includes('car') && !productData?.make)
+    )
+  );
+
+  const pageTitle = productData?.is_rental
+    ? 'Rental Details'
+    : isSparePart
+      ? 'Spare Part Details'
+      : 'Vehicle Details';
+
+  const hasFeatures = Boolean(
+    productData?.air_conditioning || productData?.leather_seats || productData?.navigation_system ||
+    productData?.bluetooth || productData?.parking_sensors || productData?.sunroof ||
+    productData?.airbags || productData?.abs || productData?.traction_control ||
+    productData?.lane_assist || productData?.blind_spot_monitor
+  );
 
   const biddingWindow = productData?.bidding_window || productData?.bidding || null;
   const biddingWindowId = biddingWindow?.id ? String(biddingWindow.id) : '';
@@ -307,10 +345,10 @@ const ProductDetails = () => {
             </View>
             <Text className="text-gray-900 font-NunitoExtraBold text-xl mb-2">Something went wrong</Text>
             <Text className="text-gray-500 text-center mb-8 leading-5 font-NunitoMedium">
-              {error || "We couldn't find the vehicle you're looking for. It might have been removed."}
+              {error || "We couldn't find the product you're looking for. It might have been removed."}
             </Text>
             <TouchableOpacity onPress={handleBack} className="bg-primary-500 px-8 py-4 rounded-2xl shadow-lg shadow-primary-200">
-              <Text className="text-white font-NunitoExtraBold">Back to Rentals</Text>
+              <Text className="text-white font-NunitoExtraBold">Go Back</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -331,7 +369,7 @@ const ProductDetails = () => {
           <ArrowLeftIcon size={20} color="#000" />
         </TouchableOpacity>
         <Text className="text-[17px] font-NunitoExtraBold text-gray-900">
-          {productData.is_rental ? 'Rental Details' : 'Vehicle Details'}
+          {pageTitle}
         </Text>
         <TouchableOpacity 
           onPress={() => setShowEditOptionsModal(true)}
@@ -442,7 +480,7 @@ const ProductDetails = () => {
 
             {/* Premium Pricing Block */}
             <View className="bg-primary-50 rounded-[24px] p-4 flex-row items-center justify-between border border-primary-100/50">
-              <View>
+              <View className="flex-1 mr-2">
                 <Text className="text-primary-400 font-NunitoBold text-[10px] uppercase tracking-widest mb-1">
                   {productData.is_rental 
                     ? 'Rental Daily Rate' 
@@ -450,7 +488,7 @@ const ProductDetails = () => {
                       ? 'Starting / Base Price' 
                       : 'Market Price'}
                 </Text>
-                <View className="flex-row items-baseline">
+                <View className="flex-row items-baseline flex-wrap">
                   <Text className="text-primary-700 font-NunitoExtraBold text-[24px]">
                     ₦{parseFloat(productData.price).toLocaleString()}
                   </Text>
@@ -460,7 +498,7 @@ const ProductDetails = () => {
                 </View>
               </View>
               {biddingWindow ? (
-                <View className={`px-3 py-1.5 rounded-full border ${isAuctionActive ? 'bg-red-50 border-red-200' : 'bg-gray-100 border-gray-200'}`}>
+                <View className={`shrink-0 px-3 py-1.5 rounded-full border ${isAuctionActive ? 'bg-red-50 border-red-200' : 'bg-gray-100 border-gray-200'}`}>
                   <View className="flex-row items-center">
                     {isAuctionActive && <View className="w-2 h-2 rounded-full bg-red-600 mr-1.5" />}
                     <Text className={`${isAuctionActive ? 'text-red-700' : 'text-gray-600'} font-NunitoExtraBold text-[11px] uppercase tracking-wider`}>
@@ -469,7 +507,7 @@ const ProductDetails = () => {
                   </View>
                 </View>
               ) : productData.stock > 0 ? (
-                <View className="bg-white/60 backdrop-blur-md px-3 py-2 rounded-2xl border border-white">
+                <View className="shrink-0 bg-white/60 backdrop-blur-md px-3 py-2 rounded-2xl border border-white">
                   <Text className="text-primary-600 font-NunitoExtraBold text-[11px]">
                     {productData.stock} In Stock
                   </Text>
@@ -483,20 +521,20 @@ const ProductDetails = () => {
             <View className="bg-white rounded-[26px] p-5 shadow-xs border border-gray-200 mb-4">
               {/* Header */}
               <View className="flex-row items-center justify-between pb-3.5 mb-3.5 border-b border-gray-100">
-                <View className="flex-row items-center">
-                  <View className="w-10 h-10 rounded-2xl bg-red-50 items-center justify-center mr-3 border border-red-100">
+                <View className="flex-row items-center flex-1 mr-2.5">
+                  <View className="w-10 h-10 rounded-2xl bg-red-50 items-center justify-center mr-2.5 border border-red-100 shrink-0">
                     <ClockIcon size={20} color="#DC2626" />
                   </View>
-                  <View>
-                    <Text className="text-[16px] font-NunitoExtraBold text-gray-900">
+                  <View className="flex-1">
+                    <Text className="text-[16px] font-NunitoExtraBold text-gray-900" numberOfLines={1}>
                       Bidding Window
                     </Text>
-                    <Text className="text-[11px] font-NunitoMedium text-gray-400 mt-0.5">
+                    <Text className="text-[11px] font-NunitoMedium text-gray-400 mt-0.5" numberOfLines={1} ellipsizeMode="tail">
                       Buyer auction schedule & overview
                     </Text>
                   </View>
                 </View>
-                <View className={`px-3 py-1 rounded-full border ${isAuctionActive ? 'bg-red-50 border-red-200' : 'bg-gray-100 border-gray-200'}`}>
+                <View className={`shrink-0 px-2.5 py-1 rounded-full border ${isAuctionActive ? 'bg-red-50 border-red-200' : 'bg-gray-100 border-gray-200'}`}>
                   <View className="flex-row items-center">
                     {isAuctionActive && <View className="w-1.5 h-1.5 rounded-full bg-red-600 mr-1.5" />}
                     <Text className={`${isAuctionActive ? 'text-red-700' : 'text-gray-500'} text-[10px] font-NunitoExtraBold uppercase tracking-wider`}>
@@ -567,15 +605,15 @@ const ProductDetails = () => {
           {biddingWindow && (
             <View className="bg-white rounded-[26px] p-5 shadow-xs border border-gray-200 mb-4">
               <View className="flex-row items-center justify-between pb-3.5 mb-3.5 border-b border-gray-100">
-                <View>
-                  <Text className="text-[16px] font-NunitoExtraBold text-gray-900">
+                <View className="flex-1 mr-2.5">
+                  <Text className="text-[16px] font-NunitoExtraBold text-gray-900" numberOfLines={1}>
                     Offers & Bids
                   </Text>
-                  <Text className="text-[11px] font-NunitoMedium text-gray-400 mt-0.5">
+                  <Text className="text-[11px] font-NunitoMedium text-gray-400 mt-0.5" numberOfLines={1} ellipsizeMode="tail">
                     {bids.length > 0 ? 'Tap an offer to review, accept, or reject' : 'Active buyer offers'}
                   </Text>
                 </View>
-                <View className="bg-primary-50 px-3 py-1 rounded-full border border-primary-100">
+                <View className="shrink-0 bg-primary-50 px-3 py-1 rounded-full border border-primary-100">
                   <Text className="text-primary-700 text-xs font-NunitoBold">
                     {bids.length} {bids.length === 1 ? 'Bid' : 'Bids'}
                   </Text>
@@ -651,71 +689,138 @@ const ProductDetails = () => {
             </View>
           )}
 
-          {/* Specifications Grid */}
+          {/* Specifications / Part Information Grid */}
           <View className="mb-8">
             <View className="flex-row items-center justify-between mb-4 px-1">
-              <Text className="text-[17px] font-NunitoExtraBold text-gray-900">Specifications</Text>
+              <Text className="text-[17px] font-NunitoExtraBold text-gray-900">
+                {isSparePart ? 'Part Information' : 'Specifications'}
+              </Text>
               <CogIcon size={18} color="#9CA3AF" />
             </View>
             <View className="flex-row flex-wrap gap-3">
-              {productData.transmission && (
-                <SpecItem icon={BoltIcon} label="Gear" value={productData.transmission} colorClass="bg-orange-500" />
-              )}
-              {productData.fuel_type && (
-                <SpecItem icon={BeakerIcon} label="Energy" value={productData.fuel_type} colorClass="bg-blue-500" />
-              )}
-              {productData.number_of_seats && (
-                <SpecItem icon={UsersIcon} label="Capacity" value={`${productData.number_of_seats} Seats`} colorClass="bg-purple-500" />
-              )}
-              {productData.exterior_color && (
-                <SpecItem icon={PaintBrushIcon} label="Exterior" value={productData.exterior_color} colorClass="bg-gray-700" />
-              )}
-              {productData.year && (
-                <SpecItem icon={CalendarDaysIcon} label="Model Year" value={productData.year.toString()} colorClass="bg-green-500" />
-              )}
-              {productData.condition && (
-                <SpecItem icon={CheckBadgeIcon} label="Condition" value={productData.condition} colorClass="bg-indigo-500" />
+              {isSparePart ? (
+                <>
+                  {productData.category?.name && (
+                    <SpecItem icon={TagIcon} label="Category" value={productData.category.name} colorClass="bg-blue-500" />
+                  )}
+                  {productData.condition && (
+                    <SpecItem icon={CheckBadgeIcon} label="Condition" value={productData.condition} colorClass="bg-indigo-500" />
+                  )}
+                  {productData.stock !== undefined && (
+                    <SpecItem icon={BoltIcon} label="Stock" value={`${productData.stock} Units`} colorClass="bg-emerald-500" />
+                  )}
+                  {productData.delivery_option && (
+                    <SpecItem icon={IdentificationIcon} label="Delivery" value={productData.delivery_option} colorClass="bg-orange-500" />
+                  )}
+                  {productData.created_at && (
+                    <SpecItem 
+                      icon={CalendarDaysIcon} 
+                      label="Listed Date" 
+                      value={new Date(productData.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} 
+                      colorClass="bg-purple-500" 
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  {productData.transmission && (
+                    <SpecItem icon={BoltIcon} label="Gear" value={productData.transmission} colorClass="bg-orange-500" />
+                  )}
+                  {productData.fuel_type && (
+                    <SpecItem icon={BeakerIcon} label="Energy" value={productData.fuel_type} colorClass="bg-blue-500" />
+                  )}
+                  {productData.number_of_seats && (
+                    <SpecItem icon={UsersIcon} label="Capacity" value={`${productData.number_of_seats} Seats`} colorClass="bg-purple-500" />
+                  )}
+                  {productData.exterior_color && (
+                    <SpecItem icon={PaintBrushIcon} label="Exterior" value={productData.exterior_color} colorClass="bg-gray-700" />
+                  )}
+                  {productData.year && (
+                    <SpecItem icon={CalendarDaysIcon} label="Model Year" value={productData.year.toString()} colorClass="bg-green-500" />
+                  )}
+                  {productData.condition && (
+                    <SpecItem icon={CheckBadgeIcon} label="Condition" value={productData.condition} colorClass="bg-indigo-500" />
+                  )}
+                </>
               )}
             </View>
           </View>
 
-          {/* Features Section */}
-          <View className="mb-8 bg-white rounded-[26px] p-4 shadow-xs border border-gray-200">
-            <View className="flex-row items-center mb-5">
-              <SparklesIcon size={20} color="#D30309" />
-              <Text className="text-[17px] font-NunitoExtraBold text-gray-900 ml-2.5">Key Features</Text>
-            </View>
-            
-            <View className="mb-4">
-              <Text className="text-[11px] font-NunitoExtraBold text-gray-400 uppercase tracking-widest mb-3">Amenities</Text>
-              <View className="flex-row flex-wrap">
-                {productData.air_conditioning && <FeatureItem label="A/C System" />}
-                {productData.leather_seats && <FeatureItem label="Leather Interior" />}
-                {productData.navigation_system && <FeatureItem label="GPS Navigation" />}
-                {productData.bluetooth && <FeatureItem label="Premium Audio" />}
-                {productData.parking_sensors && <FeatureItem label="Proximity Sensors" />}
-                {productData.sunroof && <FeatureItem label="Panoramic Roof" />}
+          {/* Vehicle Compatibility Section (Spare Parts) */}
+          {productData.vehicle_compatibility && productData.vehicle_compatibility.length > 0 && (
+            <View className="mb-8 bg-white rounded-[26px] p-5 shadow-xs border border-gray-200">
+              <View className="flex-row items-center mb-4">
+                <View className="w-10 h-10 rounded-2xl bg-blue-50 items-center justify-center mr-3 border border-blue-100">
+                  <CogIcon size={20} color="#2563EB" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[16px] font-NunitoExtraBold text-gray-900">Vehicle Compatibility</Text>
+                  <Text className="text-[11px] font-NunitoMedium text-gray-400 mt-0.5">Compatible vehicle makes & models</Text>
+                </View>
+              </View>
+              <View className="space-y-2.5">
+                {productData.vehicle_compatibility.map((compat: any, index: number) => (
+                  <View key={index} className="bg-gray-50 rounded-2xl p-3.5 border border-gray-100">
+                    <Text className="text-xs font-NunitoBold text-primary-600 mb-1.5 uppercase tracking-wider">
+                      Vehicle {index + 1}: {getMakeName(compat.make)}
+                    </Text>
+                    <View className="flex-row justify-between items-center">
+                      <Text className="text-xs text-gray-500 font-NunitoMedium">Compatible Models</Text>
+                      <Text className="text-xs font-NunitoBold text-gray-900">
+                        {Array.isArray(compat.model)
+                          ? compat.model.map((modelId: number) => getModelName(compat.make, modelId)).join(', ')
+                          : getModelName(compat.make, compat.model)
+                        }
+                      </Text>
+                    </View>
+                  </View>
+                ))}
               </View>
             </View>
+          )}
 
-            <View>
-              <Text className="text-[11px] font-NunitoExtraBold text-gray-400 uppercase tracking-widest mb-3">Safety & Assistance</Text>
-              <View className="flex-row flex-wrap">
-                {productData.airbags && <FeatureItem label="Dual Airbags" isSafety />}
-                {productData.abs && <FeatureItem label="ABS Braking" isSafety />}
-                {productData.traction_control && <FeatureItem label="Traction Control" isSafety />}
-                {productData.lane_assist && <FeatureItem label="Lane Departure" isSafety />}
-                {productData.blind_spot_monitor && <FeatureItem label="Blind Spot Monitoring" isSafety />}
+          {/* Features Section - Only show if vehicle or has at least one amenity/safety feature */}
+          {hasFeatures && (
+            <View className="mb-8 bg-white rounded-[26px] p-4 shadow-xs border border-gray-200">
+              <View className="flex-row items-center mb-5">
+                <SparklesIcon size={20} color="#D30309" />
+                <Text className="text-[17px] font-NunitoExtraBold text-gray-900 ml-2.5">Key Features</Text>
+              </View>
+              
+              <View className="mb-4">
+                <Text className="text-[11px] font-NunitoExtraBold text-gray-400 uppercase tracking-widest mb-3">Amenities</Text>
+                <View className="flex-row flex-wrap">
+                  {productData.air_conditioning && <FeatureItem label="A/C System" />}
+                  {productData.leather_seats && <FeatureItem label="Leather Interior" />}
+                  {productData.navigation_system && <FeatureItem label="GPS Navigation" />}
+                  {productData.bluetooth && <FeatureItem label="Premium Audio" />}
+                  {productData.parking_sensors && <FeatureItem label="Proximity Sensors" />}
+                  {productData.sunroof && <FeatureItem label="Panoramic Roof" />}
+                </View>
+              </View>
+
+              <View>
+                <Text className="text-[11px] font-NunitoExtraBold text-gray-400 uppercase tracking-widest mb-3">Safety & Assistance</Text>
+                <View className="flex-row flex-wrap">
+                  {productData.airbags && <FeatureItem label="Dual Airbags" isSafety />}
+                  {productData.abs && <FeatureItem label="ABS Braking" isSafety />}
+                  {productData.traction_control && <FeatureItem label="Traction Control" isSafety />}
+                  {productData.lane_assist && <FeatureItem label="Lane Departure" isSafety />}
+                  {productData.blind_spot_monitor && <FeatureItem label="Blind Spot Monitoring" isSafety />}
+                </View>
               </View>
             </View>
-          </View>
+          )}
+
 
           {/* Description Section */}
           <View className="mb-4 px-1">
-            <Text className="text-[17px] font-NunitoExtraBold text-gray-900 mb-3">Vehicle Narrative</Text>
+            <Text className="text-[17px] font-NunitoExtraBold text-gray-900 mb-3">
+              {isSparePart ? 'Product Description' : 'Vehicle Narrative'}
+            </Text>
             <View className="bg-white rounded-[24px] p-4 border border-gray-200 shadow-xs">
               <Text className="text-gray-500 font-NunitoMedium leading-6 text-[14px]">
-                {productData.description || "No narrative provided for this vehicle. Contact merchant for detailed operational requirements and terms."}
+                {productData.description || (isSparePart ? "No description provided for this product." : "No narrative provided for this vehicle. Contact merchant for detailed operational requirements and terms.")}
               </Text>
             </View>
           </View>
@@ -751,7 +856,7 @@ const ProductDetails = () => {
               <Text className="text-white font-NunitoExtraBold text-[15px] ml-2">
                 {productData?.is_rental 
                   ? 'Edit Rental' 
-                  : productData?.category?.name?.toLowerCase().includes('part') 
+                  : isSparePart 
                     ? 'Edit Part' 
                     : 'Edit Vehicle'}
               </Text>
@@ -785,7 +890,7 @@ const ProductDetails = () => {
         visible={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
         onConfirm={handleConfirmDelete}
-        itemType={productData?.is_rental ? 'rentedCar' : 'car'}
+        itemType={productData?.is_rental ? 'rentedCar' : isSparePart ? 'sparePart' : 'car'}
         itemName={productData?.name || ''}
       />
 
@@ -816,7 +921,14 @@ const ProductDetails = () => {
           <StatusBar style="light" />
 
           {/* Fullscreen Top Bar */}
-          <View className="flex-row items-center justify-between px-5 py-2.5 z-10">
+          <View
+            style={{
+              paddingTop: Math.max(insets.top, Platform.OS === 'ios' ? 50 : 25) + 12,
+              paddingHorizontal: 20,
+              paddingBottom: 10,
+            }}
+            className="flex-row items-center justify-between z-10"
+          >
             <View className="bg-white/15 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10">
               <Text className="text-white text-xs font-NunitoBold">
                 {productData?.images && productData.images.length > 0 
@@ -827,6 +939,7 @@ const ProductDetails = () => {
 
             <TouchableOpacity
               onPress={() => setIsFullScreen(false)}
+              hitSlop={{ top: 25, bottom: 25, left: 25, right: 25 }}
               activeOpacity={0.8}
               className="flex-row items-center bg-white/20 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/20 active:bg-white/30"
             >

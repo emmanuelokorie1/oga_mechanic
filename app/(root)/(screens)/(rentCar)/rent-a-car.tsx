@@ -1,19 +1,31 @@
 "use client"
 
-import { useState, useCallback, useMemo, useEffect } from "react"
-import { View, Text, TouchableOpacity, TextInput, FlatList, RefreshControl, Modal } from "react-native"
+import React, { useState, useCallback, useMemo, useEffect } from "react"
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  FlatList,
+  RefreshControl,
+  Modal,
+} from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { router } from "expo-router"
 import { LAYOUT } from "@/constants/units"
 import { routes } from "@/constants/routes"
-import RentalCarCard from "@/components/cards/RentalCarCard";
+import RentalCarCard from "@/components/cards/RentalCarCard"
 import BackArrowBtn from "@/components/BackArrowBtn"
-import InputField from "@/components/InputField"
-import { AdjustmentsHorizontalIcon, MagnifyingGlassIcon, XMarkIcon } from "react-native-heroicons/outline"
+import {
+  AdjustmentsHorizontalIcon,
+  MagnifyingGlassIcon,
+  XMarkIcon,
+  ArrowPathIcon,
+} from "react-native-heroicons/outline"
+import { MaterialCommunityIcons } from "@expo/vector-icons"
 import { useQuery } from "@tanstack/react-query"
 import { productsAPI } from "@/lib/api/products"
 import LoadingSpinner from "@/components/LoadingSpinner"
-import AnimatedErrorCard from "@/components/AnimatedErrorCard"
 import PriceRangeSlider from "@/components/PriceRangeSlider"
 
 interface RentalCar {
@@ -28,29 +40,24 @@ interface RentalCar {
   make: string
 }
 
-interface SectionData {
-  type: 'cars' | 'empty' | 'loading' | 'error';
-  data?: any;
-}
-
 const RentACarScreen = () => {
   const { CONTAINER_PADDING } = LAYOUT
 
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedType, setSelectedType] = useState("All") // "All", "car", "van"
-  const [selectedMake, setSelectedMake] = useState("All") // Store make ID or "All"
+  const [selectedType, setSelectedType] = useState("All") // "All", "car", "van", "truck"
+  const [selectedMake, setSelectedMake] = useState("All")
   
   const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState("")
   const [showFilters, setShowFilters] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
-  // Fetch rental cars from API (fetching all makes at once to allow dynamic client-side filtering and counts)
+  // Fetch rental cars from API
   const {
     data: rentalCarsResponse,
     isLoading,
     error,
-    refetch
+    refetch,
   } = useQuery({
     queryKey: ['rental-cars', minPrice, maxPrice, searchQuery],
     queryFn: async () => {
@@ -60,7 +67,7 @@ const RentACarScreen = () => {
           undefined,
           minPrice || undefined,
           maxPrice || undefined,
-          undefined, // No make filter at API level
+          undefined,
           true
         );
         return { data: { results: searchResults } };
@@ -73,7 +80,7 @@ const RentACarScreen = () => {
           undefined,
           undefined,
           true,
-          undefined // No make filter at API level
+          undefined
         );
         return response;
       }
@@ -131,7 +138,7 @@ const RentACarScreen = () => {
       label: `${name} (${count})`,
       value: name,
       name: name,
-      count: count
+      count: count,
     }));
 
     options.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
@@ -168,282 +175,499 @@ const RentACarScreen = () => {
       return matchesType && matchesMake;
     }),
     [rentalCars, selectedType, selectedMake]
-  )
+  );
 
-  const sections = useMemo(() => {
-    const sectionsData: SectionData[] = []
-
-    if (isLoading) {
-      sectionsData.push({ type: 'loading' })
-    } else if (error) {
-      sectionsData.push({ type: 'error' })
-    } else if (filteredCars.length > 0) {
-      sectionsData.push({ type: 'cars', data: filteredCars })
-    } else {
-      sectionsData.push({ type: 'empty' })
-    }
-
-    return sectionsData
-  }, [filteredCars, isLoading, error])
-
-  const renderCarCard = useCallback(({ item }: { item: any }) => (
-    <RentalCarCard item={item} onPress={(car) => {
-      router.push({
-        pathname: routes?.carRentalDetail,
-        params: { carId: car.id, carName: car.name, pricePerDay: car.pricePerDay },
-      });
-    }} />
-  ), [])
-
-  const renderSection = useCallback(({ item }: { item: SectionData }) => {
-    switch (item.type) {
-      case 'cars':
-        return (
-          <View className={CONTAINER_PADDING}>
-            <FlatList
-              data={item.data}
-              renderItem={renderCarCard}
-              keyExtractor={(car) => car.id}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-            />
-          </View>
-        )
-      case 'loading':
-        return (
-          <View className={`${CONTAINER_PADDING} py-12`}>
-            <LoadingSpinner message="Loading rental cars..." size="medium" />
-          </View>
-        )
-      case 'error':
-        return (
-          <AnimatedErrorCard
-            emoji="🚗" title="Error Loading Cars" message="Failed to load rental cars. Please try again."
-            gradientColors={['#FEF2F2', '#FECACA', '#FCA5A5']}
-            textColor="text-red-800"
-            actionButton={{ text: "Retry", onPress: () => refetch(), backgroundColor: "#A80207" }}
-            className={`${CONTAINER_PADDING}`}
-          />
-        )
-      case 'empty':
-        return (
-          <AnimatedErrorCard
-            emoji="🚗" title="No Cars Found" message="Try adjusting your search or category filter"
-            gradientColors={['#F0F9FF', '#E0F2FE', '#BAE6FD']}
-            textColor="text-blue-800"
-            className={`${CONTAINER_PADDING}`}
-          />
-        )
-      default:
-        return null
-    }
-  }, [CONTAINER_PADDING, renderCarCard, refetch])
-
-  const handleResetSearch = () => {
+  const handleResetSearch = useCallback(() => {
     setSearchQuery("");
     setSelectedType("All");
     setSelectedMake("All");
     setMinPrice("");
     setMaxPrice("");
     setShowFilters(false);
-  }
+  }, []);
 
-  return (
-    <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
-      {/* Header */}
-      <View className="flex-row items-center justify-between py-4 px-5">
-        <BackArrowBtn />
-        <Text className="text-xl font-NunitoExtraBold text-gray-900">Vehicle Rental</Text>
-        <View className="w-10" />
-      </View>
+  const isPriceFilterActive = Boolean(minPrice || maxPrice);
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() ||
+    selectedType !== "All" ||
+    selectedMake !== "All" ||
+    isPriceFilterActive
+  );
 
-      {/* Custom Search & Filter UI */}
-      <View className="mb-2 z-10 bg-white">
-        {/* Search Input Row */}
-        <View className="px-5 mb-6">
-          <View className="flex-row items-center bg-gray-50 rounded-2xl px-4 py-1 border border-gray-100">
-            <MagnifyingGlassIcon size={20} color="#9CA3AF" />
-            <TextInput
-              placeholder="Search cars, towing service..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              className="flex-1 ml-3 text-md font-NunitoMedium text-gray-900"
-              placeholderTextColor="#9CA3AF"
-            />
-            <TouchableOpacity 
-              onPress={() => setShowFilters(!showFilters)}
-              className={`w-9 h-9 items-center justify-center rounded-xl ${showFilters || (minPrice || maxPrice) ? 'bg-primary-500' : 'bg-gray-100'}`}
+  const vehicleTypes = [
+    { id: "All", label: "All Vehicles", icon: "car-multiple", count: categoryCounts.All },
+    { id: "car", label: "Cars", icon: "car-side", count: categoryCounts.car },
+    { id: "van", label: "Towing Service", icon: "tow-truck", count: categoryCounts.van },
+    { id: "truck", label: "Trucks", icon: "truck", count: categoryCounts.truck },
+  ];
+
+  const renderCarCard = useCallback(({ item }: { item: RentalCar }) => (
+    <View className="px-5">
+      <RentalCarCard
+        item={item}
+        onPress={(car) => {
+          router.push({
+            pathname: routes?.carRentalDetail,
+            params: { carId: car.id, carName: car.name, pricePerDay: car.pricePerDay },
+          });
+        }}
+      />
+    </View>
+  ), []);
+
+  const ListHeader = useMemo(() => {
+    return (
+      <View className="mb-2">
+        {/* Search & Filter Bar */}
+        <View className="px-5 pt-1 pb-3">
+          <View className="flex-row items-center gap-2.5">
+            <View className="flex-1 flex-row items-center bg-white rounded-2xl px-3.5 py-2.5 border border-gray-300">
+              <MagnifyingGlassIcon size={19} color="#94A3B8" />
+              <TextInput
+                placeholder="Search cars, towing, trucks..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                className="flex-1 ml-2.5 text-[14px] font-NunitoSemiBold text-gray-900"
+                placeholderTextColor="#94A3B8"
+                returnKeyType="search"
+              />
+              {searchQuery.trim().length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setSearchQuery("")}
+                  className="w-5 h-5 rounded-full bg-gray-200 items-center justify-center mr-1"
+                  activeOpacity={0.7}
+                >
+                  <XMarkIcon size={12} color="#475569" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setShowFilters(true)}
+              className={`w-11 h-11 items-center justify-center rounded-2xl border ${
+                isPriceFilterActive
+                  ? 'bg-primary-500 border-primary-500'
+                  : 'bg-white border-gray-300'
+              }`}
+              activeOpacity={0.8}
             >
-              <AdjustmentsHorizontalIcon size={18} color={(showFilters || minPrice || maxPrice) ? '#fff' : '#6B7280'} />
+              <AdjustmentsHorizontalIcon
+                size={20}
+                color={isPriceFilterActive ? '#FFFFFF' : '#334155'}
+              />
+              {isPriceFilterActive && (
+                <View className="absolute top-2 right-2 w-2 h-2 rounded-full bg-white" />
+              )}
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Category Row (Primary) */}
-        <View className="mb-3">
+        {/* Segmented Vehicle Types */}
+        <View className="mb-2">
           <FlatList
-            data={[
-              { label: isLoading ? "All" : `All (${categoryCounts.All})`, value: "All" },
-              { label: isLoading ? "Cars" : `Cars (${categoryCounts.car})`, value: "car" },
-              { label: isLoading ? "Towing Van" : `Towing Van (${categoryCounts.van})`, value: "van" },
-              { label: isLoading ? "Truck" : `Truck (${categoryCounts.truck})`, value: "truck" }
-            ]}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => {
-                  setSelectedType(item.value);
-                  if (item.value === 'van' || item.value === 'truck') setSelectedMake("All");
-                }}
-                className={`px-6 py-2.5 rounded-full mr-2 ${selectedType === item.value ? "bg-primary-500" : "bg-gray-100"}`}
-              >
-                <Text className={`text-xs font-NunitoBold ${selectedType === item.value ? "text-white" : "text-gray-600"}`}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            )}
-            keyExtractor={item => item.value}
+            data={vehicleTypes}
+            renderItem={({ item }) => {
+              const isSelected = selectedType === item.id;
+              return (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedType(item.id);
+                    if (item.id === 'van' || item.id === 'truck') setSelectedMake("All");
+                  }}
+                  activeOpacity={0.8}
+                  className={`flex-row items-center px-4 py-2.5 rounded-2xl mr-2.5 ${
+                    isSelected
+                      ? 'bg-primary-500 shadow-sm shadow-primary-500/30'
+                      : 'bg-white border border-gray-300'
+                  }`}
+                >
+                  <MaterialCommunityIcons
+                    name={item.icon as any}
+                    size={18}
+                    color={isSelected ? '#FFFFFF' : '#64748B'}
+                  />
+                  <Text className={`ml-2 text-xs font-NunitoBold ${
+                    isSelected ? 'text-white' : 'text-gray-700'
+                  }`}>
+                    {item.label}
+                  </Text>
+                  <View className={`ml-2 px-1.5 py-0.5 rounded-full ${
+                    isSelected ? 'bg-white/25' : 'bg-gray-100'
+                  }`}>
+                    <Text className={`text-[10px] font-NunitoExtraBold ${
+                      isSelected ? 'text-white' : 'text-gray-500'
+                    }`}>
+                      {isLoading ? '-' : item.count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+            keyExtractor={item => item.id}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 20 }}
+            style={{ overflow: 'visible' }}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 8 }}
             keyboardShouldPersistTaps="handled"
           />
         </View>
 
-        {/* Sub-category Row (Makes) */}
+        {/* Brand / Make Chips */}
         {makeOptions.length > 0 && (
-          <View className="bg-blue-50/30 border-y border-blue-100/50 py-2.5">
+          <View className="pb-2">
             <FlatList
-              data={[{ label: `All Makes (${totalCarsForSelectedType})`, value: "All" }, ...makeOptions]}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => setSelectedMake(item.value)}
-                  className={`px-5 py-2 rounded-xl mr-2 ${selectedMake === item.value ? "bg-white border border-primary-500/30" : ""}`}
-                >
-                  <Text className={`text-[11px] font-NunitoBold ${selectedMake === item.value ? "text-primary-500" : "text-blue-500/70"}`}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              )}
+              data={[{ name: "All Brands", value: "All", count: totalCarsForSelectedType }, ...makeOptions]}
+              renderItem={({ item }) => {
+                const isSelected = selectedMake === item.value;
+                return (
+                  <TouchableOpacity
+                    onPress={() => setSelectedMake(item.value)}
+                    activeOpacity={0.8}
+                    className={`px-3.5 py-1.5 rounded-xl mr-2 flex-row items-center ${
+                      isSelected
+                        ? 'bg-gray-900 border border-gray-900 shadow-sm'
+                        : 'bg-white border border-gray-200/90 shadow-sm'
+                    }`}
+                  >
+                    <Text className={`text-[12px] font-NunitoBold ${
+                      isSelected ? 'text-white' : 'text-gray-700'
+                    }`}>
+                      {item.name}
+                    </Text>
+                    <Text className={`text-[10px] font-NunitoSemiBold ml-1.5 ${
+                      isSelected ? 'text-gray-300' : 'text-gray-400'
+                    }`}>
+                      ({item.count})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
               keyExtractor={item => item.value}
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 20 }}
+              style={{ overflow: 'visible' }}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 2, paddingBottom: 6 }}
               keyboardShouldPersistTaps="handled"
             />
           </View>
         )}
 
-        {/* Price Filter Modal */}
-        <Modal
-          visible={showFilters}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowFilters(false)}
-        >
-          <TouchableOpacity 
-            className="flex-1 bg-black/30" 
-            activeOpacity={1} 
-            onPress={() => setShowFilters(false)} 
-          />
-          <View className="bg-white rounded-t-[40px] p-8 pb-12 absolute bottom-0 left-0 right-0 shadow-2xl">
-            <View className="w-12 h-1.5 bg-gray-200 rounded-full self-center mb-8" />
-            
-            <View className="flex-row items-center justify-between mb-4">
-              <View>
-                <Text className="text-2xl font-NunitoExtraBold text-gray-900">Price Range</Text>
-                <Text className="text-sm font-NunitoMedium text-gray-500">Set your daily rental budget</Text>
-              </View>
-              <TouchableOpacity 
-                onPress={() => { setMinPrice(""); setMaxPrice(""); }}
-                className="bg-gray-100 px-4 py-2 rounded-xl"
+        {/* Active Filter Chips */}
+        {(isPriceFilterActive || selectedMake !== "All" || selectedType !== "All") && (
+          <View className="px-5 mb-2 flex-row flex-wrap items-center gap-2">
+            {selectedType !== "All" && (
+              <TouchableOpacity
+                onPress={() => setSelectedType("All")}
+                className="bg-gray-100 border border-gray-200 rounded-full px-3 py-1 flex-row items-center gap-1.5"
               >
-                <Text className="text-xs font-NunitoBold text-gray-600">Reset All</Text>
+                <Text className="text-[11px] font-NunitoBold text-gray-700">
+                  Type: {selectedType === 'van' ? 'Towing' : selectedType === 'truck' ? 'Trucks' : 'Cars'}
+                </Text>
+                <XMarkIcon size={12} color="#64748B" />
               </TouchableOpacity>
-            </View>
+            )}
 
-            {/* Visual Slider */}
-            <View className="mb-6">
-               <PriceRangeSlider 
-                  min={0}
-                  max={1000000}
-                  initialMin={parseInt(minPrice) || 0}
-                  initialMax={parseInt(maxPrice) || 1000000}
-                  onValueChange={(low, high) => {
-                    setMinPrice(low.toString());
-                    setMaxPrice(high.toString());
-                  }}
-               />
-            </View>
-            
-            <View className="flex-row gap-4 mb-10">
-              <View className="flex-1">
-                <Text className="text-[11px] font-NunitoBold text-gray-400 uppercase tracking-wider mb-2 ml-1">Minimum (₦)</Text>
-                <View className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 flex-row items-center">
-                  <Text className="text-gray-400 font-NunitoBold mr-2">₦</Text>
-                  <TextInput
-                    value={minPrice}
-                    onChangeText={setMinPrice}
-                    placeholder="0"
-                    keyboardType="numeric"
-                    className="flex-1 text-sm font-NunitoBold text-gray-900"
-                    placeholderTextColor="#9CA3AF"
-                  />
-                </View>
-              </View>
-              <View className="flex-1">
-                <Text className="text-[11px] font-NunitoBold text-gray-400 uppercase tracking-wider mb-2 ml-1">Maximum (₦)</Text>
-                <View className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 flex-row items-center">
-                  <Text className="text-gray-400 font-NunitoBold mr-2">₦</Text>
-                  <TextInput
-                    value={maxPrice}
-                    onChangeText={setMaxPrice}
-                    placeholder="Any"
-                    keyboardType="numeric"
-                    className="flex-1 text-sm font-NunitoBold text-gray-900"
-                    placeholderTextColor="#9CA3AF"
-                  />
-                </View>
-              </View>
-            </View>
+            {selectedMake !== "All" && (
+              <TouchableOpacity
+                onPress={() => setSelectedMake("All")}
+                className="bg-gray-100 border border-gray-200 rounded-full px-3 py-1 flex-row items-center gap-1.5"
+              >
+                <Text className="text-[11px] font-NunitoBold text-gray-700">
+                  Brand: {selectedMake}
+                </Text>
+                <XMarkIcon size={12} color="#64748B" />
+              </TouchableOpacity>
+            )}
 
-            <TouchableOpacity 
-              onPress={() => setShowFilters(false)}
-              className="bg-primary-500 py-5 rounded-2xl items-center shadow-lg shadow-primary-200"
-              activeOpacity={0.8}
+            {isPriceFilterActive && (
+              <TouchableOpacity
+                onPress={() => { setMinPrice(""); setMaxPrice(""); }}
+                className="bg-red-50 border border-red-100 rounded-full px-3 py-1 flex-row items-center gap-1.5"
+              >
+                <Text className="text-[11px] font-NunitoBold text-red-600">
+                  Price: ₦{minPrice || '0'} - ₦{maxPrice || 'Any'}
+                </Text>
+                <XMarkIcon size={12} color="#DC2626" />
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={handleResetSearch}
+              className="px-2 py-1"
             >
-              <Text className="font-NunitoExtraBold text-white text-lg">Show Results</Text>
-            </TouchableOpacity>
-          </View>
-        </Modal>
-
-        {/* Active Price Badge */}
-        {(minPrice || maxPrice) && (
-          <View className="px-5 mt-3">
-            <TouchableOpacity 
-              onPress={() => { setMinPrice(""); setMaxPrice(""); }}
-              className="bg-red-50 border border-red-100 rounded-full px-4 py-1.5 self-start flex-row items-center gap-2"
-            >
-              <Text className="text-[11px] font-NunitoBold text-red-600">
-                Price: ₦{minPrice || '0'} - ₦{maxPrice || 'Any'}
-              </Text>
-              <XMarkIcon size={12} color="#DC2626" />
+              <Text className="text-[11px] font-NunitoBold text-gray-400">Clear all</Text>
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Results Counter & Section Bar */}
+        <View className="flex-row items-center justify-between px-5 pt-2 pb-2">
+          <View className="flex-row items-center">
+            <Text className="text-sm font-NunitoExtraBold text-gray-900">Available Vehicles</Text>
+            <View className="w-1.5 h-1.5 rounded-full bg-gray-300 mx-2" />
+            <Text className="text-xs font-NunitoSemiBold text-gray-500">
+              {filteredCars.length} {filteredCars.length === 1 ? 'vehicle' : 'vehicles'}
+            </Text>
+          </View>
+          {filteredCars.length > 0 && (
+            <View className="flex-row items-center bg-green-50 px-2 py-0.5 rounded-full border border-green-100">
+              <View className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5" />
+              <Text className="text-[10px] font-NunitoBold text-green-700">Instant Booking</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  }, [
+    searchQuery,
+    isPriceFilterActive,
+    selectedType,
+    selectedMake,
+    vehicleTypes,
+    makeOptions,
+    totalCarsForSelectedType,
+    filteredCars.length,
+    minPrice,
+    maxPrice,
+    isLoading,
+    handleResetSearch,
+  ]);
+
+  const ListEmpty = useMemo(() => {
+    if (isLoading) {
+      return (
+        <View className="py-16 items-center justify-center">
+          <LoadingSpinner message="Searching available vehicles..." size="medium" />
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View className="mx-5 my-8 p-6 bg-white rounded-3xl border border-red-100 items-center shadow-sm">
+          <View className="w-12 h-12 rounded-full bg-red-50 items-center justify-center mb-3">
+            <MaterialCommunityIcons name="alert-circle-outline" size={26} color="#DC2626" />
+          </View>
+          <Text className="text-base font-NunitoExtraBold text-gray-900 mb-1">
+            Unable to Load Vehicles
+          </Text>
+          <Text className="text-xs font-NunitoMedium text-gray-500 text-center mb-4 leading-relaxed">
+            We encountered a problem fetching vehicle rentals. Please check your connection and try again.
+          </Text>
+          <TouchableOpacity
+            onPress={() => refetch()}
+            className="bg-primary-500 px-6 py-2.5 rounded-xl shadow-sm"
+          >
+            <Text className="text-xs font-NunitoBold text-white">Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View className="mx-5 my-8 p-8 bg-white rounded-3xl border border-gray-100 items-center shadow-sm">
+        <View className="w-14 h-14 rounded-full bg-gray-50 items-center justify-center mb-3 border border-gray-100">
+          <MaterialCommunityIcons name="car-off" size={28} color="#94A3B8" />
+        </View>
+        <Text className="text-base font-NunitoExtraBold text-gray-900 mb-1">
+          No Vehicles Found
+        </Text>
+        <Text className="text-xs font-NunitoMedium text-gray-500 text-center mb-5 leading-relaxed max-w-[260px]">
+          No rentals matched your current filters. Try changing your search query, vehicle type, or price budget.
+        </Text>
+        {hasActiveFilters && (
+          <TouchableOpacity
+            onPress={handleResetSearch}
+            className="bg-gray-900 px-6 py-2.5 rounded-xl shadow-sm"
+          >
+            <Text className="text-xs font-NunitoBold text-white">Reset All Filters</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }, [isLoading, error, hasActiveFilters, handleResetSearch, refetch]);
+
+  return (
+    <SafeAreaView className="flex-1 bg-[#F1F5F9]" edges={["top"]}>
+      {/* Header Bar */}
+      <View className="flex-row items-center justify-between py-3 px-5">
+        <BackArrowBtn />
+        <Text className="text-lg font-NunitoExtraBold text-gray-900">Vehicle Rental</Text>
+        {hasActiveFilters ? (
+          <TouchableOpacity
+            onPress={handleResetSearch}
+            className="bg-red-50 border border-red-100/80 px-2.5 py-1 rounded-full flex-row items-center"
+            activeOpacity={0.7}
+          >
+            <ArrowPathIcon size={12} color="#DC2626" />
+            <Text className="text-[11px] font-NunitoBold text-red-600 ml-1">Reset</Text>
+          </TouchableOpacity>
+        ) : (
+          <View className="w-10" />
+        )}
       </View>
 
+      {/* Main Single FlatList */}
       <FlatList
-        data={sections}
-        renderItem={renderSection}
-        keyExtractor={(item, index) => `${item.type}-${index}`}
+        data={isLoading || error ? [] : filteredCars}
+        renderItem={renderCarCard}
+        keyExtractor={(car) => car.id}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={ListEmpty}
         showsVerticalScrollIndicator={false}
         className="flex-1"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 60 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#D30309']} tintColor="#D30309" />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#D30309']}
+            tintColor="#D30309"
+          />
         }
       />
+
+      {/* Price Filter Bottom Sheet Modal */}
+      <Modal
+        visible={showFilters}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFilters(false)}
+      >
+        <TouchableOpacity 
+          className="flex-1 bg-black/40" 
+          activeOpacity={1} 
+          onPress={() => setShowFilters(false)} 
+        />
+        <View className="bg-white rounded-t-[32px] px-6 pt-4 pb-10 absolute bottom-0 left-0 right-0 shadow-2xl">
+          {/* Pull Handle */}
+          <View className="w-12 h-1.5 bg-gray-200 rounded-full self-center mb-6" />
+          
+          <View className="flex-row items-center justify-between mb-4">
+            <View>
+              <Text className="text-xl font-NunitoExtraBold text-gray-900">Price Range</Text>
+              <Text className="text-xs font-NunitoMedium text-gray-500">Set your daily rental budget</Text>
+            </View>
+            <TouchableOpacity 
+              onPress={() => { setMinPrice(""); setMaxPrice(""); }}
+              className="bg-gray-100 px-3.5 py-1.5 rounded-xl"
+              activeOpacity={0.7}
+            >
+              <Text className="text-xs font-NunitoBold text-gray-600">Reset</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Quick Preset Buttons */}
+          <View className="flex-row gap-2 mb-5">
+            <TouchableOpacity
+              onPress={() => { setMinPrice("0"); setMaxPrice("50000"); }}
+              className={`flex-1 py-2 rounded-xl items-center border ${
+                minPrice === "0" && maxPrice === "50000"
+                  ? 'bg-primary-50 border-primary-500'
+                  : 'bg-gray-50 border-gray-200'
+              }`}
+            >
+              <Text className={`text-[11px] font-NunitoBold ${
+                minPrice === "0" && maxPrice === "50000" ? 'text-primary-600' : 'text-gray-600'
+              }`}>
+                &lt; ₦50k
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => { setMinPrice("50000"); setMaxPrice("150000"); }}
+              className={`flex-1 py-2 rounded-xl items-center border ${
+                minPrice === "50000" && maxPrice === "150000"
+                  ? 'bg-primary-50 border-primary-500'
+                  : 'bg-gray-50 border-gray-200'
+              }`}
+            >
+              <Text className={`text-[11px] font-NunitoBold ${
+                minPrice === "50000" && maxPrice === "150000" ? 'text-primary-600' : 'text-gray-600'
+              }`}>
+                ₦50k - ₦150k
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => { setMinPrice("150000"); setMaxPrice("1000000"); }}
+              className={`flex-1 py-2 rounded-xl items-center border ${
+                minPrice === "150000" && maxPrice === "1000000"
+                  ? 'bg-primary-50 border-primary-500'
+                  : 'bg-gray-50 border-gray-200'
+              }`}
+            >
+              <Text className={`text-[11px] font-NunitoBold ${
+                minPrice === "150000" && maxPrice === "1000000" ? 'text-primary-600' : 'text-gray-600'
+              }`}>
+                &gt; ₦150k
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Visual Slider */}
+          <View className="mb-6">
+            <PriceRangeSlider 
+              min={0}
+              max={1000000}
+              initialMin={parseInt(minPrice) || 0}
+              initialMax={parseInt(maxPrice) || 1000000}
+              onValueChange={(low, high) => {
+                setMinPrice(low.toString());
+                setMaxPrice(high.toString());
+              }}
+            />
+          </View>
+          
+          {/* Min & Max Inputs */}
+          <View className="flex-row gap-3 mb-6">
+            <View className="flex-1">
+              <Text className="text-[11px] font-NunitoBold text-gray-400 uppercase tracking-wider mb-1.5 ml-1">
+                Minimum (₦)
+              </Text>
+              <View className="bg-gray-50 border border-gray-200 rounded-2xl px-3.5 py-2.5 flex-row items-center">
+                <Text className="text-gray-400 font-NunitoBold mr-1.5">₦</Text>
+                <TextInput
+                  value={minPrice}
+                  onChangeText={setMinPrice}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  className="flex-1 text-sm font-NunitoBold text-gray-900"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+            </View>
+            <View className="flex-1">
+              <Text className="text-[11px] font-NunitoBold text-gray-400 uppercase tracking-wider mb-1.5 ml-1">
+                Maximum (₦)
+              </Text>
+              <View className="bg-gray-50 border border-gray-200 rounded-2xl px-3.5 py-2.5 flex-row items-center">
+                <Text className="text-gray-400 font-NunitoBold mr-1.5">₦</Text>
+                <TextInput
+                  value={maxPrice}
+                  onChangeText={setMaxPrice}
+                  placeholder="Any"
+                  keyboardType="numeric"
+                  className="flex-1 text-sm font-NunitoBold text-gray-900"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Apply CTA */}
+          <TouchableOpacity 
+            onPress={() => setShowFilters(false)}
+            className="bg-primary-500 py-4 rounded-2xl items-center shadow-lg shadow-primary-500/25"
+            activeOpacity={0.85}
+          >
+            <Text className="font-NunitoExtraBold text-white text-base">
+              Show Available Vehicles
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }

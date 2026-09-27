@@ -95,7 +95,9 @@ const Navbar = () => {
 
   // Specific profiles extracted safely
   const mProfile = roleResponseData?.mechanic_profile || (isMechanic ? roleResponseData : null);
-  const merchProfile = roleResponseData?.merchant_profile || roleResponseData?.vehicle_rental_profile || ((isMerchant || isVehicleRental) ? roleResponseData : null);
+  const merchProfile = isVehicleRental
+    ? (roleResponseData?.vehicle_rental_profile || roleResponseData)
+    : (roleResponseData?.merchant_profile || (isMerchant ? roleResponseData : null));
 
   // Flattened data source for permissive lookup
   const combinedData = {

@@ -59,7 +59,9 @@ const EditSellerProfile = () => {
   } = useActiveRoleProfile();
 
   const userData = primaryProfileData?.data;
-  const merchantProfileInfo = activeProfileData?.data?.merchant_profile || activeProfileData?.data?.vehicle_rental_profile;
+  const merchantProfileInfo = isVehicleRental
+    ? activeProfileData?.data?.vehicle_rental_profile
+    : activeProfileData?.data?.merchant_profile;
 
   const [initialValues, setInitialValues] = useState({
     first_name: "",

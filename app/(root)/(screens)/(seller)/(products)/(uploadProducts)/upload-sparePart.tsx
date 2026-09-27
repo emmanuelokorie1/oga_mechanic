@@ -18,6 +18,8 @@ import { sellerRoutes } from '@/constants/routes'
 import { availabilityOptions, deliveryOptions, conditionOptions } from '@/constants/data'
 import { useVehicleMakes } from '@/hooks/useVehicleMakes'
 import { useCategories } from '@/hooks/useProducts'
+import { useActiveRoleProfile } from '@/hooks/useUserProfile'
+import { showToast } from '@/utils/toastUtils'
 
 interface VehicleCompatibility {
   make: number;
@@ -25,30 +27,55 @@ interface VehicleCompatibility {
 }
 import CustomButton from '@/components/CustomButton'
 
-const PRIMARY = '#D30309';
+interface SectionCardProps {
+  number: number | string;
+  badgeBg?: string;
+  title: string;
+  subtitle: string;
+  rightAction?: React.ReactNode;
+  children: React.ReactNode;
+}
 
-const SectionCard = ({ children, title, subtitle, icon, accentColor, rightAction }: any) => (
-  <View 
-    className="bg-white rounded-[16px] p-5 mb-5 border border-gray-100" 
-    style={{ borderTopWidth: 3, borderTopColor: accentColor, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 }}
-  >
-    <View className="flex-row items-center mb-5 gap-3">
-      <View style={{ backgroundColor: `${accentColor}1A` }} className="w-10 h-10 rounded-xl items-center justify-center">
-        <Text className="text-[20px]">{icon}</Text>
+const badgeColorMap: Record<string, string> = {
+  '1': 'bg-blue-500',
+  '2': 'bg-green-500',
+  '3': 'bg-orange-500',
+  '4': 'bg-red-500',
+};
+
+const SectionCard = ({ number, badgeBg, title, subtitle, rightAction, children }: SectionCardProps) => {
+  const bgClass = badgeBg || badgeColorMap[String(number)] || 'bg-blue-500';
+  return (
+    <View className="bg-white rounded-2xl p-5 mb-4 border border-gray-200">
+      <View className="flex-row items-center justify-between mb-4">
+        <View className="flex-row items-center flex-1 mr-2">
+          <View className={`w-8 h-8 ${bgClass} rounded-lg items-center justify-center mr-3`}>
+            <Text className="text-white font-NunitoBold text-sm">{number}</Text>
+          </View>
+          <View className="flex-1">
+            <Text className="text-lg font-NunitoBold text-gray-900">{title}</Text>
+            <Text className="text-xs text-gray-500 font-NunitoMedium">{subtitle}</Text>
+          </View>
+        </View>
+        {rightAction}
       </View>
-      <View className="flex-1">
-        <Text style={{ color: '#111827' }} className="text-[15px] font-NunitoBold mb-0.5">{title}</Text>
-        <Text className="text-[12px] text-gray-500 font-NunitoMedium">{subtitle}</Text>
+      <View className="gap-4">
+        {children}
       </View>
-      {rightAction}
     </View>
-    <View className="gap-4">
-      {children}
-    </View>
-  </View>
-);
+  );
+};
 
 const UploadSparePart = () => {
+  const { isVehicleRental } = useActiveRoleProfile();
+
+  useEffect(() => {
+    if (isVehicleRental) {
+      showToast.error("Spare parts upload is only available for Sellers/Merchants.");
+      router.replace(sellerRoutes.uploadCarToRent as any);
+    }
+  }, [isVehicleRental]);
+
   const [vehicleCompatibility, setVehicleCompatibility] = useState<VehicleCompatibility[]>([])
   const [showOtherCategory, setShowOtherCategory] = useState(false)
   const [isGeneratingAI, setIsGeneratingAI] = useState(false)
@@ -325,7 +352,7 @@ const UploadSparePart = () => {
       <StatusBar style="dark" />
 
       {/* Header */}
-      <View className="bg-white border-b border-gray-200">
+      <View className="bg-white border-b border-gray-200 mb-4">
         <View className="flex-row items-center justify-between px-5 py-4">
           <TouchableOpacity
              onPress={() => router.push(sellerRoutes?.products)}
@@ -370,7 +397,7 @@ const UploadSparePart = () => {
             {({ values, errors, touched, handleSubmit: formikHandleSubmit, isValid, dirty, isSubmitting, setFieldValue }) => (
               <View className="space-y-6">
                 {/* Basic Information */}
-                <SectionCard accentColor={PRIMARY} icon="📋" title="Basic Information" subtitle="Tell us about the Product">
+                <SectionCard number={1} title="Basic Information" subtitle="Tell us about the Product">
 
                   {/* Category */}
                   <SelectField
@@ -409,7 +436,7 @@ const UploadSparePart = () => {
                 </SectionCard>
 
                 {/* Vehicle Compatibility - Dropdown Style */}
-                <SectionCard accentColor={PRIMARY} icon="🚗" title="Compatible Vehicles" subtitle="Select makes and Models">
+                <SectionCard number={2} title="Compatible Vehicles" subtitle="Select makes and Models">
                   <View className="flex-row items-center justify-end mb-4">
                     <TouchableOpacity
                       onPress={addVehicleCompatibility}
@@ -498,8 +525,7 @@ const UploadSparePart = () => {
 
                 {/* Description */}
                 <SectionCard 
-                  accentColor={PRIMARY} 
-                  icon="📝" 
+                  number={3}
                   title="Description" 
                   subtitle="Provide details about the Product"
                   rightAction={
@@ -536,7 +562,7 @@ const UploadSparePart = () => {
                 </SectionCard>
 
                 {/* Pricing & Availability */}
-                <SectionCard accentColor={PRIMARY} icon="💰" title="Pricing & Availability" subtitle="Set your Price and Stock">
+                <SectionCard number={4} title="Pricing & Availability" subtitle="Set your Price and Stock">
                   {/* Price */}
                   <FormikInput
                     name="price"

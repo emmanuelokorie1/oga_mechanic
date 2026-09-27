@@ -444,8 +444,7 @@ const ProfileDetails = () => {
       formData.append('requestType', 'inbound');
 
       const getFileObject = (uri: string) => {
-        if (!uri) return null;
-        if (uri.startsWith('http')) return uri;
+        if (!uri || uri.startsWith('http')) return null;
         return {
           uri,
           name: `profile_${Date.now()}.jpg`,
@@ -453,39 +452,44 @@ const ProfileDetails = () => {
         } as any;
       };
 
-      if (values.profile_picture && (values.profile_picture.startsWith('file://') || values.profile_picture.startsWith('content://') || values.profile_picture.startsWith('http'))) {
+      if (values.profile_picture && (values.profile_picture.startsWith('file://') || values.profile_picture.startsWith('content://') || values.profile_picture.startsWith('ph://'))) {
         const profileFile = getFileObject(values.profile_picture);
         if (profileFile) {
           formData.append('selfie', profileFile);
         }
       }
       
-      // Core User Data (Consolidated into one call)
-      if (values.first_name) formData.append("first_name", values.first_name);
-      if (values.last_name) formData.append("last_name", values.last_name);
-      if (values.phone_number) formData.append("phone_number", formatPhoneNumber(values.phone_number));
+      // Core User Data (fall back to existing user info if editing a different section)
+      const firstName = values.first_name || userObj?.first_name;
+      const lastName = values.last_name || userObj?.last_name;
+      const phoneNumber = values.phone_number || userObj?.phone_number;
+
+      if (firstName) formData.append("first_name", firstName);
+      if (lastName) formData.append("last_name", lastName);
+      if (phoneNumber) formData.append("phone_number", formatPhoneNumber(phoneNumber));
       
-      const fullValues = {
-        bio: mechanicProfile?.bio || "",
-        location: mechanicProfile?.location || "",
-        state: mechanicProfile?.state || "",
-        lga: mechanicProfile?.lga || "",
-        latitude: mechanicProfile?.latitude || "",
-        longitude: mechanicProfile?.longitude || "",
-        nin_number: mechanicProfile?.nin_number || "",
-        specializations: JSON.stringify(mechanicProfile?.specializations || []),
-        // Merge with form values
-        ...values
+      const fullValues: Record<string, any> = {
+        bio: values.bio !== undefined ? values.bio : (mechanicProfile?.bio || ""),
+        location: values.location !== undefined ? values.location : (mechanicProfile?.location || ""),
+        state: values.state !== undefined ? values.state : (mechanicProfile?.state || ""),
+        lga: values.lga !== undefined ? values.lga : (mechanicProfile?.lga || ""),
+        latitude: values.latitude !== undefined ? values.latitude : (mechanicProfile?.latitude || ""),
+        longitude: values.longitude !== undefined ? values.longitude : (mechanicProfile?.longitude || ""),
+        nin_number: values.nin_number !== undefined ? values.nin_number : (mechanicProfile?.nin_number || ""),
       };
 
       Object.entries(fullValues).forEach(([key, val]) => {
-        if (val !== undefined && val !== null && key !== 'first_name' && key !== 'last_name' && key !== 'phone_number' && key !== 'profile_picture' && key !== 'nin_document') {
-          formData.append(key, val as string);
+        if (val !== undefined && val !== null && val !== "") {
+          formData.append(key, String(val));
         }
       });
 
-      // Note: first_name, last_name, phone_number are now included in formData above
-
+      // Serialize specializations as a JSON string
+      const rawSpecs = values.specializations !== undefined ? values.specializations : mechanicProfile?.specializations;
+      if (rawSpecs) {
+        const specs = Array.isArray(rawSpecs) ? rawSpecs : [rawSpecs];
+        formData.append('specializations', JSON.stringify(specs));
+      }
 
       await userAPI.submitMechanicKYC(formData);
       queryClient.invalidateQueries({ queryKey: userProfileKeys.all });

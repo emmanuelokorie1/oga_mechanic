@@ -196,8 +196,9 @@ const SellerProfile = () => {
   // Profile image fallback prioritization:
   // 1. Merchant Selfie (primary for KYC)
   // 2. Merchant Profile Picture
-  // 3. Primary User Profile Picture
-  const merchantProfile = (activeProfileQuery.data?.data as any)?.merchant_profile || (activeProfileQuery.data?.data as any)?.vehicle_rental_profile;
+  const merchantProfile = isVehicleRental
+    ? (activeProfileQuery.data?.data as any)?.vehicle_rental_profile
+    : (activeProfileQuery.data?.data as any)?.merchant_profile;
   const profileImage = 
     merchantProfile?.selfie || 
     merchantProfile?.profile_picture || 
