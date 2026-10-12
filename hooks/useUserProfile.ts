@@ -2,6 +2,7 @@ import React from 'react';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { userAPI, PrimaryUserProfileResponse, UserRolesResponse, UserProfile, MerchantProfileResponse, BanksResponse, BankEnquiryRequest, BankEnquiryResponse, AddBankAccountRequest, UserBankAccountResponse, MechanicProfileResponse, WalletResponse, UserEarningsResponse, WithdrawalResponse, WithdrawalFilters, WithdrawalRequestData, UserBankAccountsResponse, VehicleRentalProfileResponse } from '@/lib/api/user';
 import { mechanicAPI } from '@/lib/api/mechanic';
+import { communicationsAPI, extractChatRooms } from '@/lib/api/communications';
 import { useMechanicStore } from '@/stores/mechanicStore';
 
 // Query key factory
@@ -192,10 +193,11 @@ export const useRoleUserProfile = (role?: string) => {
 };
 
 // Hook to get user roles
-export const useUserRoles = () => {
+export const useUserRoles = (options?: { enabled?: boolean }) => {
   return useQuery<UserRolesResponse>({
     queryKey: userProfileKeys.roles(),
     queryFn: userAPI.getUserRoles,
+    enabled: options?.enabled ?? true,
     staleTime: 30 * 1000, // 30 seconds
     gcTime: 10 * 60 * 1000, // 10 minutes
     retry: 1,
@@ -315,6 +317,21 @@ export const useUnreadNotificationCount = () => {
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
     select: (data) => data?.data?.count ?? data?.count ?? 0,
+  });
+};
+
+// Hook to get total unread chat messages count across all chat rooms
+export const useUnreadChatCount = () => {
+  return useQuery({
+    queryKey: ['chatRooms'],
+    queryFn: () => communicationsAPI.getChatRooms(),
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    select: (data) => {
+      const rooms = extractChatRooms(data);
+      return rooms.reduce((acc: number, room: any) => acc + (Number(room.unread_count) || 0), 0);
+    },
   });
 };
 

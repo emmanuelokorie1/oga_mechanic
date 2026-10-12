@@ -10,7 +10,7 @@ import {
 } from "react-native-heroicons/outline";
 import { router, useSegments } from "expo-router";
 import { routes, mechanicRoutes, sellerRoutes } from "@/constants/routes";
-import { useUnreadNotificationCount, useActiveRoleProfile } from "@/hooks/useUserProfile";
+import { useUnreadNotificationCount, useUnreadChatCount, useActiveRoleProfile } from "@/hooks/useUserProfile";
 import { useQueryClient } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from "@/lib/endpoints";
@@ -65,6 +65,7 @@ const Navbar = () => {
   
   // Fetch unread count efficiently
   const { data: unreadCount = 0 } = useUnreadNotificationCount();
+  const { data: unreadChatCount = 0 } = useUnreadChatCount();
   
   // Use the unified active role profile hook
   const { 
@@ -199,7 +200,13 @@ const Navbar = () => {
           activeOpacity={0.7}
         >
           <ChatBubbleLeftRightIcon size={24} color="#475569" />
-          {/* We can wire up a real unread chat count here later */}
+          {unreadChatCount > 0 && (
+            <View className="absolute -top-1 -right-1 bg-red-500 px-1 rounded-full min-w-[20px] h-5 items-center justify-center border-2 border-white">
+              <Text className="text-white text-xs font-NunitoBold">
+                {unreadChatCount > 9 ? '9+' : unreadChatCount}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
 
         {/* Notifications Icon */}

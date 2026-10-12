@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUserStore } from '../stores/userStore';
 import { ENV_CONFIG } from '../config/env';
+import { secureStorage } from '../utils/secureStorage';
 
 export type WebSocketMessage = {
   type: string;
@@ -41,26 +42,35 @@ export default function useWebSocket({
   const eventHandlersRef = useRef<EventHandlers>(eventHandlers);
   const onConnectRef = useRef(onConnect);
   const onDisconnectRef = useRef(onDisconnect);
+  const messageQueue = useRef<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
   // Silent in production — connection state is surfaced via isConnected
   
   // Use state for local token to handle hydration fallback
   const storeToken = useUserStore((state) => state.accessToken);
-  const hasHydrated = useUserStore((state) => state.hasHydrated);
-  const [activeToken, setActiveToken] = useState<string | null>(null);
+  const [activeToken, setActiveToken] = useState<string | null>(storeToken || null);
 
   useEffect(() => {
+    let isMounted = true;
     if (storeToken) {
       setActiveToken(storeToken);
-    } else if (!hasHydrated) {
-      AsyncStorage.getItem('auth_token').then((token) => {
-        if (token && !activeToken) {
-          setActiveToken(token);
-        }
-      });
+    } else {
+      (async () => {
+        try {
+          const token = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
+          if (token && isMounted) {
+            setActiveToken(token);
+            const refreshToken = (await secureStorage.getSecureItem('refresh_token')) || (await AsyncStorage.getItem('refresh_token')) || '';
+            useUserStore.getState().setTokens(token, refreshToken);
+          }
+        } catch (_) {}
+      })();
     }
-  }, [storeToken, hasHydrated, activeToken]);
+    return () => {
+      isMounted = false;
+    };
+  }, [storeToken]);
 
   // Update refs to latest callbacks to avoid closure staleness without reconnecting
   useEffect(() => {
@@ -76,8 +86,20 @@ export default function useWebSocket({
       reconnectTimeout.current = null;
     }
 
+    const currentToken = activeToken || storeToken;
+
     // Verify required conditions
-    if (!enabled || !urlPath || !activeToken) {
+    if (!enabled || !urlPath || !currentToken) {
+      if (!currentToken && enabled && urlPath) {
+        (async () => {
+          try {
+            const token = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
+            if (token) {
+              setActiveToken(token);
+            }
+          } catch (_) {}
+        })();
+      }
       if (ws.current) {
         ws.current.onopen = null;
         ws.current.onmessage = null;
@@ -102,23 +124,47 @@ export default function useWebSocket({
     const baseNoProto = baseRaw.replace(/^wss?:\/\//, '');
     const cleanPath = urlPath.replace(/^\//, '');
     const fullPath = `${baseNoProto}/${cleanPath}`.replace(/\/+/g, '/');
-    const finalUrl = `${protocol}://${fullPath}${activeToken ? `?token=${activeToken}` : ''}`;
+    const finalUrl = `${protocol}://${fullPath}?token=${currentToken}`;
 
     try {
       ws.current = new WebSocket(finalUrl);
 
       ws.current.onopen = () => {
+        console.log('🟢 [WebSocket Connected]:', fullPath);
         reconnectAttempts.current = 0;
         setIsConnected(true);
+        // Flush any messages queued before socket opened (e.g. read_messages)
+        while (messageQueue.current.length > 0) {
+          const queued = messageQueue.current.shift();
+          if (queued && ws.current?.readyState === WebSocket.OPEN) {
+            console.log('🚀 [WebSocket Outgoing Flushed]:', queued);
+            ws.current.send(queued);
+          }
+        }
         onConnectRef.current?.();
       };
 
       ws.current.onmessage = (event) => {
         try {
           const data: WebSocketMessage = JSON.parse(event.data);
-          const handler = eventHandlersRef.current[data.type];
+          const rawType = data.type || data.event || data.action || data.notification_type || '';
+          console.log('📡 [WebSocket Incoming]:', rawType, data);
+
+          let handler = eventHandlersRef.current[rawType];
+          if (!handler && typeof rawType === 'string') {
+            handler =
+              eventHandlersRef.current[rawType.replace(/-/g, '_')] ||
+              eventHandlersRef.current[rawType.replace(/_/g, '-')] ||
+              eventHandlersRef.current[rawType.replace(/\./g, '_')];
+          }
+
           if (handler) {
             handler(data);
+          } else {
+            const fallback = eventHandlersRef.current['*'] || eventHandlersRef.current['message'];
+            if (fallback) {
+              fallback(data);
+            }
           }
         } catch (error) {
           // Silently ignore malformed WS messages
@@ -126,6 +172,7 @@ export default function useWebSocket({
       };
 
       ws.current.onclose = (event) => {
+        console.log('🔴 [WebSocket Disconnected]:', fullPath, event.code, event.reason);
         setIsConnected(false);
         onDisconnectRef.current?.();
         // Exponential backoff: 3s, 6s... max 30s
@@ -136,14 +183,15 @@ export default function useWebSocket({
         }
       };
 
-      ws.current.onerror = () => {
+      ws.current.onerror = (err) => {
+        console.warn('⚠️ [WebSocket Error]:', fullPath, err);
         ws.current?.close();
       };
 
     } catch (err) {
-      // Connection setup failed — backoff will retry
+      console.warn('⚠️ [WebSocket Setup Failed]:', fullPath, err);
     }
-  }, [urlPath, enabled, reconnect, reconnectInterval, activeToken]);
+  }, [urlPath, enabled, reconnect, reconnectInterval, activeToken, storeToken]);
 
   // Handle (re)connection logic
   useEffect(() => {
@@ -164,9 +212,15 @@ export default function useWebSocket({
   // ws.current directly). Keeping it in deps caused a new callback reference
   // every time the URL changed, destabilising downstream memoised hooks.
   const sendMessage = useCallback((type: string, payload: object = {}, isRaw: boolean = false) => {
+    const data = isRaw ? payload : { type, ...payload };
+    const serialized = JSON.stringify(data);
+
     if (ws.current?.readyState === WebSocket.OPEN) {
-      const data = isRaw ? payload : { type, ...payload };
-      ws.current.send(JSON.stringify(data));
+      console.log('🚀 [WebSocket Outgoing]:', type, data);
+      ws.current.send(serialized);
+    } else {
+      console.log('⏳ [WebSocket Queueing payload for connection]:', type, data);
+      messageQueue.current.push(serialized);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

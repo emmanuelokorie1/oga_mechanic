@@ -63,19 +63,19 @@ const SwitchUserModal: React.FC<SwitchUserModalProps> = ({
   const setIsNewSwitch = useProfileStore((state) => state.setIsNewSwitch);
   const [isPendingApproval, setIsPendingApproval] = useState(false);
 
-  // Fetch user roles from API
+  // Fetch user roles from API (only when modal is visible)
   const {
     data: rolesData,
     isLoading: isLoadingUserRoles,
     error: userRolesError
-  } = useUserRoles();
+  } = useUserRoles({ enabled: isVisible });
 
-  // Fetch all available roles from API
+  // Fetch all available roles from API (only when modal is visible)
   const {
     data: allRoles = [],
     isLoading: isLoadingAllRoles,
     error: allRolesError
-  } = useRoles();
+  } = useRoles({ enabled: isVisible });
 
   // Animation values
   const slideAnim = useRef(new Animated.Value(screenHeight)).current;

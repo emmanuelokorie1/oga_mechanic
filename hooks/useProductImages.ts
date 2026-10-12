@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 import { productsAPI } from '@/lib/api/products';
 
@@ -20,26 +19,11 @@ export const useProductImages = ({ productId, merchantId }: UseProductImagesProp
   } = useQuery({
     queryKey: ['product', productId],
     queryFn: async () => {
-      
-      const authToken = await AsyncStorage.getItem('auth_token');
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/`,
-        {
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
-          },
-        }
-      );
-
-      const responseData = await response.json();
-      
-      if (!response.ok || responseData.status === false) {
-        throw new Error(responseData.message || `HTTP ${response.status}`);
+      if (!productId) {
+        console.warn('⚠️ [useProductImages] No productId provided for getProductDetail');
+        return null;
       }
-
-      const finalData = responseData.data || responseData;
-      return finalData;
+      return await productsAPI.getProductDetail(productId);
     },
     enabled: !!productId,
     staleTime: 2 * 60 * 1000, // 2 minutes - data is fresh for 2 minutes
@@ -66,7 +50,8 @@ export const useProductImages = ({ productId, merchantId }: UseProductImagesProp
         undefined, // limit
         merchantId  // merchantId
       );
-      return response.data.results || [];
+      const data = response.data;
+      return Array.isArray(data) ? data : ((data as any)?.results || []);
     },
     enabled: !!merchantId, // Only fetch when we have merchantId
     staleTime: 2 * 60 * 1000, // 2 minutes - data is fresh for 2 minutes
@@ -76,133 +61,64 @@ export const useProductImages = ({ productId, merchantId }: UseProductImagesProp
     refetchOnReconnect: true // Only refetch when connection is restored
   });
 
+  // Helper to invalidate all related queries
+  const invalidateQueries = async () => {
+    try {
+      queryClient.removeQueries({ queryKey: ['product', productId] });
+      await queryClient.refetchQueries({ 
+        queryKey: ['product', productId],
+        type: 'active'
+      });
+      
+      queryClient.removeQueries({ queryKey: ['products', merchantId] });
+      queryClient.removeQueries({ queryKey: ['products', merchantId, 'all'] });
+      queryClient.removeQueries({ queryKey: ['products', merchantId, 'cars'] });
+      queryClient.removeQueries({ queryKey: ['products', merchantId, 'spareParts'] });
+      
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['products', merchantId], type: 'active' }),
+        queryClient.refetchQueries({ queryKey: ['products', merchantId, 'all'], type: 'active' }),
+      ]);
+    } catch (err) {
+      console.warn('⚠️ [useProductImages] Cache invalidation warning:', err);
+    }
+  };
+
   // Mutation to upload image
   const uploadImage = useMutation({
     mutationFn: async (imageUri: string) => {
-      
-      const authToken = await AsyncStorage.getItem('auth_token');
-      
-      const formData = new FormData();
-      
-      if (imageUri && (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('data:'))) {
-        const uriParts = imageUri.split('.');
-        const fileExtension = uriParts[uriParts.length - 1].toLowerCase();
-        const fileName = `image_${Date.now()}.${fileExtension === 'jpg' || fileExtension === 'jpeg' ? 'jpg' : fileExtension}`;
-        
-        formData.append('images', {
-          uri: imageUri,
-          type: `image/${fileExtension === 'jpg' || fileExtension === 'jpeg' ? 'jpeg' : fileExtension}`,
-          name: fileName,
-        } as any);
-      } else {
-        formData.append('images', imageUri);
+      if (!productId) {
+        console.error('❌ [useProductImages] Cannot upload image: productId is missing or empty');
+        throw new Error('Product ID is missing');
       }
-
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/images/upload/`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
-          },
-          body: formData,
-        }
-      );
-
-      const result = await response.json();
-      
-      if (!response.ok || result.status === false) {
-        throw new Error(result.message || 'Upload failed');
-      }
-
-      return result;
+      console.log(`📤 [useProductImages] Starting upload for product ${productId}...`);
+      return await productsAPI.uploadProductImage(productId, imageUri);
     },
-    onSuccess: async (data, variables, context) => {
-      try {
-        
-        // Remove from cache and refetch product
-        queryClient.removeQueries({ queryKey: ['product', productId] });
-        
-        // Force immediate refetch for product
-        await queryClient.refetchQueries({ 
-          queryKey: ['product', productId],
-          type: 'active'
-        });
-        
-        // Invalidate ALL product-related queries for this merchant
-        queryClient.removeQueries({ queryKey: ['products', merchantId] }); // Main products
-        queryClient.removeQueries({ queryKey: ['products', merchantId, 'all'] }); // All products
-        queryClient.removeQueries({ queryKey: ['products', merchantId, 'cars'] }); // Cars only
-        queryClient.removeQueries({ queryKey: ['products', merchantId, 'spareParts'] }); // Spare parts only
-        
-        await Promise.all([
-          queryClient.refetchQueries({ queryKey: ['products', merchantId], type: 'active' }),
-          queryClient.refetchQueries({ queryKey: ['products', merchantId, 'all'], type: 'active' }),
-        ]);
-        
-      } catch (error) {
-      }
+    onSuccess: async (data) => {
+      console.log('✅ [useProductImages] Upload image succeeded:', data);
+      await invalidateQueries();
     },
-    onError: (error: Error) => {
-      Alert.alert('Upload Failed', `Failed to upload image: ${error.message}`);
+    onError: (error: any) => {
+      console.error('❌ [useProductImages] uploadImage mutation error:', error?.response?.data || error?.message || error);
     },
   });
 
   // Mutation to delete image
   const deleteImage = useMutation({
     mutationFn: async (imageId: number) => {
-      
-      const authToken = await AsyncStorage.getItem('auth_token');
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/images/?image_id=${imageId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
-          },
-        }
-      );
-
-      const result = await response.json();
-      
-      if (!response.ok || result.status === false) {
-        throw new Error(result.message || 'Delete failed');
+      if (!productId) {
+        console.error('❌ [useProductImages] Cannot delete image: productId is missing or empty');
+        throw new Error('Product ID is missing');
       }
-
-      return result;
+      return await productsAPI.deleteProductImage(productId, imageId);
     },
-    onSuccess: async (data, variables, context) => {
-      try {
-        
-        // Remove from cache and refetch product
-        queryClient.removeQueries({ queryKey: ['product', productId] });
-        
-        // Force immediate refetch for product
-        await queryClient.refetchQueries({ 
-          queryKey: ['product', productId],
-          type: 'active'
-        });
-        
-        // Invalidate ALL product-related queries for this merchant
-        queryClient.removeQueries({ queryKey: ['products', merchantId] }); // Main products
-        queryClient.removeQueries({ queryKey: ['products', merchantId, 'all'] }); // All products
-        queryClient.removeQueries({ queryKey: ['products', merchantId, 'cars'] }); // Cars only
-        queryClient.removeQueries({ queryKey: ['products', merchantId, 'spareParts'] }); // Spare parts only
-        
-        await Promise.all([
-          queryClient.refetchQueries({ queryKey: ['products', merchantId], type: 'active' }),
-          queryClient.refetchQueries({ queryKey: ['products', merchantId, 'all'], type: 'active' }),
-        ]);
-        
-        Alert.alert('Success', 'Image deleted successfully');
-      } catch (error) {
-        Alert.alert('Success', 'Image deleted successfully (refresh manually)');
-      }
+    onSuccess: async () => {
+      await invalidateQueries();
+      Alert.alert('Success', 'Image deleted successfully');
     },
-    onError: (error: Error) => {
-      Alert.alert('Error', 'Failed to delete image. Please try again.');
+    onError: (error: any) => {
+      console.error('❌ [useProductImages] deleteImage error:', error?.response?.data || error?.message || error);
+      Alert.alert('Error', error?.response?.data?.message || error?.message || 'Failed to delete image. Please try again.');
     },
   });
 
@@ -217,85 +133,19 @@ export const useProductImages = ({ productId, merchantId }: UseProductImagesProp
       imageIndex: number;
       newImageUri: string;
     }) => {
-      
-      const authToken = await AsyncStorage.getItem('auth_token');
-      
-      const formData = new FormData();
-      
-      if (newImageUri && (newImageUri.startsWith('file://') || newImageUri.startsWith('content://') || newImageUri.startsWith('data:'))) {
-        const uriParts = newImageUri.split('.');
-        const fileExtension = uriParts[uriParts.length - 1].toLowerCase();
-        const fileName = `image_${Date.now()}.${fileExtension === 'jpg' || fileExtension === 'jpeg' ? 'jpg' : fileExtension}`;
-        
-        formData.append('image', {
-          uri: newImageUri,
-          type: `image/${fileExtension === 'jpg' || fileExtension === 'jpeg' ? 'jpeg' : fileExtension}`,
-          name: fileName,
-        } as any);
-      } else {
-        formData.append('image', newImageUri);
+      if (!productId) {
+        console.error('❌ [useProductImages] Cannot replace image: productId is missing or empty');
+        throw new Error('Product ID is missing');
       }
-      
-      formData.append(
-        'updates',
-        JSON.stringify([
-          {
-            image_id: imageId,
-            ordering: imageIndex,
-          },
-        ])
-      );
-
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/images/`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
-          },
-          body: formData,
-        }
-      );
-
-      const result = await response.json();
-      
-      if (!response.ok || result.status === false) {
-        throw new Error(result.message || 'Replace failed');
-      }
-
-      return result;
+      return await productsAPI.replaceProductImage(productId, imageId, imageIndex, newImageUri);
     },
-    onSuccess: async (data, variables, context) => {
-      try {
-        
-        // Remove from cache and refetch product
-        queryClient.removeQueries({ queryKey: ['product', productId] });
-        
-        // Force immediate refetch for product
-        await queryClient.refetchQueries({ 
-          queryKey: ['product', productId],
-          type: 'active'
-        });
-        
-        // Invalidate ALL product-related queries for this merchant
-        queryClient.removeQueries({ queryKey: ['products', merchantId] }); // Main products
-        queryClient.removeQueries({ queryKey: ['products', merchantId, 'all'] }); // All products
-        queryClient.removeQueries({ queryKey: ['products', merchantId, 'cars'] }); // Cars only
-        queryClient.removeQueries({ queryKey: ['products', merchantId, 'spareParts'] }); // Spare parts only
-        
-        await Promise.all([
-          queryClient.refetchQueries({ queryKey: ['products', merchantId], type: 'active' }),
-          queryClient.refetchQueries({ queryKey: ['products', merchantId, 'all'], type: 'active' }),
-        ]);
-        
-        Alert.alert('Success', 'Image replaced successfully');
-      } catch (error) {
-        Alert.alert('Success', 'Image replaced successfully (refresh manually)');
-      }
+    onSuccess: async () => {
+      await invalidateQueries();
+      Alert.alert('Success', 'Image replaced successfully');
     },
-    onError: (error: Error) => {
-      Alert.alert('Replace Error', 'Failed to replace image. Please try again.');
+    onError: (error: any) => {
+      console.error('❌ [useProductImages] replaceImage error:', error?.response?.data || error?.message || error);
+      Alert.alert('Replace Error', error?.response?.data?.message || error?.message || 'Failed to replace image. Please try again.');
     },
   });
 
@@ -323,4 +173,3 @@ export const useProductImages = ({ productId, merchantId }: UseProductImagesProp
     isReplacingImage: replaceImage.isPending,
   };
 };
-

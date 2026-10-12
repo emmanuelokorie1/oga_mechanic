@@ -17,6 +17,10 @@ allprojects {
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
+    maven {
+      url "https://raw.githubusercontent.com/didit-protocol/sdk-android/main/repository"
+      content { includeGroup "me.didit" }
+    }
   }
 }
 

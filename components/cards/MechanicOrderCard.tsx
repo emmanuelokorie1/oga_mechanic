@@ -9,6 +9,7 @@ import {
   MapPinIcon,
   ChevronRightIcon
 } from 'react-native-heroicons/outline';
+import { isIdLike } from '@/utils/serviceUtils';
 
 interface MechanicOrder {
   id: string;
@@ -145,11 +146,13 @@ const MechanicOrderCard: React.FC<MechanicOrderCardProps> = ({ order, onPress })
                     ? 'Finding a Mechanic...' 
                     : `Mechanic: ${order.mechanicName}`}
                 </Text>
-                <View className="bg-primary-50 px-2 py-0.5 rounded self-start">
-                  <Text className="text-[10px] font-NunitoBold text-primary-600">
-                    {order.serviceType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
-                  </Text>
-                </View>
+                {order.serviceType && !isIdLike(order.serviceType) ? (
+                  <View className="bg-primary-50 px-2 py-0.5 rounded self-start">
+                    <Text className="text-[10px] font-NunitoBold text-primary-600">
+                      {order.serviceType.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             </View>
             

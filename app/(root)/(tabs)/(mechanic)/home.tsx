@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Animated,
   BackHandler,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -69,12 +70,12 @@ const MetricCardSkeleton = () => {
     return () => shimmer.stop();
   }, []);
 
-  const shimmerStyle = {
+  const shimmerStyle = useMemo(() => ({
     opacity: shimmerAnim.interpolate({
       inputRange: [0, 1],
       outputRange: [0.3, 0.7],
     }),
-  };
+  }), [shimmerAnim]);
 
   return (
     <View
@@ -112,12 +113,12 @@ const OrderCardSkeleton = () => {
     return () => shimmer.stop();
   }, []);
 
-  const shimmerStyle = {
+  const shimmerStyle = useMemo(() => ({
     opacity: shimmerAnim.interpolate({
       inputRange: [0, 1],
       outputRange: [0.3, 0.7],
     }),
-  };
+  }), [shimmerAnim]);
 
   return (
     <View className="bg-white mb-4 p-4 rounded-[.4rem] border border-gray-200">
@@ -186,22 +187,10 @@ const MetricCard = ({ label, value, sublabel, accentColor = '#D30309' }: MetricC
   </View>
 );
 
+import { useDoubleBackToExit } from "@/hooks/useDoubleBackToExit";
+
 const MechanicHome = () => {
-  useFocusEffect(
-    React.useCallback(() => {
-      const onBackPress = () => {
-        // Return true to prevent default back action (ignoring gesture completely)
-        return true;
-      };
-
-      const subscription = BackHandler.addEventListener(
-        'hardwareBackPress',
-        onBackPress
-      );
-
-      return () => subscription.remove();
-    }, [])
-  );
+  useDoubleBackToExit();
 
   const primaryProfile = usePrimaryUserProfile();
   const mechanicProfile = useMechanicProfile(true); // Always enabled on mechanic home
@@ -232,12 +221,21 @@ const MechanicHome = () => {
     onNewOrder: (order) => {
       console.log("🚀 Real-time order received via WebSocket:", order);
       setActiveNewOrder({
+        id: order.id ? String(order.id) : undefined,
         customerName: order.customer_name || (order.customer ? `${order.customer.first_name} ${order.customer.last_name}` : 'New Customer'),
         vehicleMake: order.vehicle_make || order.make,
         vehicleModel: order.vehicle_model || order.model,
         serviceType: order.service_type,
       });
-    }
+    },
+    onOrderRemoved: (orderId) => {
+      setActiveNewOrder((prev: any) => {
+        if (!prev || !prev.id || prev.id === String(orderId)) {
+          return null;
+        }
+        return prev;
+      });
+    },
   });
 
   // Fallback Polling removed in favor of WebSocket
@@ -475,8 +473,29 @@ const MechanicHome = () => {
       setActionModalVisible(false);
       setActionType(null);
       setSelectedOrderId(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing action:", error);
+      setActionModalVisible(false);
+      setActionType(null);
+      setSelectedOrderId(null);
+      refetchRequests();
+      const rawMsg = error?.response?.data?.message || error?.message || '';
+      const isAlreadyTaken =
+        rawMsg.toLowerCase().includes('accept') ||
+        rawMsg.toLowerCase().includes('taken') ||
+        rawMsg.toLowerCase().includes('assigned') ||
+        rawMsg.toLowerCase().includes('status') ||
+        rawMsg.toLowerCase().includes('pending') ||
+        error?.response?.status === 400 ||
+        error?.response?.status === 404 ||
+        error?.response?.status === 409;
+
+      Alert.alert(
+        "Request Unavailable",
+        isAlreadyTaken
+          ? "This repair request has already been accepted by another specialist or cancelled."
+          : (rawMsg || "This request could not be processed. Please refresh.")
+      );
     }
   };
 

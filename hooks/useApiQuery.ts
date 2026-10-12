@@ -10,12 +10,12 @@ interface ApiQueryOptions<TData = unknown, TError = Error> extends Omit<UseQuery
   staleTime?: number;
 }
 
-interface ApiQueryResult<TData = unknown, TError = Error> extends UseQueryResult<TData, TError> {
+type ApiQueryResult<TData = unknown, TError = Error> = UseQueryResult<TData, TError> & {
   // Additional properties for error handling
   errorInfo?: ReturnType<typeof useErrorHandler>['parseError'] extends (error: any) => infer R ? R : never;
   canRetry: boolean;
   shouldShowTroubleshooting: boolean;
-}
+};
 
 /**
  * Enhanced useQuery hook with built-in error handling and retry logic

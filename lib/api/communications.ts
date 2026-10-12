@@ -37,6 +37,34 @@ export interface ChatRoomsResponse {
   };
 }
 
+/**
+ * Helper to safely extract chat room array regardless of backend wrapper structure.
+ * Handles { data: { results: [...] } }, { results: { data: [...] } }, { data: [...] }, { results: [...] }, and raw arrays.
+ */
+export const extractChatRooms = (response: any): ChatRoom[] => {
+  if (!response) return [];
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data?.results)) return response.data.results;
+  if (Array.isArray(response?.results?.data)) return response.results.data;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.results)) return response.results;
+  return [];
+};
+
+/**
+ * Helper to safely extract chat message array regardless of backend wrapper structure.
+ */
+export const extractMessages = (response: any): any[] => {
+  if (!response) return [];
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data?.results)) return response.data.results;
+  if (Array.isArray(response?.results?.data)) return response.results.data;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.results)) return response.results;
+  return [];
+};
+
 export const communicationsAPI = {
   /**
    * Retrieves all chat rooms for the authenticated user.
@@ -50,7 +78,8 @@ export const communicationsAPI = {
    * Retrieves messages for a specific chat room.
    */
   getRoomMessages: async (roomId: string): Promise<any> => {
-    const response = await api.get(`${SERVICE_ENDPOINTS.COMMUNICATIONS_CHAT_ROOMS}${roomId}/messages/`);
+    const cleanRoomId = roomId.replace(/^\/|\/$/g, '');
+    const response = await api.get(`${SERVICE_ENDPOINTS.COMMUNICATIONS_CHAT_ROOMS}${cleanRoomId}/messages/`);
     return response.data;
   },
 
@@ -69,7 +98,8 @@ export const communicationsAPI = {
    * Sends a message via REST (Fallback method).
    */
   sendMessage: async (roomId: string, content: string, messageType: string = 'text'): Promise<any> => {
-    const response = await api.post(`${SERVICE_ENDPOINTS.COMMUNICATIONS_CHAT_ROOMS}${roomId}/messages/`, {
+    const cleanRoomId = roomId.replace(/^\/|\/$/g, '');
+    const response = await api.post(`${SERVICE_ENDPOINTS.COMMUNICATIONS_CHAT_ROOMS}${cleanRoomId}/messages/`, {
       content,
       message_type: messageType
     });
@@ -79,10 +109,33 @@ export const communicationsAPI = {
   /**
    * Marks specific messages as read.
    */
-  markMessagesAsRead: async (roomId: string, messageIds: string[]): Promise<any> => {
-    const response = await api.post(`${SERVICE_ENDPOINTS.COMMUNICATIONS_CHAT_ROOMS}${roomId}/mark-read/`, {
-      message_ids: messageIds
+  markMessagesAsRead: async (roomId: string, messageIds: string[] = []): Promise<any> => {
+    const cleanRoomId = roomId.replace(/^\/|\/$/g, '');
+    const payload = {
+      message_ids: (messageIds || []).map(String)
+    };
+    console.log(`🌐 [communicationsAPI.markMessagesAsRead] POST to ${cleanRoomId}:`, payload);
+    const response = await api.post(`${SERVICE_ENDPOINTS.COMMUNICATIONS_CHAT_ROOMS}${cleanRoomId}/mark-read/`, payload);
+    return response.data;
+  },
+
+  /**
+   * Lists unread chat notifications for the authenticated user.
+   */
+  getChatNotifications: async (): Promise<any> => {
+    const response = await api.get(SERVICE_ENDPOINTS.COMMUNICATIONS_NOTIFICATIONS);
+    return response.data;
+  },
+
+  /**
+   * Marks chat notifications as read.
+   * Pass notification_ids or leave empty to mark all as read.
+   */
+  markChatNotificationsAsRead: async (notificationIds: string[] = []): Promise<any> => {
+    const response = await api.patch(SERVICE_ENDPOINTS.COMMUNICATIONS_NOTIFICATIONS, {
+      notification_ids: notificationIds
     });
     return response.data;
   },
 };
+

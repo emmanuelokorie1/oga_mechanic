@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Image } from 'react-native';
 import { icons } from '@/constants';
 
 interface OngoingBookingCardProps {
@@ -21,7 +21,7 @@ const OngoingBookingCard: React.FC<OngoingBookingCardProps> = ({
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center">
           <View className="items-center justify-center mr-3">
-            <icons.trip width={50} height={50} />
+            <Image source={icons.carRent} style={{ width: 50, height: 50 }} resizeMode="contain" />
           </View>
           <View>
             <Text className="font-semibold text-lg text-gray-900">{type}</Text>

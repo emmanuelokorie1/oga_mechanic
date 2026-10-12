@@ -65,6 +65,7 @@ class SecurityMonitoringManager {
     this.isEnabled = ENV_CONFIG.ENABLE_ANALYTICS || ENV_CONFIG.ENABLE_CRASH_REPORTING;
     this.sessionId = this.generateSessionId();
     this.deviceId = this.generateDeviceId();
+    this.rehydrateDeviceId();
     
     this.config = {
       enableLogging: true,
@@ -125,20 +126,19 @@ class SecurityMonitoringManager {
    * Generate unique device ID
    */
   private generateDeviceId(): string {
+    return `device_${Platform.OS}_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+  }
+
+  private async rehydrateDeviceId(): Promise<void> {
     try {
-      // Try to get existing device ID
-      const existingId = secureStorage.getSecureItem('device_id');
+      const existingId = await secureStorage.getSecureItem('device_id');
       if (existingId) {
-        return existingId;
+        this.deviceId = existingId;
+      } else {
+        await secureStorage.setSecureItem('device_id', this.deviceId);
       }
-      
-      // Generate new device ID
-      const deviceId = `device_${Platform.OS}_${Date.now()}_${Math.random().toString(36).substring(2)}`;
-      secureStorage.setSecureItem('device_id', deviceId);
-      return deviceId;
     } catch (error) {
-      console.error('Failed to generate device ID:', error);
-      return `device_${Platform.OS}_${Date.now()}`;
+      console.error('Failed to rehydrate device ID:', error);
     }
   }
 

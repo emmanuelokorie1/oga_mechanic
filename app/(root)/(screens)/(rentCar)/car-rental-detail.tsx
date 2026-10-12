@@ -39,7 +39,7 @@ import {
 import { StarIcon } from "react-native-heroicons/solid";
 import { productsAPI } from "@/lib/api/products";
 import { userAPI } from "@/lib/api/user";
-import { communicationsAPI } from "@/lib/api/communications";
+import { communicationsAPI, extractChatRooms } from "@/lib/api/communications";
 import { formatCurrency } from "@/utils/useCurrencyFormatter";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import ContactSelectionModal from "@/components/modals/ContactSelectionModal";
@@ -226,7 +226,7 @@ const CarRentalDetail = () => {
       }
 
       const roomsResponse = await communicationsAPI.getChatRooms();
-      const rooms = roomsResponse?.results?.data || [];
+      const rooms = extractChatRooms(roomsResponse);
       
       const existingRoom = rooms.find((room: any) => 
         room.participants?.some((p: any) => p.id === sellerUserId) ||

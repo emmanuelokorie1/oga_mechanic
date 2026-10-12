@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Image,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -36,6 +37,7 @@ import KYCBanner from "@/components/KYCBanner";
 import BiddingCarousel from "@/components/bidding/BiddingCarousel";
 import SpecialistIconBtn from "@/components/SpecialistIconBtn";
 import { sellerRoutes } from "@/constants/routes";
+import { useDoubleBackToExit } from "@/hooks/useDoubleBackToExit";
 
 const CAR_CATEGORY_ID = 23;
 
@@ -284,6 +286,7 @@ const ProductListingCard = ({
 // MAIN SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 const SellerHome = () => {
+  useDoubleBackToExit();
   const [refreshing, setRefreshing] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
@@ -380,8 +383,14 @@ const SellerHome = () => {
     };
   }, [activeProfileQuery.data, activeProfileQuery.isLoading, setIsProfileComplete, isNewSwitch]);
 
+  const isRejected = Boolean(
+    (activeProfileQuery.data?.data as any)?.merchant_profile?.disapproved ||
+    (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.disapproved
+  );
+
   const isPendingApproval = Boolean(
-    activeProfileQuery.data?.data?.kyc?.is_complete &&
+    !isRejected &&
+    (activeProfileQuery.data?.data?.kyc?.is_complete || isProfileComplete) &&
     !(
       isVehicleRental
         ? (activeProfileQuery.data?.data as any)?.vehicle_rental_profile?.is_approved
@@ -404,7 +413,23 @@ const SellerHome = () => {
   }, [refetchAnalytics, refetchProfile, refetchItems]);
 
   const handleCta = (action?: 'uploadSpareParts' | 'uploadCars' | 'kyc') => {
-    if (!isProfileComplete || isPendingApproval || action === 'kyc') {
+    if (action === 'kyc' && isPendingApproval) {
+      Alert.alert(
+        "Verification Pending",
+        "Your profile has been submitted and is currently being reviewed by our team. Approval usually takes less than 24 hours."
+      );
+      return;
+    }
+
+    if (isPendingApproval) {
+      Alert.alert(
+        "Verification Under Review",
+        "Your KYC verification is currently under review. You'll be able to upload listings once approved."
+      );
+      return;
+    }
+
+    if (!isProfileComplete || action === 'kyc') {
       setShowProfileModal(true);
       return;
     }
@@ -490,11 +515,15 @@ const SellerHome = () => {
           <BiddingCarousel
             containerPadding={14}
             fallbackVariant={
-              (!activeProfileQuery.isLoading && (!isProfileComplete || isPendingApproval))
-                ? 'kyc_incomplete'
-                : isVehicleRental
-                  ? 'vehicle_rental'
-                  : 'seller'
+              activeProfileQuery.isLoading
+                ? undefined
+                : isPendingApproval
+                  ? 'kyc_pending'
+                  : !isProfileComplete
+                    ? 'kyc_incomplete'
+                    : isVehicleRental
+                      ? 'vehicle_rental'
+                      : 'seller'
             }
             onSellerAction={handleCta}
           />

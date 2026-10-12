@@ -9,8 +9,10 @@ const BackArrowBtn = ({ onPress, text, className }: { onPress?: () => void, text
       onPress={() => {
         if (onPress) {
           onPress();
+        } else if (router.canGoBack()) {
+          router.back();
         } else {
-          router?.back();
+          router.replace("/(root)/(tabs)/(user)/home" as any);
         }
       }}
       className={`flex-row items-center ${className}`}

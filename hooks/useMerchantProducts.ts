@@ -20,11 +20,10 @@ export const useMerchantCars = (
   isRental: boolean = false,
   enabled: boolean = true
 ) => {
+  const logPrefix = isRental ? '[RENTAL CARS]' : '[CARS]';
   return useQuery({
     queryKey: merchantProductKeys.cars(merchantId, carCategoryId, isRental),
     queryFn: async () => {
-
-      
       const response = await productsAPI.getProducts(
         carCategoryId, // categoryId - filter by car category
         undefined, // minPrice
@@ -34,9 +33,10 @@ export const useMerchantCars = (
         merchantId, // merchantId
         isRental // isRental - fetch rental or non-rental cars
       );
-      
-      console.log(`✅ ${logPrefix} Fetched products:`, response.data.results?.length);
-      return response.data.results || [];
+      const data = response.data;
+      const list = Array.isArray(data) ? data : ((data as any)?.results || []);
+      console.log(`✅ ${logPrefix} Fetched products:`, list.length);
+      return list;
     },
     enabled: enabled && !!merchantId && !!carCategoryId,
     staleTime: 2 * 60 * 1000, // 2 minutes - data is fresh for 2 minutes
@@ -67,8 +67,10 @@ export const useMerchantSpareParts = (
         merchantId  // merchantId
       );
       
-      console.log('✅ [SPARE PARTS] Fetched products:', response.data.results?.length);
-      return response.data.results || [];
+      const data = response.data;
+      const list = Array.isArray(data) ? data : ((data as any)?.results || []);
+      console.log('✅ [SPARE PARTS] Fetched products:', list.length);
+      return list;
     },
     enabled: enabled && !!merchantId && !!sparePartsCategoryId,
     staleTime: 2 * 60 * 1000, // 2 minutes - data is fresh for 2 minutes
@@ -100,8 +102,9 @@ export const useRentalCars = (
         true // isRental - fetch only rental cars
       );
       
-
-      return response.data.results || [];
+      const data = response.data;
+      const list = Array.isArray(data) ? data : ((data as any)?.results || []);
+      return list;
     },
     enabled: enabled,
     staleTime: 2 * 60 * 1000, // 2 minutes for public data

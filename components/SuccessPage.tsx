@@ -1,5 +1,5 @@
 
-import { View, ScrollView, Animated } from "react-native";
+import { View, ScrollView, Animated, BackHandler } from "react-native";
 import { useEffect, useRef } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { icons } from "@/constants";
@@ -31,6 +31,17 @@ const SuccessPage = ({
   const buttonScale = useRef(new Animated.Value(0.8)).current;
   const buttonOpacity = useRef(new Animated.Value(0)).current;
   const pulseAnimation = useRef(new Animated.Value(1)).current;
+
+  // Prevent back navigation to previous submitted forms; redirect to target home route
+  useEffect(() => {
+    const handleBack = () => {
+      router.replace(route || routes.home);
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener("hardwareBackPress", handleBack);
+    return () => sub.remove();
+  }, [route]);
 
   useEffect(() => {
     // Start the animation sequence

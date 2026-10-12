@@ -22,6 +22,8 @@ import { useGetAvailableMechanics } from "@/hooks/useMechanics";
 import AnimatedErrorCard from "@/components/AnimatedErrorCard";
 import { useUserRepairRequests } from "@/hooks/useRepairRequests";
 import { useVehicleMakes } from "@/hooks/useVehicleMakes";
+import { useServiceTypes } from "@/hooks/useServiceTypes";
+import { resolveServiceDisplayName, isIdLike } from "@/utils/serviceUtils";
 import MechanicOrderCard, { MechanicOrder } from "@/components/cards/MechanicOrderCard";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { getApiErrorMessage } from "@/utils/errorMessages";
@@ -73,6 +75,9 @@ const AllMechanic = () => {
   // Fetch vehicle makes to resolve make/model names
   const { data: vehicleMakes } = useVehicleMakes();
 
+  // Fetch service types to resolve service UUIDs into friendly names
+  const { serviceTypes } = useServiceTypes();
+
   // Transform API data to local format
   const mechanics: Mechanic[] = (() => {
     try {
@@ -115,17 +120,27 @@ const AllMechanic = () => {
 
   // Helper function to get make name from ID
   const getMakeName = (makeId: string | number) => {
-    if (!vehicleMakes || !makeId) return 'N/A';
-    const make = vehicleMakes.find((m) => m.id.toString() === makeId.toString());
-    return make?.name || `Make ID: ${makeId}`;
+    if (!makeId) return '';
+    if (typeof makeId === 'string' && !isIdLike(makeId)) return makeId;
+    if (!vehicleMakes) return '';
+    const make = vehicleMakes.find(
+      (m) => m.id.toString() === makeId.toString() || m.name?.toLowerCase() === makeId.toString().toLowerCase()
+    );
+    return make?.name || '';
   };
 
   // Helper function to get model name from ID
   const getModelName = (makeId: string | number, modelId: string | number) => {
-    if (!vehicleMakes || !makeId || !modelId) return 'N/A';
-    const make = vehicleMakes.find((m) => m.id.toString() === makeId.toString());
-    const model = make?.models?.find((m) => m.id.toString() === modelId.toString());
-    return model?.name || `Model ID: ${modelId}`;
+    if (!modelId) return '';
+    if (typeof modelId === 'string' && !isIdLike(modelId)) return modelId;
+    if (!vehicleMakes) return '';
+    const make = vehicleMakes.find(
+      (m) => m.id.toString() === makeId?.toString() || m.name?.toLowerCase() === makeId?.toString().toLowerCase()
+    );
+    const model = make?.models?.find(
+      (m) => m.id.toString() === modelId.toString() || m.name?.toLowerCase() === modelId.toString().toLowerCase()
+    );
+    return model?.name || '';
   };
 
   // Transform API data to local format for orders
@@ -156,7 +171,7 @@ const AllMechanic = () => {
           id: request.id?.toString() || '',
           mechanicName: mechanicName,
           mechanicImage: request.mechanic?.selfie || request.mechanic_image || undefined,
-          serviceType: request.service_type || '',
+          serviceType: resolveServiceDisplayName(request, serviceTypes),
           vehicleMake: makeName,
           vehicleModel: modelName,
           vehicleYear: request.vehicle_year || 0,

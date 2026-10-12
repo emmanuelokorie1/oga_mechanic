@@ -32,6 +32,9 @@ interface StepByStepRegistrationData {
   car_model?: string;
   car_year?: number;
   license_plate?: string;
+  business_name?: string;
+  business_type?: string;
+  business_address?: string;
   sessionId?: string;
 }
 

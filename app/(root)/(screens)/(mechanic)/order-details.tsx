@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Linking, Platform, Alert } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Linking, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useIsFocused } from 'expo-router/react-navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { communicationsAPI, extractChatRooms } from '@/lib/api/communications';
 import * as Clipboard from 'expo-clipboard';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -56,6 +57,7 @@ const MechanicOrderDetails = () => {
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [isStartingChat, setIsStartingChat] = useState(false);
   const { showSuccess, showError, showWarning, visible, alertConfig, hideAlert } = useCustomAlert();
   
   // Copy to clipboard state
@@ -204,6 +206,67 @@ const MechanicOrderDetails = () => {
         showError('Error', 'WhatsApp is not installed on this device');
       }
     });
+  };
+
+  const handleChatCustomer = async () => {
+    const customerUserId =
+      customer?.user?.id ||
+      customer?.user_id ||
+      customer?.id ||
+      request?.customer_id ||
+      request?.user_id;
+
+    if (!customerUserId) {
+      showError('Error', 'Customer information is not available to start chat.');
+      return;
+    }
+
+    try {
+      setIsStartingChat(true);
+      const customerName = customer?.first_name
+        ? `${customer.first_name} ${customer.last_name || ''}`.trim()
+        : 'Customer';
+      const customerAvatar = customer?.avatar || customer?.profile_picture || '';
+      const customerPhone = customer?.phone_number || '';
+
+      // Check existing rooms first
+      const roomsResponse = await communicationsAPI.getChatRooms();
+      const rooms = extractChatRooms(roomsResponse);
+
+      const existingRoom = rooms.find((room: any) =>
+        room.participants?.some((p: any) => String(p.id) === String(customerUserId) || String(p.user_id) === String(customerUserId)) ||
+        String(room.other_participant?.id) === String(customerUserId) ||
+        String(room.other_participant?.user_id) === String(customerUserId) ||
+        (customer?.email && (room.other_participant?.email === customer.email || room.participants?.some((p: any) => p.email === customer.email)))
+      );
+
+      let roomId: string | null = existingRoom ? existingRoom.id : null;
+
+      if (!roomId) {
+        const createResponse = await communicationsAPI.createChatRoom([String(customerUserId)]);
+        roomId = createResponse?.data?.id || createResponse?.id || createResponse?.data?.room_id || createResponse?.room_id;
+      }
+
+      if (roomId) {
+        router.push({
+          pathname: routes.chatRoom as any,
+          params: {
+            roomId: roomId,
+            participantName: customerName,
+            participantAvatar: customerAvatar,
+            participantPhone: customerPhone,
+            subtitle: "Customer",
+          }
+        });
+      } else {
+        showError('Error', 'Could not open chat room with customer. Please try again.');
+      }
+    } catch (err) {
+      console.error('❌ Failed to open chat with customer:', err);
+      showError('Error', 'Could not connect to customer chat. Please check your connection.');
+    } finally {
+      setIsStartingChat(false);
+    }
   };
 
   const getStatusLabel = (status: string) => {
@@ -437,12 +500,28 @@ const MechanicOrderDetails = () => {
         showSuccess('Success', 'Status updated successfully.');
       }
     } catch (error: any) {
-      try {
-        const errorMessage = getApiErrorMessage(error);
-        showError('Action failed', errorMessage);
-      } catch (alertError) {
-        console.error('Error displaying error message:', alertError);
-        showError('Action failed', 'An error occurred. Please try again.');
+      refetch();
+      const rawMsg = error?.response?.data?.message || error?.message || '';
+      const isAlreadyTaken =
+        rawMsg.toLowerCase().includes('accept') ||
+        rawMsg.toLowerCase().includes('taken') ||
+        rawMsg.toLowerCase().includes('assigned') ||
+        rawMsg.toLowerCase().includes('status') ||
+        rawMsg.toLowerCase().includes('pending') ||
+        error?.response?.status === 400 ||
+        error?.response?.status === 404 ||
+        error?.response?.status === 409;
+
+      if (actionType === 'accept' && isAlreadyTaken) {
+        showError('Request Unavailable', 'This repair request was already accepted by another specialist or cancelled.');
+      } else {
+        try {
+          const errorMessage = getApiErrorMessage(error);
+          showError('Action failed', errorMessage);
+        } catch (alertError) {
+          console.error('Error displaying error message:', alertError);
+          showError('Action failed', 'An error occurred. Please try again.');
+        }
       }
     }
   };
@@ -620,11 +699,18 @@ const MechanicOrderDetails = () => {
                 <Text className="text-sm font-NunitoBold text-gray-700 ml-2">Call Customer</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => router.push(routes.chatSpecialist as any)}
+                onPress={handleChatCustomer}
+                disabled={isStartingChat}
                 className="flex-1 flex-row items-center justify-center bg-blue-600 py-3 rounded-xl shadow-sm"
               >
-                <ChatBubbleLeftRightIcon size={18} color="#FFFFFF" />
-                <Text className="text-sm font-NunitoBold text-white ml-2">Chat Support</Text>
+                {isStartingChat ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <ChatBubbleLeftRightIcon size={18} color="#FFFFFF" />
+                    <Text className="text-sm font-NunitoBold text-white ml-2">Chat Customer</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           )}

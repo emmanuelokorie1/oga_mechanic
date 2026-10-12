@@ -1,8 +1,34 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from '@/utils/secureStorage';
 import { router } from 'expo-router';
-import { routes } from '@/constants/routes';
+import { routes, mechanicRoutes, sellerRoutes } from '@/constants/routes';
 
-interface MockUserData {
+export const normalizeRoleName = (role: any): string => {
+  if (!role) return 'primary_user';
+  if (typeof role === 'object') {
+    return role.name || role.roleName || role.role || 'primary_user';
+  }
+  return String(role).trim().toLowerCase();
+};
+
+// Get role-specific home route
+export const getRoleHomeRoute = (role: any): string => {
+  const normalized = normalizeRoleName(role);
+  switch (normalized) {
+    case 'mechanic':
+      return mechanicRoutes?.home || '/(root)/(tabs)/(mechanic)/home';
+    case 'merchant':
+    case 'seller':
+    case 'vehicle_rental':
+      return sellerRoutes?.home || '/(root)/(tabs)/(sellers)/home';
+    case 'primary_user':
+    case 'user':
+    default:
+      return routes?.userHome || '/(root)/(tabs)/(user)/home';
+  }
+};
+
+export interface MockUserData {
   id: string;
   email: string;
   first_name: string;
@@ -42,7 +68,8 @@ export const loginAsRole = async (role: 'user' | 'mechanic') => {
       ['auth_token', mockTokens.access],
       ['refresh_token', mockTokens.refresh],
       ['user_data', JSON.stringify(userData)],
-      ['is_logged_in', 'true']
+      ['is_logged_in', 'true'],
+      ['current_active_role', userData.role]
     ]);
 
     // Navigate to role-specific home
@@ -55,27 +82,11 @@ export const loginAsRole = async (role: 'user' | 'mechanic') => {
   }
 };
 
-// Get role-specific home route
-export const getRoleHomeRoute = (role: string): string => {
-  switch (role) {
-    case 'primary_user':
-    case 'user':
-      return routes?.userHome || '/(root)/(tabs)/(user)/home';
-    case 'mechanic':
-      return routes?.mechanicHome || '/(root)/(tabs)/(mechanic)/home';
-    case 'merchant':
-    case 'seller':
-      return '/(root)/(tabs)/(sellers)/home';
-    default:
-      return routes?.userHome || '/(root)/(tabs)/(user)/home';
-  }
-};
-
 // Check if user is logged in
 export const isLoggedIn = async (): Promise<boolean> => {
   try {
     const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
-    const accessToken = await AsyncStorage.getItem('auth_token');
+    const accessToken = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
     return isLoggedIn === 'true' && !!accessToken;
   } catch (error) {
     console.error('❌ Error checking login status:', error);

@@ -107,8 +107,33 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     }
   }, [messages, isTyping, isLoadingHistory]);
 
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isCurrentlyTypingRef = useRef(false);
+
+  // Clean up typing indicator on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      if (isCurrentlyTypingRef.current) {
+        onTyping?.(false);
+      }
+    };
+  }, [onTyping]);
+
   const handleSendMessage = () => {
     if (inputText.trim()) {
+      // Clear typing status immediately when message is sent
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      if (isCurrentlyTypingRef.current) {
+        isCurrentlyTypingRef.current = false;
+        onTyping?.(false);
+      }
+
       onSendMessage(inputText.trim());
       setInputText("");
 
@@ -122,7 +147,33 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
 
   const handleTyping = (text: string) => {
     setInputText(text);
-    onTyping?.(text.length > 0);
+
+    if (text.trim().length > 0) {
+      if (!isCurrentlyTypingRef.current) {
+        isCurrentlyTypingRef.current = true;
+        onTyping?.(true);
+      }
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Automatically reset typing status after 2.5s of inactivity
+      typingTimeoutRef.current = setTimeout(() => {
+        isCurrentlyTypingRef.current = false;
+        onTyping?.(false);
+        typingTimeoutRef.current = null;
+      }, 2500);
+    } else {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      if (isCurrentlyTypingRef.current) {
+        isCurrentlyTypingRef.current = false;
+        onTyping?.(false);
+      }
+    }
   };
 
   const handleAttachment = async () => {

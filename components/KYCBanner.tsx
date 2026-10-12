@@ -91,8 +91,12 @@ const KYCBanner = ({ isVisible, role, isPending, isRejected }: KYCBannerProps) =
             {isRejectedState
               ? "Your KYC was not approved. Tap to resubmit with correct information."
               : isPendingState
-              ? "Your merchant profile is currently under review."
-              : `Complete your KYC to start receiving repair requests.`}
+              ? "Your profile is currently under review."
+              : role === "seller"
+              ? "Complete your KYC to start selling products."
+              : role === "vehicle_rental"
+              ? "Complete your KYC to start renting out vehicles."
+              : "Complete your KYC to start receiving repair requests."}
           </Text>
         </View>
 

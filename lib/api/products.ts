@@ -1,5 +1,6 @@
 import api from '../axios';
 import { SERVICE_ENDPOINTS, MERCHANT_ENDPOINTS, MECHANIC_ENDPOINTS } from '../endpoints';
+import { createFormDataFile } from '../../utils/imagePickerHelper';
 
 // Types
 export interface Product {
@@ -855,6 +856,99 @@ export const productsAPI = {
 
   deleteBid: async (bidId: string): Promise<any> => {
     const response = await api.delete(SERVICE_ENDPOINTS.DELETE_BID(bidId));
+    return response.data;
+  },
+
+  // Update order status (for merchant / seller / vehicle rental orders)
+  updateOrderStatus: async (orderId: string, status: string): Promise<any> => {
+    try {
+      const response = await api.patch(SERVICE_ENDPOINTS.ORDER_STATUS(orderId), { status });
+      return response.data;
+    } catch (patchErr: any) {
+      try {
+        const response = await api.patch(MERCHANT_ENDPOINTS.UPDATE_ORDER_STATUS(orderId), { status });
+        return response.data;
+      } catch (err: any) {
+        const response = await api.put(SERVICE_ENDPOINTS.ORDER_STATUS(orderId), { status });
+        return response.data;
+      }
+    }
+  },
+
+  // Upload an image for a product
+  uploadProductImage: async (productId: string | number, imageUri: string): Promise<any> => {
+    const formData = new FormData();
+    if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('data:')) {
+      const file = createFormDataFile(imageUri);
+      formData.append('images', file as any);
+    } else {
+      formData.append('images', imageUri);
+    }
+
+    console.log(`📤 [productsAPI] Uploading image for product ${productId} to /products/products/${productId}/images/upload/`);
+    const response = await api.post(`/products/products/${productId}/images/upload/`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    if (response.data && response.data.status === false) {
+      throw new Error(response.data.message || 'Upload failed');
+    }
+
+    return response.data;
+  },
+
+  // Delete an image from a product
+  deleteProductImage: async (productId: string | number, imageId: number | string): Promise<any> => {
+    console.log(`🗑️ [productsAPI] Deleting image ${imageId} from product ${productId}`);
+    const response = await api.delete(`/products/products/${productId}/images/`, {
+      params: { image_id: imageId },
+    });
+
+    if (response.data && response.data.status === false) {
+      throw new Error(response.data.message || 'Delete failed');
+    }
+
+    return response.data;
+  },
+
+  // Replace an image for a product
+  replaceProductImage: async (
+    productId: string | number,
+    imageId: number | string,
+    imageIndex: number,
+    newImageUri: string
+  ): Promise<any> => {
+    const formData = new FormData();
+    if (newImageUri.startsWith('file://') || newImageUri.startsWith('content://') || newImageUri.startsWith('data:')) {
+      const file = createFormDataFile(newImageUri);
+      formData.append('image', file as any);
+    } else {
+      formData.append('image', newImageUri);
+    }
+
+    formData.append(
+      'updates',
+      JSON.stringify([
+        {
+          image_id: imageId,
+          ordering: imageIndex,
+        },
+      ])
+    );
+
+    console.log(`🔄 [productsAPI] Replacing image ${imageId} on product ${productId}`);
+    const response = await api.patch(`/products/products/${productId}/images/`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    if (response.data && response.data.status === false) {
+      throw new Error(response.data.message || 'Replace failed');
+    }
+
     return response.data;
   },
 };

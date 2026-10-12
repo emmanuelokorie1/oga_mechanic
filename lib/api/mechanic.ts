@@ -198,8 +198,8 @@ export const mechanicAPI = {
   cancelRepairRequest: async (requestId: string, reason: string): Promise<any> => {
     const response = await api.patch(`${MECHANIC_ENDPOINTS.REPAIR_REQUESTS}${requestId}/`, {
       data: {
-        action: 'cancel',
-        reason: reason,
+        status: 'cancelled',
+        cancellation_reason: reason,
       },
       requestType: 'inbound',
     });
@@ -349,10 +349,6 @@ export const mechanicAPI = {
     return response.data;
   },
 
-  getServiceTypes: async (): Promise<any> => {
-    const response = await api.get(MECHANIC_ENDPOINTS.SERVICE_TYPES);
-    return response.data;
-  },
   
   getSpecializations: async (): Promise<any[]> => {
     const response = await api.get(MECHANIC_ENDPOINTS.SPECIALIZATIONS);

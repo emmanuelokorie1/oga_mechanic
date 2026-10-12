@@ -135,13 +135,17 @@ const Register = () => {
       return;
     }
     try {
-      const response = await googleSignUp();
-      if (response && response.type === 'success') {
-        router.replace(routes?.userHome as any);
-      }
-    } catch (error) {
+      await googleSignUp({
+        role: 'primary_user',
+      });
+    } catch (error: any) {
       console.log('Google Sign-Up Error:', error);
-      showError('Sign Up Failed', 'Could not sign up with Google');
+      const errMsg =
+        error?.response?.data?.message ||
+        error?.response?.data?.errors?.non_field_errors?.[0] ||
+        error?.message ||
+        'Could not sign up with Google';
+      showError('Sign Up Failed', errMsg);
     }
   };
 

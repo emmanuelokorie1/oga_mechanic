@@ -13,6 +13,8 @@ import { useProductImages } from '@/hooks/useProductImages'
 import CustomAlert from '@/components/CustomAlert'
 import { useCustomAlert } from '@/hooks/useCustomAlert'
 import { useActiveRoleProfile } from '@/hooks/useUserProfile'
+import ImageSourcePickerModal from '@/components/modals/ImageSourcePickerModal'
+import { pickImageWithPermission } from '@/utils/imagePickerHelper'
 
 // Dedicated edit image page for updating existing product images
 // This page handles image updates with PATCH and individual image deletion
@@ -23,6 +25,8 @@ const EditImage = () => {
   const [deletingImages, setDeletingImages] = useState<Set<number>>(new Set())
   const [isUploading, setIsUploading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [replaceModalVisible, setReplaceModalVisible] = useState(false)
+  const [pendingReplace, setPendingReplace] = useState<{ imageId: number; imageIndex: number } | null>(null)
   
   const { productId, productData: productDataParam, productType } = useLocalSearchParams<{
     productId?: string;
@@ -41,6 +45,9 @@ const EditImage = () => {
   }, [productDataParam]);
   const isRental = productType === 'rental-car';
   
+  // Resolve product ID reliably from either direct params or productData
+  const resolvedProductId = (productId || parsedProductData?.id || '').toString();
+
   // Initialize custom alert hook
   const { visible, alertConfig, hideAlert, showSuccess, showError } = useCustomAlert();
   
@@ -85,11 +92,11 @@ const EditImage = () => {
     deleteImage: deleteImageMutation,
     replaceImage: replaceImageMutation,
   } = useProductImages({ 
-    productId: productId || '',
+    productId: resolvedProductId,
     merchantId: merchantId 
   });
 
-  const isSparePart = productType === 'spare-part' || parsedProductData?.category_id === 24 || fetchedProductData?.category_id === 24;
+  const isSparePart = productType === 'spare-part' || parsedProductData?.category_id === 24 || (fetchedProductData as any)?.category_id === 24 || fetchedProductData?.category?.id === 24;
   const productLabel = isSparePart ? 'Spare Part' : (isRental ? 'Rental Car' : 'Car');
   const productLabelLower = isSparePart ? 'spare part' : (isRental ? 'rental car' : 'car');
 
@@ -138,9 +145,11 @@ const EditImage = () => {
           setLoadingImages(prev => new Set(prev).add(imageUri));
           
           try {
+            console.log(`🚀 [editImage] Uploading image: ${imageUri}`);
             await uploadImage(imageUri);
             successfulUploads++;
-          } catch (error) {
+          } catch (error: any) {
+            console.error('❌ [editImage] Failed to upload image:', imageUri, error?.response?.data || error?.message || error);
             // Track failed images
             failedImageUris.push(imageUri);
           } finally {
@@ -182,18 +191,23 @@ const EditImage = () => {
     }
   }
 
-  const handleReplaceImage = async (imageId: number, imageIndex: number) => {
+  const handleReplaceImage = (imageId: number, imageIndex: number) => {
+    setPendingReplace({ imageId, imageIndex });
+    setReplaceModalVisible(true);
+  };
+
+  const handleExecuteReplace = async (source: 'camera' | 'gallery') => {
+    if (!pendingReplace) return;
+    const { imageId, imageIndex } = pendingReplace;
+
     try {
-      // Launch image picker for replacement
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const result = await pickImageWithPermission(source, {
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
-        allowsMultipleSelection: false,
       });
 
-      if (!result.canceled && result.assets[0]) {
+      if (result && !result.canceled && result.assets[0]) {
         const newImageUri = result.assets[0].uri;
         
         // Add to loading state
@@ -201,19 +215,16 @@ const EditImage = () => {
         
         try {
           await replaceImageMutation({ imageId, imageIndex, newImageUri });
-          // Show success message
           showSuccess(
             'Image Replaced',
             `Your ${productLabelLower} image has been updated successfully!`
           );
         } catch (error) {
-          // Show error alert if replacement fails
           showError(
             'Replace Failed',
             'Failed to replace the image. Please try again.'
           );
-        } finally{
-          // Remove from loading state
+        } finally {
           setLoadingImages(prev => {
             const newSet = new Set(prev);
             newSet.delete(newImageUri);
@@ -222,6 +233,9 @@ const EditImage = () => {
         }
       }
     } catch (error) {
+      console.error('Error replacing image:', error);
+    } finally {
+      setPendingReplace(null);
     }
   };
 
@@ -479,6 +493,19 @@ const EditImage = () => {
           autoDismissDelay={alertConfig.autoDismissDelay}
         />
       )}
+
+      {/* Image Source Picker for Replace */}
+      <ImageSourcePickerModal
+        visible={replaceModalVisible}
+        onClose={() => {
+          setReplaceModalVisible(false);
+          setPendingReplace(null);
+        }}
+        onSelectCamera={() => handleExecuteReplace('camera')}
+        onSelectGallery={() => handleExecuteReplace('gallery')}
+        title="Replace Image"
+        subtitle="Choose whether to take a new photo with your camera or select from your gallery."
+      />
     </SafeAreaView>
   )
 }

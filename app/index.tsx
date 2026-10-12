@@ -1,44 +1,16 @@
 import { Redirect } from "expo-router";
 import { routes } from "@/constants/routes";
-import AnimatedSplash from "@/components/AnimatedSplash";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useEffect, useState } from "react";
-import * as SplashScreen from "expo-splash-screen";
+import { View } from "react-native";
 
 export default function Index() {
-  const { isLoading, shouldNavigate, navigationTarget } = useAuthContext();
-  const [animationComplete, setAnimationComplete] = useState(false);
+  const { isLoading, navigationTarget } = useAuthContext();
 
-  // Hide splash screen when both animation and auth check are complete
-  useEffect(() => {
-    if (animationComplete && !isLoading && shouldNavigate && navigationTarget) {
-      // Small delay to ensure smooth transition
-      const timer = setTimeout(() => {
-        SplashScreen.hideAsync().catch(() => {
-          // Silently catch errors - splash screen may already be hidden
-        });
-      }, 200);
-
-      return () => clearTimeout(timer);
-    }
-  }, [animationComplete, isLoading, shouldNavigate, navigationTarget]);
-
-  // If auth check is complete and we should navigate, redirect
-  if (animationComplete && !isLoading && shouldNavigate && navigationTarget) {
-    return <Redirect href={navigationTarget as any} />;
+  // Keep background red (matching splash) if still resolving
+  if (isLoading) {
+    return <View className="flex-1 bg-primary-500" />;
   }
 
-  // If auth check is complete but no navigation target, fallback to welcome
-  if (animationComplete && !isLoading && !shouldNavigate) {
-    return <Redirect href={routes?.welcome as any} />;
-  }
-
-  // Show animated splash while auth check is in progress or animation is running
-  return (
-    <AnimatedSplash
-      onAnimationEnd={() => {
-        setAnimationComplete(true);
-      }}
-    />
-  );
+  const destination = navigationTarget || routes?.welcome || "/welcome";
+  return <Redirect href={destination as any} />;
 }

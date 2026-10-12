@@ -1,16 +1,18 @@
 {
   "expo": {
-    "name": "Oga_mechanic",
+    "name": "Oga Mechanic",
     "slug": "oga_mechanic",
     "version": "1.0.1",
     "orientation": "portrait",
-    "icon": "./assets/icons/box_logo.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "ogamechanic",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ogamechanic.app",
       "infoPlist": {
+        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera to take photos of documents, parts, and vehicles.",
+        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photo library to upload images.",
         "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
         "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone.",
         "NSAppTransportSecurity": {
@@ -42,10 +44,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icons/box_logo.png",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.ogamechanic.app",
+      "allowBackup": false,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.INTERNET",

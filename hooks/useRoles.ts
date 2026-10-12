@@ -9,10 +9,11 @@ export const rolesQueryKeys = {
 };
 
 // useRoles hook
-export const useRoles = () => {
+export const useRoles = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: rolesQueryKeys.lists(),
     queryFn: rolesAPI.getRoles,
+    enabled: options?.enabled ?? true,
     staleTime: 10 * 60 * 1000, // 10 minutes - roles don't change often
     gcTime: 30 * 60 * 1000, // 30 minutes - keep in cache longer
     retry: 1, // Reduce retries to prevent excessive calls

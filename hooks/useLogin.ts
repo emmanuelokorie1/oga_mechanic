@@ -2,8 +2,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { userAPI, LoginCredentials } from '@/lib/api/user';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import { mechanicRoutes, routes, sellerRoutes } from '@/constants/routes';
+import { routes } from '@/constants/routes';
 import { getErrorMessage } from '@/utils/errorMessages';
+import { secureStorage } from '@/utils/secureStorage';
+import { getRoleHomeRoute, normalizeRoleName } from '@/utils/authUtils';
 
 export const useLogin = () => {
   const queryClient = useQueryClient();
@@ -20,7 +22,13 @@ export const useLogin = () => {
           
           if (responseData.access && responseData.refresh) {
             const { access, refresh, user } = responseData;
-            const active_role = user?.active_role || (responseData as any).active_role;
+            const rawActiveRole =
+              user?.active_role ||
+              (user as any)?.current_role ||
+              (responseData as any).active_role ||
+              (responseData as any).current_role ||
+              (user as any)?.role;
+            const initialRole = normalizeRoleName(rawActiveRole);
             
             // Use actual user data from response
             const userData = user || {
@@ -28,15 +36,23 @@ export const useLogin = () => {
               email: responseData.email || 'unknown@example.com',
               first_name: responseData.first_name || 'User',
               last_name: responseData.last_name || 'Name',
-              role: active_role || 'primary_user'
+              role: initialRole
             };
             
             await AsyncStorage.multiSet([
               ['auth_token', access],
               ['refresh_token', refresh],
               ['user_data', JSON.stringify(userData)],
-              ['is_logged_in', 'true']
+              ['is_logged_in', 'true'],
+              ['current_active_role', initialRole],
             ]);
+
+            try {
+              await secureStorage.setAuthTokens(access, refresh);
+              await secureStorage.setUserData(userData);
+            } catch (secErr) {
+              console.warn('Could not save to secureStorage:', secErr);
+            }
 
             // Synchronize with the Zustand store to notify all hooks (including WebSockets)
             try {
@@ -47,65 +63,58 @@ export const useLogin = () => {
               console.error('⚠️ Failed to sync login data to Zustand store:', e);
             }
             
-            // Call /users/roles/ endpoint after successful login
+            // Call /users/roles/ endpoint after successful login to get server active role
+            let activeRoleName = initialRole;
             try {
               const rolesResponse = await userAPI.getUserRoles();
               await AsyncStorage.setItem('user_roles_data', JSON.stringify(rolesResponse));
               
-              // Store the current active role for fallback purposes
-              if (active_role) {
-                await AsyncStorage.setItem('current_active_role', active_role);
+              const serverActiveRole = rolesResponse?.data?.active_role;
+              if (serverActiveRole) {
+                activeRoleName = normalizeRoleName(serverActiveRole);
               }
+              await AsyncStorage.setItem('current_active_role', activeRoleName);
             } catch (rolesError) {
               console.error('Failed to fetch roles after login:', rolesError);
-              // Still store the active role from login response as fallback
-              if (active_role) {
-                await AsyncStorage.setItem('current_active_role', active_role);
-              }
             }
             
-            // Navigate based on user role (use active_role from login response)
-            const role = active_role || 'primary_user';
-            let targetRoute: string = routes?.userHome || '/(root)/(tabs)/(user)/home';
-            
-            switch (role) {
-              case 'primary_user':
-                targetRoute = routes?.userHome || '/(root)/(tabs)/(user)/home';
-                break;
-              case 'mechanic':
-                targetRoute = mechanicRoutes?.home || '/(root)/(tabs)/(mechanic)/home';
-                break;
-            case 'merchant':
-                targetRoute = sellerRoutes?.home || '/(root)/(tabs)/(sellers)/home';
-                break;
-            case 'seller':
-                targetRoute = sellerRoutes?.home || '/(root)/(tabs)/(sellers)/home';
-                break;
-            default:
-                targetRoute = routes?.userHome || '/(root)/(tabs)/(user)/home';
-            }
-          
+            // Navigate based on user role (use normalized active role)
+            const targetRoute = getRoleHomeRoute(activeRoleName);
             router.replace(targetRoute as any);
           } else {
             // Fallback: try direct response structure
             if (response.access && response.refresh) {
               const { access, refresh, user } = response;
-              const active_role = user?.active_role || (response as any).active_role;
+              const rawActiveRole =
+                user?.active_role ||
+                (user as any)?.current_role ||
+                (response as any).active_role ||
+                (response as any).current_role ||
+                (user as any)?.role;
+              const initialRole = normalizeRoleName(rawActiveRole);
               
               const userData = user || {
                 id: response.id || 'unknown',
                 email: response.email || 'unknown@example.com',
                 first_name: response.first_name || 'User',
                 last_name: response.last_name || 'Name',
-                role: active_role || 'primary_user'
+                role: initialRole
               };
               
               await AsyncStorage.multiSet([
                 ['auth_token', access],
                 ['refresh_token', refresh],
                 ['user_data', JSON.stringify(userData)],
-                ['is_logged_in', 'true']
+                ['is_logged_in', 'true'],
+                ['current_active_role', initialRole],
               ]);
+
+              try {
+                await secureStorage.setAuthTokens(access, refresh);
+                await secureStorage.setUserData(userData);
+              } catch (secErr) {
+                console.warn('Could not save to secureStorage:', secErr);
+              }
 
               // Synchronize with the Zustand store (fallback path)
               try {
@@ -116,22 +125,20 @@ export const useLogin = () => {
                 console.error('⚠️ Failed to sync login data to Zustand store (fallback):', e);
               }
               
-              // Navigate based on role
-              const role = active_role || 'primary_user';
-              let targetRoute: string = routes?.userHome || '/(root)/(tabs)/(user)/home';
-              
-              switch (role) {
-                case 'primary_user':
-                  targetRoute = routes?.userHome || '/(root)/(tabs)/(user)/home';
-                  break;
-                case 'merchant':
-                case 'seller':
-                  targetRoute = sellerRoutes?.home || '/(root)/(tabs)/(sellers)/home';
-                  break;
-                default:
-                  targetRoute = routes?.userHome || '/(root)/(tabs)/(user)/home';
+              let activeRoleName = initialRole;
+              try {
+                const rolesResponse = await userAPI.getUserRoles();
+                await AsyncStorage.setItem('user_roles_data', JSON.stringify(rolesResponse));
+                const serverActiveRole = rolesResponse?.data?.active_role;
+                if (serverActiveRole) {
+                  activeRoleName = normalizeRoleName(serverActiveRole);
+                }
+                await AsyncStorage.setItem('current_active_role', activeRoleName);
+              } catch (rolesError) {
+                console.error('Failed to fetch roles after fallback login:', rolesError);
               }
               
+              const targetRoute = getRoleHomeRoute(activeRoleName);
               router.replace(targetRoute as any);
             } else {
               // No valid tokens found

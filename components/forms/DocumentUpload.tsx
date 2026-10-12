@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, Alert, Image } from 'react-native'
 import { DocumentIcon, XMarkIcon } from 'react-native-heroicons/outline'
 import * as ImagePicker from 'expo-image-picker'
+import * as Device from 'expo-device'
+import ImageSourcePickerModal from '@/components/modals/ImageSourcePickerModal'
 
 interface DocumentUploadProps {
   label?: string
@@ -31,30 +33,24 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   containerClassName = ""
 }) => {
   const [isUploading, setIsUploading] = useState(false)
+  const [sourcePickerVisible, setSourcePickerVisible] = useState(false)
 
   const hasError = error && touched
 
   const handleUpload = () => {
     if (disabled) return
-
-    Alert.alert(
-      'Upload Document',
-      'Choose how you want to upload your document',
-      [
-        {
-          text: 'Camera',
-          onPress: () => takePhoto()
-        },
-        {
-          text: 'Gallery',
-          onPress: () => pickFromLibrary()
-        },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    )
+    setSourcePickerVisible(true)
   }
 
   const takePhoto = async () => {
+    if (!Device.isDevice) {
+      Alert.alert(
+        'Simulator Notice',
+        'Camera is not available on the iOS Simulator. Opening photo gallery instead.'
+      );
+      return pickFromLibrary();
+    }
+
     try {
       setIsUploading(true)
       const { status } = await ImagePicker.requestCameraPermissionsAsync()
@@ -250,6 +246,15 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
       <Text className="text-xs text-gray-500 font-NunitoMedium">
         Tap to upload from camera, gallery, or files
       </Text>
+
+      <ImageSourcePickerModal
+        visible={sourcePickerVisible}
+        onClose={() => setSourcePickerVisible(false)}
+        onSelectCamera={() => takePhoto()}
+        onSelectGallery={() => pickFromLibrary()}
+        title={`Upload ${label}`}
+        subtitle="Choose whether to capture a document with your camera or select from your gallery."
+      />
     </View>
   )
 }

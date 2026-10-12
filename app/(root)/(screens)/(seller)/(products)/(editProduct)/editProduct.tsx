@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, Switch, ActivityIndicator } from 'react-native'
 import EditSuccessDrawer from '@/components/modals/EditSuccessDrawer'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { secureStorage } from '@/utils/secureStorage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon } from 'react-native-heroicons/outline'
@@ -125,10 +126,11 @@ const EditProduct = () => {
     const fetchBidding = async () => {
       if (!productId || productData?.bidding_window) return;
       try {
+        const token = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
         const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/bidding/`, {
           method: 'GET',
           headers: {
-            'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+            'Authorization': `Bearer ${token}`,
             'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
           }
         });
@@ -453,11 +455,13 @@ const EditProduct = () => {
       const endpoint = `${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/`;
 
 
+      const token = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
+
       const response = await fetch(endpoint, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+          'Authorization': `Bearer ${token}`,
           'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
         },
         body: JSON.stringify(payload),
@@ -482,7 +486,7 @@ const EditProduct = () => {
               method: 'PATCH',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+                'Authorization': `Bearer ${token}`,
                 'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
               },
               body: JSON.stringify({
@@ -497,7 +501,7 @@ const EditProduct = () => {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+                'Authorization': `Bearer ${token}`,
                 'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
               },
               body: JSON.stringify({
@@ -515,7 +519,7 @@ const EditProduct = () => {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+              'Authorization': `Bearer ${token}`,
               'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
             },
             body: JSON.stringify({
@@ -849,7 +853,7 @@ const EditProduct = () => {
                         <FormikInput
                           name="number_of_doors"
                           label="Number of Doors"
-                          placeholder="e.g., 2, 4, 5"
+                          placeholder="e.g., 4"
                           keyboardType="numeric"
                           type="text"
                         />
@@ -858,7 +862,7 @@ const EditProduct = () => {
                         <FormikInput
                           name="number_of_seats"
                           label="Number of Seats"
-                          placeholder="e.g., 4, 5, 7"
+                          placeholder="e.g., 4"
                           keyboardType="numeric"
                           type="text"
                         />

@@ -17,6 +17,7 @@ interface ExpertiseRecordItemProps {
   certificationLevels: { label: string; value: string }[];
   onRemove: () => void;
   onUpdate: (field: keyof ExpertiseRecord, value: string) => void;
+  onFocus?: () => void;
 }
 
 const ExpertiseRecordItem: React.FC<ExpertiseRecordItemProps> = ({
@@ -26,6 +27,7 @@ const ExpertiseRecordItem: React.FC<ExpertiseRecordItemProps> = ({
   certificationLevels,
   onRemove,
   onUpdate,
+  onFocus,
 }) => {
   return (
     <View 
@@ -77,6 +79,7 @@ const ExpertiseRecordItem: React.FC<ExpertiseRecordItemProps> = ({
             keyboardType="numeric"
             value={record.years_of_experience}
             onChangeText={(val) => onUpdate("years_of_experience", val)}
+            onFocus={onFocus}
           />
         </View>
         

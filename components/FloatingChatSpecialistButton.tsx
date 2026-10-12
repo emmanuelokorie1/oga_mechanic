@@ -128,7 +128,7 @@ const FloatingChatSpecialistButton = ({
 
   const handlePress = () => {
     if (!gestureState.current.isDrag) {
-      router.push(routes.chatSeller);
+      router.push(routes.chatSpecialist);
     }
   };
 

@@ -1,18 +1,20 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { View, FlatList, Animated, Dimensions, Text, TouchableOpacity, Image } from "react-native";
 import { router } from "expo-router";
 import AdsComponents from "@/components/AdsComponents";
+import OngoingRepairCarouselCard from "@/components/cards/OngoingRepairCarouselCard";
 import { routes, mechanicRoutes, sellerRoutes } from "@/constants/routes";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useActiveBiddingProducts } from "@/hooks/useProducts";
+import { useUserRepairRequests } from "@/hooks/useRepairRequests";
 
 const { width: screenWidth } = Dimensions.get("window");
 
 interface BiddingCarouselProps {
   containerPadding?: number;
   onFallbackChange?: (isFallbackShowing: boolean) => void;
-  /** 'user' shows "Find a mechanic" fallback (default). 'mechanic' shows "Spare Parts" & "Buy a Car" fallback. 'seller' shows "Upload Spare parts". 'vehicle_rental' shows "Upload Cars". 'kyc_incomplete' shows "Complete Profile" */
-  fallbackVariant?: 'user' | 'mechanic' | 'seller' | 'vehicle_rental' | 'kyc_incomplete';
+  /** 'user' shows "Find a mechanic" fallback (default). 'mechanic' shows "Spare Parts" & "Buy a Car" fallback. 'seller' shows "Upload Spare parts". 'vehicle_rental' shows "Upload Cars". 'kyc_incomplete' shows "Complete Profile". 'kyc_pending' shows "Verification Pending" */
+  fallbackVariant?: 'user' | 'mechanic' | 'seller' | 'vehicle_rental' | 'kyc_incomplete' | 'kyc_pending';
   onSellerAction?: (action: 'uploadSpareParts' | 'uploadCars' | 'kyc') => void;
 }
 
@@ -212,8 +214,8 @@ const BiddingCarouselSkeleton: React.FC<{ containerPadding?: number; fallbackVar
         </View>
       )}
 
-      {/* KYC Incomplete shortcut pill skeleton */}
-      {fallbackVariant === 'kyc_incomplete' && (
+      {/* KYC Incomplete or Pending shortcut pill skeleton */}
+      {(fallbackVariant === 'kyc_incomplete' || fallbackVariant === 'kyc_pending') && (
         <View className="mt-3" style={{ paddingHorizontal: containerPadding }}>
           <View className="flex-row items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
             <Animated.View
@@ -229,30 +231,74 @@ const BiddingCarouselSkeleton: React.FC<{ containerPadding?: number; fallbackVar
 
 const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0, onFallbackChange, fallbackVariant = 'user', onSellerAction }) => {
   const { data: activeBiddingRes, isLoading, error } = useActiveBiddingProducts();
+  const isUserVariant = fallbackVariant === 'user';
+  const { data: userRepairRequestsRes } = useUserRepairRequests(undefined, isUserVariant);
 
   const [activeAdIndex, setActiveAdIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
+
+  // Extract active ongoing repair requests if in 'user' mode
+  const activeRepairRequests = useMemo(() => {
+    if (!isUserVariant || !userRepairRequestsRes) return [];
+    const requests = Array.isArray(userRepairRequestsRes?.data)
+      ? userRepairRequestsRes.data
+      : (userRepairRequestsRes?.data?.results || userRepairRequestsRes?.results || []);
+    if (!Array.isArray(requests) || requests.length === 0) return [];
+
+    const activeStatuses = ['pending', 'accepted', 'in_transit', 'arrived', 'in_progress', 'completed'];
+
+    return requests.filter((r: any) => {
+      const status = (r.status || '').toLowerCase();
+      if (!activeStatuses.includes(status)) return false;
+      // If completed, only include if customer has not yet verified
+      if (
+        status === 'completed' &&
+        (r.verify_completed_at || r.is_verified || r.status === 'verified' || r.status === 'verify_completed')
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [isUserVariant, userRepairRequestsRes]);
+
+  const ongoingOrderAds = useMemo(() => {
+    if (activeRepairRequests.length === 0) return [];
+    // Consolidate all ongoing repairs into a single hero card
+    return [{
+      id: 'ongoing-repairs-consolidated',
+      isOngoingOrder: true,
+      orders: activeRepairRequests,
+      order: activeRepairRequests[0],
+    }];
+  }, [activeRepairRequests]);
+
+  const hasOngoingOrder = ongoingOrderAds.length > 0;
 
   // Prepare display ads - handle both paginated results and direct arrays in .data
   const biddingProducts = Array.isArray(activeBiddingRes?.data) 
     ? activeBiddingRes.data 
     : (activeBiddingRes?.results || (activeBiddingRes?.data as any)?.results || []);
   
-  const displayAds = biddingProducts.map((p: any) => ({
-    id: p.id,
-    title: p.name,
-    description: p.description?.slice(0, 60) + (p.description?.length > 60 ? '...' : ''),
-    images: p.images?.map((img: any) => ({ uri: img.image })) || [],
-    image: p.images?.[0]?.image ? { uri: p.images[0].image } : null,
-    price: p.price,
-    currency: p.currency,
-    year: p.year,
-    repairHistoryCount: p.repair_history?.length || 0,
-    isBidding: true
-  })).filter((ad: any) => ad.images.length > 0 || ad.image !== null);
+  const displayAds = useMemo(() => {
+    const biddingAds = biddingProducts.map((p: any) => ({
+      id: p.id,
+      title: p.name,
+      description: p.description?.slice(0, 60) + (p.description?.length > 60 ? '...' : ''),
+      images: p.images?.map((img: any) => ({ uri: img.image })) || [],
+      image: p.images?.[0]?.image ? { uri: p.images[0].image } : null,
+      price: p.price,
+      currency: p.currency,
+      year: p.year,
+      repairHistoryCount: p.repair_history?.length || 0,
+      isBidding: true,
+      isOngoingOrder: false,
+    })).filter((ad: any) => ad.images.length > 0 || ad.image !== null);
 
-  const isFallbackShowing = !isLoading && (displayAds.length === 0 || !!error);
+    return [...ongoingOrderAds, ...biddingAds];
+  }, [biddingProducts, ongoingOrderAds]);
+
+  const isFallbackShowing = !isLoading && (displayAds.length === 0 || (!!error && ongoingOrderAds.length === 0));
 
   useEffect(() => {
     if (onFallbackChange) {
@@ -260,9 +306,9 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
     }
   }, [isFallbackShowing, onFallbackChange]);
 
-  // Auto-scroll effect
+  // Auto-scroll effect: pause auto-scroll if an ongoing order is pinned so user can monitor it undisturbed
   useEffect(() => {
-    if (displayAds.length <= 1) return; // No need to scroll if only 1 item
+    if (displayAds.length <= 1 || hasOngoingOrder) return;
     
     // We do not use infinite loop data here directly for simplicity, just index looping
     const interval = setInterval(() => {
@@ -283,7 +329,7 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
     }, 8000); 
 
     return () => clearInterval(interval);
-  }, [displayAds.length]);
+  }, [displayAds.length, hasOngoingOrder]);
 
   const handleAdMomentumScrollEnd = (event: any) => {
     const index = Math.round(event.nativeEvent.contentOffset.x / screenWidth);
@@ -291,31 +337,43 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
     setActiveAdIndex(actualIndex);
   };
 
-  const renderAdItem = useCallback(({ item }: { item: any }) => (
-    <View style={{ width: screenWidth, alignItems: 'center' }}>
-      <View style={{ width: screenWidth - 18 }}>
+  const renderAdItem = useCallback(({ item }: { item: any }) => {
+    if (item.isOngoingOrder) {
+      return (
+        <View style={{ width: screenWidth, alignItems: 'center' }}>
+          <View style={{ width: screenWidth - 18 }}>
+            <OngoingRepairCarouselCard orders={item.orders} order={item.order} />
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={{ width: screenWidth, alignItems: 'center' }}>
+        <View style={{ width: screenWidth - 18 }}>
           <AdsComponents
-          images={item.images}
-          image={item.image}
-          title={item.title}
-          description={item.description}
-          price={item.price}
-          currency={item.currency}
-          year={item.year}
-          repairHistoryCount={item.repairHistoryCount}
-          isBidding={item.isBidding}
-          onPress={() => {
-            if (item.isBidding) {
-              router.push({
-                pathname: routes.biddingDetail as any,
-                params: { productId: item.id }
-              });
-            }
-          }}
-        />
+            images={item.images}
+            image={item.image}
+            title={item.title}
+            description={item.description}
+            price={item.price}
+            currency={item.currency}
+            year={item.year}
+            repairHistoryCount={item.repairHistoryCount}
+            isBidding={item.isBidding}
+            onPress={() => {
+              if (item.isBidding) {
+                router.push({
+                  pathname: routes.biddingDetail as any,
+                  params: { productId: item.id }
+                });
+              }
+            }}
+          />
+        </View>
       </View>
-    </View>
-  ), []);
+    );
+  }, []);
 
   // During initial fetch, display an ads skeleton so the design doesn't flash or jump
   if (isLoading) {
@@ -435,7 +493,7 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
           {/* Upload Cars */}
           <TouchableOpacity
             activeOpacity={0.88}
-            onPress={() => onSellerAction ? onSellerAction('uploadCars') : router.push(sellerRoutes.uploadCarToRent as any)}
+            onPress={() => onSellerAction ? onSellerAction('uploadCars') : router.push(sellerRoutes.uploadProducts as any)}
             className="h-[140px] rounded-[18px] p-3.5 overflow-hidden justify-between bg-primary-500"
             style={{ width: cardWidth }}
           >
@@ -450,7 +508,7 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
             </View>
             <View>
               <Text className="text-[13px] text-white font-NunitoExtraBold leading-[17px] tracking-tight">
-                {'Upload Cars for Rent'}
+                {'Upload Cars'}
               </Text>
               <View className="mt-[7px] bg-white rounded-full py-1 px-[9px] flex-row items-center self-start gap-1">
                 <Text className="text-primary-500 text-[11px] font-NunitoBold">Add New</Text>
@@ -527,11 +585,57 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
       );
     }
 
+    // ── KYC Pending variant: Verification Under Review ────────────────────────
+    if (fallbackVariant === 'kyc_pending') {
+      return (
+        <View className="mb-1 mt-1">
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => onSellerAction && onSellerAction('kyc')}
+            className="h-[140px] rounded-[18px] p-4 overflow-hidden justify-between bg-amber-600 w-full"
+            style={{
+              shadowColor: '#D97706',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.18,
+              shadowRadius: 10,
+              elevation: 3,
+            }}
+          >
+            <MaterialCommunityIcons
+              name="clock-time-four"
+              size={115}
+              color="rgba(255,255,255,0.14)"
+              style={{ position: 'absolute', right: -15, bottom: -20 }}
+            />
+            <View className="flex-row items-center justify-between">
+              <View className="w-[38px] h-[38px] rounded-[12px] items-center justify-center bg-white/20">
+                <MaterialCommunityIcons name="clock-outline" size={22} color="#FFFFFF" />
+              </View>
+              <View className="bg-white/20 px-3 py-1 rounded-full flex-row items-center gap-1.5">
+                <View className="w-2 h-2 rounded-full bg-amber-200" />
+                <Text className="text-[11px] font-NunitoBold text-white">Under Review</Text>
+              </View>
+            </View>
+            <View>
+              <Text className="text-[15px] text-white font-NunitoExtraBold leading-[20px] tracking-tight">
+                {'Verification Pending\nProfile Under Review'}
+              </Text>
+              <View className="mt-[8px] bg-white rounded-full py-1.5 px-[12px] flex-row items-center self-start gap-1">
+                <Text className="text-amber-700 text-[12px] font-NunitoBold">Check Status</Text>
+                <MaterialCommunityIcons name="chevron-right" size={14} color="#B45309" />
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     // ── Default (user) variant: Find a mechanic ───────────────────────────────
     return (
       <View style={{ width: screenWidth, alignItems: 'center', marginVertical: 4 }}>
         <TouchableOpacity 
           activeOpacity={0.9}
+          onPress={() => router.push(routes.findMechanic)}
           style={{
             width: screenWidth - 18,
             height: 155, 
@@ -704,7 +808,7 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
             {/* Upload Cars pill */}
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => onSellerAction ? onSellerAction('uploadCars') : router.push(sellerRoutes.uploadCarToRent as any)}
+              onPress={() => onSellerAction ? onSellerAction('uploadCars') : router.push(sellerRoutes.uploadProducts as any)}
               className="flex-1 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-3 py-2.5 min-h-[52px]"
             >
               <Text numberOfLines={2} className="flex-1 text-[12px] font-NunitoBold text-gray-800 mr-2 leading-[16px]">
@@ -750,6 +854,28 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
               <Text className="text-[14px] font-NunitoBold text-amber-800">Complete Profile to Sell</Text>
               <View className="w-9 h-9 rounded-xl bg-amber-100 items-center justify-center">
                 <MaterialCommunityIcons name="shield-account" size={18} color="#D97706" />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* KYC Pending shortcut pill */}
+        {fallbackVariant === 'kyc_pending' && (
+          <View
+            className="mt-3"
+            style={{ paddingHorizontal: containerPadding }}
+          >
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => onSellerAction && onSellerAction('kyc')}
+              className="flex-row items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3"
+            >
+              <View className="flex-row items-center gap-2">
+                <MaterialCommunityIcons name="clock-outline" size={18} color="#D97706" />
+                <Text className="text-[14px] font-NunitoBold text-amber-800">Verification in Progress</Text>
+              </View>
+              <View className="bg-amber-100 px-2.5 py-1 rounded-full">
+                <Text className="text-[11px] font-NunitoBold text-amber-700">Under Review</Text>
               </View>
             </TouchableOpacity>
           </View>

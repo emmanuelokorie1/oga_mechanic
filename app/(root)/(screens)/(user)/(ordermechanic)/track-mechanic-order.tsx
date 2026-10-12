@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, RefreshControl, Modal, TouchableOpacity, Linking, Platform, Image } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { View, Text, ScrollView, RefreshControl, Modal, TouchableOpacity, Linking, Platform, Image, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { communicationsAPI, extractChatRooms } from '@/lib/api/communications';
 import * as Clipboard from 'expo-clipboard';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import BackArrowBtn from '@/components/BackArrowBtn';
 import ContactSelectionModal from '@/components/modals/ContactSelectionModal';
 import CustomButton from '@/components/CustomButton';
@@ -27,12 +28,16 @@ import {
 } from 'react-native-heroicons/outline';
 import { useRepairRequestDetail, useCancelRepairRequest, useVerifyRepairCompletion } from '@/hooks/useRepairRequests';
 import { useVehicleMakes } from '@/hooks/useVehicleMakes';
+import { useServiceTypes } from '@/hooks/useServiceTypes';
+import { resolveServiceDisplayName, isIdLike } from '@/utils/serviceUtils';
 import MechanicReviewModal from '@/components/modals/MechanicReviewModal';
 import CancelRequestModal from '@/components/modals/CancelRequestModal';
 import { useCreateMechanicReview } from '@/hooks/useMechanics';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
 import CustomAlert from '@/components/CustomAlert';
 import OgaMapView, { Marker } from '@/components/OgaMapView';
+import { useNotificationStore } from '@/stores/notificationStore';
+import { useNotificationWebSocket } from '@/hooks/useNotificationWebSocket';
 
 interface OrderStatus {
   id: string;
@@ -104,21 +109,95 @@ const TrackMechanicOrder = () => {
 
   // Custom Alert
   const { visible: alertVisible, alertConfig, hideAlert, showError, showSuccess } = useCustomAlert();
+  const [isStartingChat, setIsStartingChat] = useState(false);
 
   // Mechanic Location State — sourced from API (mechanic broadcasts real GPS)
   const [mechanicLocation, setMechanicLocation] = useState<{ latitude: number, longitude: number } | null>(null);
 
-
-  // Fetch repair request detail from API
+  // Fetch repair request detail from API with active polling (4s fallback for live tracking)
   const {
     data: orderData,
     isLoading: isLoadingData,
     error: errorData,
     refetch
-  } = useRepairRequestDetail(orderId); // WebSocket handles live updates; poll disabled
+  } = useRepairRequestDetail(orderId, 4000);
+
+  // Real-time WebSocket connection to receive live order updates immediately
+  useNotificationWebSocket({
+    enabled: !!orderId,
+    onRepairUpdate: (updatedOrderId, newStatus) => {
+      console.log('⚡ [TrackMechanicOrder] Real-time WS repair update received:', { updatedOrderId, newStatus, currentOrderId: orderId });
+      if (!updatedOrderId || String(updatedOrderId) === String(orderId)) {
+        refetch();
+      }
+    },
+  });
+
+  // Auto-refetch when screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
+  // Listen for live repair notifications from the store
+  const lastNotification = useNotificationStore((state) => state.recentNotifications[0]);
+  useEffect(() => {
+    if (!lastNotification) return;
+    const notifType = (lastNotification.type || lastNotification.data?.notification_type || '').toLowerCase();
+    const notifTitle = (lastNotification.title || '').toLowerCase();
+    const notifMsg = (lastNotification.message || '').toLowerCase();
+    const notifOrderId =
+      lastNotification.data?.related_object_id ||
+      lastNotification.data?.repair_request_id ||
+      lastNotification.data?.order_id ||
+      lastNotification.data?.id;
+
+    const isRepairRelated =
+      notifType.includes('order') ||
+      notifType.includes('repair') ||
+      notifTitle.includes('repair') ||
+      notifTitle.includes('transit') ||
+      notifTitle.includes('mechanic') ||
+      notifMsg.includes('repair') ||
+      notifMsg.includes('transit') ||
+      notifMsg.includes('status');
+
+    if (
+      isRepairRelated &&
+      (!notifOrderId || String(notifOrderId) === String(orderId))
+    ) {
+      console.log('🔄 [TrackMechanicOrder] Notification arrived, refetching order detail:', orderId);
+      refetch();
+    }
+  }, [lastNotification?.timestamp, orderId, refetch]);
+
+  // Pending response timer: track seconds elapsed since request was submitted
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    const rawStatus = orderData?.data?.status || 'pending';
+    if (rawStatus !== 'pending') return;
+
+    const requestedTime = orderData?.data?.requested_at
+      ? new Date(orderData.data.requested_at).getTime()
+      : (orderData?.data?.created_at ? new Date(orderData.data.created_at).getTime() : Date.now());
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const diffSec = Math.max(0, Math.floor((now - requestedTime) / 1000));
+      setElapsedSeconds(diffSec);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [orderData?.data?.status, orderData?.data?.requested_at, orderData?.data?.created_at]);
 
   // Fetch vehicle makes to resolve make/model names
   const { data: vehicleMakes } = useVehicleMakes();
+  // Fetch service types to resolve service UUIDs into friendly names
+  const { serviceTypes } = useServiceTypes();
 
   const serviceLat = orderData?.data?.service_latitude;
   const serviceLng = orderData?.data?.service_longitude;
@@ -142,17 +221,27 @@ const TrackMechanicOrder = () => {
 
   // Helper function to get make name from ID
   const getMakeName = (makeId: string | number) => {
-    if (!vehicleMakes || !makeId) return 'N/A';
-    const make = vehicleMakes.find((m) => m.id.toString() === makeId.toString());
-    return make?.name || `Make ID: ${makeId}`;
+    if (!makeId) return '';
+    if (typeof makeId === 'string' && !isIdLike(makeId)) return makeId;
+    if (!vehicleMakes) return '';
+    const make = vehicleMakes.find(
+      (m) => m.id.toString() === makeId.toString() || m.name?.toLowerCase() === makeId.toString().toLowerCase()
+    );
+    return make?.name || '';
   };
 
   // Helper function to get model name from ID
   const getModelName = (makeId: string | number, modelId: string | number) => {
-    if (!vehicleMakes || !makeId || !modelId) return 'N/A';
-    const make = vehicleMakes.find((m) => m.id.toString() === makeId.toString());
-    const model = make?.models?.find((m) => m.id.toString() === modelId.toString());
-    return model?.name || `Model ID: ${modelId}`;
+    if (!modelId) return '';
+    if (typeof modelId === 'string' && !isIdLike(modelId)) return modelId;
+    if (!vehicleMakes) return '';
+    const make = vehicleMakes.find(
+      (m) => m.id.toString() === makeId?.toString() || m.name?.toLowerCase() === makeId?.toString().toLowerCase()
+    );
+    const model = make?.models?.find(
+      (m) => m.id.toString() === modelId.toString() || m.name?.toLowerCase() === modelId.toString().toLowerCase()
+    );
+    return model?.name || '';
   };
 
   // Copy to clipboard function
@@ -280,12 +369,13 @@ const TrackMechanicOrder = () => {
 
     return statusFlow.map((status, index) => {
       const timestamp = timestampMap[status.id];
-      
+      const isPastStep = currentStep >= 0 && index < currentStep;
+      const isCurrentStep = index === currentStep;
+
       return {
         ...status,
-        completed: !!timestamp,
-        // Active is the current step only if it doesn't have a timestamp yet
-        active: index === currentStep && !timestamp,
+        completed: isPastStep || !!timestamp,
+        active: isCurrentStep,
         timestamp: timestamp || null,
       };
     });
@@ -332,7 +422,7 @@ const TrackMechanicOrder = () => {
       mechanic_name: mechanicName,
       mechanic_id: mechanicId,
       mechanic_phone: mechanicPhone,
-      service_type: request.service_type || '',
+      service_type: resolveServiceDisplayName(request, serviceTypes) || (request.problem_description ? 'Vehicle Repair' : 'Repair Service'),
       vehicle_make: makeName,
       vehicle_model: modelName,
       vehicle_year: request.vehicle_year || 0,
@@ -376,7 +466,22 @@ const TrackMechanicOrder = () => {
   };
 
   const handleCancel = () => {
-    setShowCancelModal(true);
+    if (currentStatus === 'in_transit' || currentStatus === 'arrived') {
+      Alert.alert(
+        'Mechanic is on the way!',
+        'The specialist is already traveling to your location. Are you sure you want to cancel this booking?',
+        [
+          { text: 'Keep Booking', style: 'cancel' },
+          {
+            text: 'Yes, Cancel',
+            style: 'destructive',
+            onPress: () => setShowCancelModal(true),
+          },
+        ]
+      );
+    } else {
+      setShowCancelModal(true);
+    }
   };
 
   const handleCancelSubmit = async () => {
@@ -533,6 +638,66 @@ const TrackMechanicOrder = () => {
     router.push(routes.chatSpecialist as any);
   };
 
+  const handleChatMechanic = async () => {
+    const mechanicObj = orderData?.data?.mechanic;
+    const mechanicUserId =
+      mechanicObj?.user?.id ||
+      mechanicObj?.user_id ||
+      mechanicObj?.id ||
+      order?.mechanic_id;
+
+    if (!mechanicUserId) {
+      showError('Error', 'Mechanic information is not available to start chat.');
+      return;
+    }
+
+    try {
+      setIsStartingChat(true);
+      const mechanicName = order.mechanic_name ||
+        (mechanicObj ? `${mechanicObj.first_name || ''} ${mechanicObj.last_name || ''}`.trim() : 'Mechanic');
+      const mechanicAvatar = mechanicObj?.selfie || mechanicObj?.avatar || '';
+      const mechanicPhone = order.mechanic_phone || mechanicObj?.phone_number || '';
+
+      // Check existing rooms first
+      const roomsResponse = await communicationsAPI.getChatRooms();
+      const rooms = extractChatRooms(roomsResponse);
+
+      const existingRoom = rooms.find((room: any) =>
+        room.participants?.some((p: any) => String(p.id) === String(mechanicUserId) || String(p.user_id) === String(mechanicUserId)) ||
+        String(room.other_participant?.id) === String(mechanicUserId) ||
+        String(room.other_participant?.user_id) === String(mechanicUserId) ||
+        (mechanicObj?.email && (room.other_participant?.email === mechanicObj.email || room.participants?.some((p: any) => p.email === mechanicObj.email)))
+      );
+
+      let roomId: string | null = existingRoom ? existingRoom.id : null;
+
+      if (!roomId) {
+        const createResponse = await communicationsAPI.createChatRoom([String(mechanicUserId)]);
+        roomId = createResponse?.data?.id || createResponse?.id || createResponse?.data?.room_id || createResponse?.room_id;
+      }
+
+      if (roomId) {
+        router.push({
+          pathname: routes.chatRoom as any,
+          params: {
+            roomId: roomId,
+            participantName: mechanicName,
+            participantAvatar: mechanicAvatar,
+            participantPhone: mechanicPhone,
+            subtitle: "Mechanic",
+          }
+        });
+      } else {
+        showError('Error', 'Could not open chat with mechanic. Please try again.');
+      }
+    } catch (err) {
+      console.error('❌ Failed to open chat with mechanic:', err);
+      showError('Error', 'Could not connect to mechanic chat. Please check your connection.');
+    } finally {
+      setIsStartingChat(false);
+    }
+  };
+
   if (isLoadingData) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -667,6 +832,74 @@ const TrackMechanicOrder = () => {
             </View>
           </View>
 
+          {/* Pending Response Timer & Alternative Escape Hatch */}
+          {currentStatus === 'pending' && (
+            <View className="mt-4 pt-3 border-t border-amber-200/80">
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="flex-row items-center">
+                  <View className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-2" />
+                  <Text className="text-xs font-NunitoBold text-amber-900">
+                    Awaiting Specialist Response
+                  </Text>
+                </View>
+                <View className="bg-amber-100 px-2.5 py-1 rounded-full border border-amber-300/60">
+                  <Text className="text-xs font-NunitoExtraBold text-amber-900">
+                    {Math.floor(elapsedSeconds / 60)}:{(elapsedSeconds % 60).toString().padStart(2, '0')}
+                  </Text>
+                </View>
+              </View>
+              <Text className="text-xs font-NunitoMedium text-amber-800 leading-relaxed mb-2.5">
+                Specialists usually respond within 3–5 minutes. You'll receive a notification as soon as one accepts.
+              </Text>
+
+              {elapsedSeconds >= 180 && (
+                <View className="bg-white/80 p-3 rounded-lg border border-amber-200 mt-1">
+                  <Text className="text-xs font-NunitoBold text-amber-900 mb-1">
+                    Taking longer than expected?
+                  </Text>
+                  <Text className="text-[11px] font-NunitoMedium text-gray-600 mb-2.5">
+                    The specialist might be busy on another job. You can cancel and try finding another nearby mechanic.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        "Find Another Specialist?",
+                        "This will cancel your current request and allow you to search for another mechanic.",
+                        [
+                          { text: "Keep Waiting", style: "cancel" },
+                          {
+                            text: "Find Another",
+                            style: "destructive",
+                            onPress: () => {
+                              if (orderId) {
+                                cancelRequestMutation.mutate(
+                                  { requestId: orderId, reason: "Specialist took too long to respond" },
+                                  {
+                                    onSuccess: () => {
+                                      router.replace(routes.findMechanic as any);
+                                    },
+                                    onError: () => {
+                                      router.replace(routes.findMechanic as any);
+                                    }
+                                  }
+                                );
+                              }
+                            }
+                          }
+                        ]
+                      );
+                    }}
+                    className="bg-amber-600 py-2 px-3 rounded-md self-start flex-row items-center"
+                  >
+                    <Text className="text-white font-NunitoBold text-xs">
+                      Find Another Specialist
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
+
           {/* New Interactive Actions Banner */}
           {(currentStatus === 'accepted' || currentStatus === 'in_transit' || currentStatus === 'arrived') && (
             <View className="flex-row mt-4 pt-4 border-t border-gray-100/50 space-x-3 gap-3">
@@ -678,11 +911,18 @@ const TrackMechanicOrder = () => {
                 <Text className="text-sm font-NunitoBold text-gray-900 ml-2">Call Mechanic</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={handleChatSupport}
+                onPress={handleChatMechanic}
+                disabled={isStartingChat}
                 className="flex-1 flex-row items-center justify-center bg-blue-600 py-2.5 rounded-lg"
               >
-                <ChatBubbleLeftRightIcon size={18} color="#FFFFFF" />
-                <Text className="text-sm font-NunitoBold text-white ml-2">Chat Support</Text>
+                {isStartingChat ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <ChatBubbleLeftRightIcon size={18} color="#FFFFFF" />
+                    <Text className="text-sm font-NunitoBold text-white ml-2">Chat Mechanic</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           )}
@@ -690,15 +930,8 @@ const TrackMechanicOrder = () => {
           {/* Arrival Verification OTP */}
           {(currentStatus === 'accepted' || currentStatus === 'in_transit' || currentStatus === 'arrived') && (
             <View className="mt-4 pt-4 border-t border-gray-100/50 items-center">
-              <View className="flex-row items-center justify-between w-full mb-2">
-                <View className="w-8" />
+              <View className="flex-row items-center justify-center w-full mb-2">
                 <Text className="text-xs font-NunitoBold text-gray-500 uppercase tracking-widest">Arrival Verification Code</Text>
-                <TouchableOpacity 
-                  onPress={() => copyToClipboard(orderData?.data?.otp_code?.toString() || '')}
-                  className="p-1"
-                >
-                  <DocumentDuplicateIcon size={18} color={isCopied ? "#10B981" : "#6B7280"} />
-                </TouchableOpacity>
               </View>
 
               {orderData?.data?.is_otp_verified && (
@@ -837,7 +1070,9 @@ const TrackMechanicOrder = () => {
             <Text className="text-sm font-NunitoBold text-gray-500 ml-2 uppercase">Service Required</Text>
           </View>
           <Text className="text-lg font-NunitoBold text-gray-900">
-            {order.service_type?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'N/A'}
+            {order.service_type && !isIdLike(order.service_type)
+              ? order.service_type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+              : 'Vehicle Service'}
           </Text>
           {(order as any).estimated_cost != null && !Number.isNaN(Number((order as any).estimated_cost)) && (
             <View className="mt-3 bg-green-50 border border-green-200 rounded-xl px-3 py-2.5">

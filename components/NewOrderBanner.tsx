@@ -25,12 +25,15 @@ export const NewOrderBanner: React.FC<NewOrderBannerProps> = ({ order, onView, o
         uri: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3',
       });
       player.play();
-      const subscription = player.addListener('playbackStatusUpdate', status => {
-        if (status.didJustFinish) {
-          subscription.remove();
-          player.release();
-        }
-      });
+      const playerAny = player as any;
+      if (typeof playerAny.addListener === 'function') {
+        const subscription = playerAny.addListener('playbackStatusUpdate', (status: any) => {
+          if (status?.didJustFinish) {
+            subscription?.remove?.();
+            playerAny.release?.();
+          }
+        });
+      }
     } catch (error) {
       console.log('Error playing sound:', error);
     }

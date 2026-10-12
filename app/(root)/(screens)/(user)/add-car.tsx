@@ -10,6 +10,7 @@ import { Formik } from "formik";
 import { StatusBar } from "expo-status-bar";
 import { useState, useMemo, useCallback } from "react";
 import * as ImagePicker from "expo-image-picker";
+import * as Device from "expo-device";
 import FormikInput from "@/components/forms/FormikInput";
 import FormikButton from "@/components/forms/FormikButton";
 import SelectField from "@/components/forms/SelectField";
@@ -161,26 +162,53 @@ const AddCar = () => {
     },
   });
 
-  const handleImageUpload = async (side: "front" | "back" | "right" | "left") => {
+  const handleImageUpload = async (
+    side: "front" | "back" | "right" | "left",
+    source: "camera" | "gallery" = "gallery"
+  ) => {
     try {
-      // Request permission first
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      let result;
+      if (source === "camera") {
+        if (!Device.isDevice) {
+          Alert.alert(
+            "Simulator Notice",
+            "Camera hardware is not available on the iOS Simulator. Opening photo gallery instead."
+          );
+          return handleImageUpload(side, "gallery");
+        }
 
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Sorry, we need camera roll permissions to upload images.",
-          [{ text: "OK" }]
-        );
-        return;
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert(
+            "Permission Required",
+            "Sorry, we need camera permissions to take photos.",
+            [{ text: "OK" }]
+          );
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.5,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert(
+            "Permission Required",
+            "Sorry, we need camera roll permissions to upload images.",
+            [{ text: "OK" }]
+          );
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.5,
+        });
       }
-
-      let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: "images",
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.5,
-      });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const imageUri = result.assets[0].uri;
@@ -514,7 +542,7 @@ const AddCar = () => {
                           <ImageUpload
                             label="Front Side"
                             isUploaded={!!frontSideImage}
-                            onPress={() => handleImageUpload("front")}
+                            onPress={(source) => handleImageUpload("front", source)}
                             uploadedText="Front Side Uploaded"
                             imageUri={frontSideImage}
                             carSide="front"
@@ -526,7 +554,7 @@ const AddCar = () => {
                           <ImageUpload
                             label="Back Side"
                             isUploaded={!!backSideImage}
-                            onPress={() => handleImageUpload("back")}
+                            onPress={(source) => handleImageUpload("back", source)}
                             uploadedText="Back Side Uploaded"
                             imageUri={backSideImage}
                             carSide="back"
@@ -541,7 +569,7 @@ const AddCar = () => {
                           <ImageUpload
                             label="Right Side"
                             isUploaded={!!rightSideImage}
-                            onPress={() => handleImageUpload("right")}
+                            onPress={(source) => handleImageUpload("right", source)}
                             uploadedText="Right Side Uploaded"
                             imageUri={rightSideImage}
                             carSide="right"
@@ -553,7 +581,7 @@ const AddCar = () => {
                           <ImageUpload
                             label="Left Side"
                             isUploaded={!!leftSideImage}
-                            onPress={() => handleImageUpload("left")}
+                            onPress={(source) => handleImageUpload("left", source)}
                             uploadedText="Left Side Uploaded"
                             imageUri={leftSideImage}
                             carSide="left"

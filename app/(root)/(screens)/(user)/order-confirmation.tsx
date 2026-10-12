@@ -1,6 +1,6 @@
 "use client"
 
-import { View, Text, ScrollView, TouchableOpacity, Animated, Share, Image } from "react-native"
+import { View, Text, ScrollView, TouchableOpacity, Animated, Share, Image, BackHandler } from "react-native"
 import { useEffect, useRef } from "react"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { useLocalSearchParams, router } from "expo-router"
@@ -47,6 +47,16 @@ const OrderConfirmation = () => {
   
   // Staggered item animations
   const itemAnims = useRef(new Animated.Value(0)).current
+
+  // Intercept back button to return safely to Home instead of back into checkout
+  useEffect(() => {
+    const onBackPress = () => {
+      router.replace(routes.home);
+      return true;
+    };
+    const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     // Main entrance sequence
@@ -346,7 +356,7 @@ const OrderConfirmation = () => {
 
                 <CustomButton 
                     title="Continue Shopping"
-                    onPress={() => router.push(routes.home)}
+                    onPress={() => router.replace(routes.home)}
                     bgVariant="outline" 
                     textVariant="outline"
                     className="rounded-2xl"

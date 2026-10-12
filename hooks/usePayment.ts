@@ -60,8 +60,8 @@ export const usePaymentPolling = ({
   const [error, setError] = useState<Error | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
 
   const cleanup = useCallback(() => {

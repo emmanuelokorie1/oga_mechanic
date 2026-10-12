@@ -5,15 +5,16 @@ export const BASE_URL = ENV_CONFIG.API_URL;
 
 // Auth endpoints (common for all roles)
 export const AUTH_ENDPOINTS = {
-  LOGIN: '/auth/login',
-  REGISTER: '/auth/register',
-  REFRESH_TOKEN: '/auth/refresh',
-  LOGOUT: '/auth/logout',
+  LOGIN: '/auth/login/',
+  REGISTER: '/auth/register/',
+  REFRESH_TOKEN: '/auth/refresh/',
+  LOGOUT: '/auth/logout/',
   FORGOT_PASSWORD: '/users/password/reset/',
   RESET_PASSWORD: '/users/password/reset/confirm/',
   VERIFY_OTP: '/users/resend-verification-code/',
-  SWITCH_ROLE: '/auth/switch-role',
+  SWITCH_ROLE: '/auth/switch-role/',
   ALL_ROLES: '/users/roles/list/',
+  GOOGLE: '/users/google/',
 } as const;
 
 // User endpoints (regular users/customers)
@@ -21,6 +22,7 @@ export const USER_ENDPOINTS = {
   LOGIN: '/users/login/',
   LOGOUT: '/users/logout/',
   REGISTER: '/users/register/',
+  GOOGLE: '/users/google/',
   REGISTER_STEP: (stepId: number) => `/users/register/step/${stepId}/`,
   REGISTER_VEHICLE: '/users/register/vehicle/',
   ROLES: '/users/roles/',
@@ -28,6 +30,8 @@ export const USER_ENDPOINTS = {
   PROFILE: '/users/profile/primary/',
   PRIMARY_PROFILE: '/users/profile/primary/',
   UPDATE_PROFILE: '/users/profile/primary/',
+  NIN_STATUS: '/users/nin/status/',
+  NIN_VERIFY: '/users/nin/verify/',
   /** GET list (paginated ?page=), POST create — same collection */
   CARS: '/users/my-vehicles/',
   /** POST multipart: vin?, make, model, year, license_plate?, uploaded_images[] */
@@ -161,5 +165,6 @@ export const SERVICE_ENDPOINTS = {
   SUPPORT_CREATE_TICKET: '/support/tickets',
   SUPPORT_CONVERSATIONS: '/communications/support/conversations/',
   COMMUNICATIONS_CHAT_ROOMS: '/communications/chat-rooms/',
+  COMMUNICATIONS_NOTIFICATIONS: '/communications/notifications/',
   SUPPORT_UPLOAD: '/communications/support/upload/',
 } as const;

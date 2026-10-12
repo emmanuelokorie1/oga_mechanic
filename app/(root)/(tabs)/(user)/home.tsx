@@ -10,7 +10,8 @@ import {
   Image,
   Dimensions,
 } from "react-native";
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Services as ServicesData } from "@/constants";
 import { CAR_BRANDS } from "@/constants/data";
@@ -23,6 +24,7 @@ import { useHomeProducts, useActiveBiddingProducts } from "@/hooks/useProducts";
 import BiddingCarousel from "@/components/bidding/BiddingCarousel";
 import SpecialistIconBtn from "@/components/SpecialistIconBtn";
 import SwitchUserModal from "@/components/modals/SwitchUserModal";
+import useDoubleBackToExit from "@/hooks/useDoubleBackToExit";
 import VINSearchModal from "@/components/modals/VINSearchModal";
 import EmptyState from "@/components/EmptyState";
 
@@ -231,13 +233,8 @@ const ServiceCard = ({ item, onPress }: { item: any; onPress: () => void }) => {
 
 // ─── Home Screen ─────────────────────────────────────────────────────────────
 const Home = () => {
-  useFocusEffect(
-    React.useCallback(() => {
-      const onBackPress = () => true;
-      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-      return () => subscription.remove();
-    }, [])
-  );
+  useDoubleBackToExit();
+  const queryClient = useQueryClient();
 
   const [refreshing, setRefreshing] = useState(false);
   const [isSwitchRoleVisible, setIsSwitchRoleVisible] = useState(false);
@@ -247,11 +244,19 @@ const Home = () => {
   const { data: homeProducts, refetch: refetchHomeProducts } = useHomeProducts();
   const { data: activeBiddingRes, refetch: refetchActiveBidding } = useActiveBiddingProducts();
 
+  // Refresh user repair requests when user returns to home screen
+  useFocusEffect(
+    useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'] });
+    }, [queryClient])
+  );
+
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([
       refetchHomeProducts(),
-      refetchActiveBidding()
+      refetchActiveBidding(),
+      queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'] }),
     ]);
     setRefreshing(false);
   };

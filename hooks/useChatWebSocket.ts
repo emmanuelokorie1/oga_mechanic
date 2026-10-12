@@ -164,18 +164,19 @@ export const useChatWebSocket = (roomId: string, enabled: boolean = true) => {
         // 3. Optimistic Content Check (for user's own echoes)
         if (mappedMessage.isSent) {
           const alreadyExistsIndex = prev.findIndex(m => 
-            m.isSent && 
-            m.text === textContent &&
-            m.id?.toString().startsWith('local-')
+            (m.isSent || m.sender === 'me') &&
+            (m.id?.toString().startsWith('local-') || m.status === 'sending' || m.id?.toString() === mappedMessage.id?.toString()) &&
+            ((m.text || m.content || m.message) === textContent)
           );
 
           if (alreadyExistsIndex !== -1) {
             const newMessages = [...prev];
             newMessages[alreadyExistsIndex] = {
               ...newMessages[alreadyExistsIndex],
+              ...mappedMessage,
               id: mappedMessage.id,
               status: 'sent',
-              timestamp: mappedMessage.timestamp
+              timestamp: mappedMessage.timestamp || newMessages[alreadyExistsIndex].timestamp
             };
             return newMessages;
           }
@@ -246,12 +247,16 @@ export const useChatWebSocket = (roomId: string, enabled: boolean = true) => {
     const localMessage = {
       type: 'chat_message',
       content,
+      text: content,
+      message: content,
       message_type: messageType,
       file_url: fileUrl,
       messageType,
       fileUrl,
       sender: 'me',
+      isSent: true,
       created_at: timestamp,
+      timestamp,
       id: localId,
       status: 'sending'
     };
@@ -262,22 +267,23 @@ export const useChatWebSocket = (roomId: string, enabled: boolean = true) => {
       const response = await supportAPI.sendMessage(roomId, content, messageType, fileUrl);
 
       // 3. Update optimistic message with real server data
-      const serverId = response?.data?.id || response?.id;
-      const serverCreatedAt = response?.data?.created_at || response?.created_at;
+      const serverId = response?.data?.id || response?.id || response?.data?.message?.id;
+      const serverCreatedAt = response?.data?.created_at || response?.created_at || response?.data?.message?.created_at;
 
       if (serverId) {
-        setMessages((prev) => 
-          prev.map((m) => 
+        setMessages((prev) => {
+          const serverIdStr = serverId.toString();
+          // If WebSocket echo already inserted a message with this serverId, remove the local optimistic one
+          const alreadyHasServerId = prev.some(m => m.id?.toString() === serverIdStr && m.id !== localId);
+          if (alreadyHasServerId) {
+            return prev.filter(m => m.id !== localId);
+          }
+          return prev.map((m) => 
             m.id === localId 
-              ? { ...m, id: serverId, created_at: serverCreatedAt || m.created_at, status: 'sent' } 
+              ? { ...m, id: serverId, created_at: serverCreatedAt || m.created_at, timestamp: serverCreatedAt || m.timestamp, status: 'sent' } 
               : m
-          )
-        );
-        // Bug 5 fix: Do NOT call fetchHistory() after a successful send.
-        // The optimistic update above already reflects the message, and the
-        // WebSocket echo (chat_message event) will confirm it with a real ID.
-        // Calling fetchHistory() here triggers a redundant network round-trip
-        // and causes messages to appear duplicated.
+          );
+        });
       } else {
         // POST worked but response structure is unexpected — mark as sent anyway
         setMessages((prev) =>

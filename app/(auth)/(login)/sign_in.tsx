@@ -20,7 +20,6 @@ import { useGoogleSignIn } from "@/hooks/useGoogleSignIn";
 import { ChevronDownIcon } from "react-native-heroicons/outline";
 import CountryStatePicker from "@/components/CountryStatePicker";
 import { Country } from 'react-native-country-picker-modal';
-import { useRoles } from "@/hooks/useRoles";
 import { biometricAuth, BiometricType } from "@/utils/biometricAuth";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Svg, { Path } from "react-native-svg";
@@ -122,10 +121,6 @@ const SignIn = () => {
     flag: '🇳🇬'
   });
   const [selectedState, setSelectedState] = useState<string>('');
-
-  const {
-    refetch: refetchRoles
-  } = useRoles();
 
   // Get user type from route params (set during registration)
   const params = useLocalSearchParams();
@@ -335,13 +330,17 @@ const SignIn = () => {
       return;
     }
     try {
-      const response = await googleSignIn();
-      if (response && response.type === 'success') {
-        router.replace(routes?.userHome as any);
-      }
-    } catch (error) {
+      await googleSignIn({
+        role: userType || 'primary_user',
+      });
+    } catch (error: any) {
       console.log('Google Sign-In Error:', error);
-      showError('Sign In Failed', 'Could not sign in with Google');
+      const errMsg =
+        error?.response?.data?.message ||
+        error?.response?.data?.errors?.non_field_errors?.[0] ||
+        error?.message ||
+        'Could not sign in with Google';
+      showError('Sign In Failed', errMsg);
     }
   };
 

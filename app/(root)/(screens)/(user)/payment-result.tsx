@@ -9,6 +9,7 @@ import {
   Animated,
   Dimensions,
   Easing,
+  BackHandler,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -252,10 +253,20 @@ const PaymentResult = () => {
     else router.replace(routes?.cart);
   };
 
-  const handleViewOrders = () => router.push({
+  const handleViewOrders = () => router.replace({
     pathname: routes?.orderConfirmation,
     params: { id: orderId, totalAmount }
   });
+
+  // Intercept Android hardware back press so it goes to Home or Cart instead of gateway/checkout
+  useEffect(() => {
+    const onBackPress = () => {
+      handleContinue();
+      return true;
+    };
+    const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+    return () => sub.remove();
+  }, [isSuccess]);
 
   return (
     <LinearGradient
@@ -267,7 +278,7 @@ const PaymentResult = () => {
       <SafeAreaView style={styles.safe} edges={["top"]}>
         {/* ── Header ── */}
         <View style={styles.header}>
-          <BackArrowBtn />
+          <BackArrowBtn onPress={handleContinue} />
           <Text style={styles.headerTitle}>
             {isSuccess
               ? "Payment Success"

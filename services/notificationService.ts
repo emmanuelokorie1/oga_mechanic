@@ -197,7 +197,8 @@ export async function scheduleChatMessageNotification(params: {
   const { senderName, message, roomId, type = 'p2p' } = params;
 
   const title = `💬 New message from ${senderName || 'Support'}`;
-  const body = message || 'Tap to view message';
+  const rawBody = message || 'Tap to view message';
+  const body = typeof rawBody === 'string' ? rawBody : (rawBody && typeof rawBody === 'object' ? String((rawBody as any).content || (rawBody as any).text || 'New message') : String(rawBody));
 
   try {
     await Notifications.scheduleNotificationAsync({

@@ -99,12 +99,25 @@ const ChatSpecialist = () => {
           : 'read') as 'read' | 'sent' | 'sending' | 'delivered',
       }));
 
+    // Deduplicate by ID and content to guarantee no duplicates render
+    const uniqueMessages: Message[] = [];
+    const seenIds = new Set<string>();
+
+    for (const msg of mapped) {
+      const idStr = msg.id?.toString();
+      if (idStr && !idStr.startsWith('local-')) {
+        if (seenIds.has(idStr)) continue;
+        seenIds.add(idStr);
+      }
+      uniqueMessages.push(msg);
+    }
+
     // If we have an optimistic first message, prepend/append it appropriately
     if (isNewChat && pendingFirstMessage) {
       return [pendingFirstMessage];
     }
 
-    return mapped;
+    return uniqueMessages;
   }, [wsMessages, isNewChat, pendingFirstMessage]);
 
   /**

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from '@/utils/secureStorage';
 import { routes } from '@/constants/routes';
 import { userAPI } from '@/lib/api/user';
+import { getRoleHomeRoute, normalizeRoleName } from '@/utils/authUtils';
 
 interface UserData {
   access_token: string;
@@ -63,7 +65,7 @@ export const useAuth = () => {
 
       // Check if user is logged in
       const isLoggedIn = await AsyncStorage.getItem('is_logged_in');
-      const accessToken = await AsyncStorage.getItem('auth_token');
+      const accessToken = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
       const storedUserData = await AsyncStorage.getItem('user_data');
 
       if (isLoggedIn === 'true' && accessToken && storedUserData) {
@@ -98,42 +100,32 @@ export const useAuth = () => {
         const userData: UserData = JSON.parse(storedUserData);
         setUserData(userData);
         setIsAuthenticated(true);
-        
-        // Get current active role from server
+
+        // Sync tokens to Zustand store so WebSockets and all subscribers immediately receive active token
         try {
-          const rolesResponse = await userAPI.getUserRoles();
-          const activeRole = rolesResponse.data.active_role;
-          
-          // Set navigation target for role-specific home page using server role
-          if (activeRole && activeRole.name) {
-            // Store the current active role for future fallback
-            await AsyncStorage.setItem('current_active_role', activeRole.name);
-            
-            const targetRoute = getRoleHomeRoute(activeRole.name);
-            setNavigationTarget(targetRoute as any);
-            setShouldNavigate(true);
-          } else {
-            // Fallback to stored role if active role is not available
-            const targetRoute = getRoleHomeRoute(userData.role);
-            setNavigationTarget(targetRoute as any);
-            setShouldNavigate(true);
+          const storedRefreshToken = (await secureStorage.getSecureItem('refresh_token')) || (await AsyncStorage.getItem('refresh_token')) || '';
+          const { useUserStore } = await import('@/stores/userStore');
+          useUserStore.getState().setTokens(accessToken, storedRefreshToken);
+          useUserStore.getState().setUser(userData as any);
+        } catch (_) {}
+        
+        // Resolve role immediately from local cache or userData for instant cold start
+        const storedActiveRole = await AsyncStorage.getItem('current_active_role');
+        const initialRole = storedActiveRole ? normalizeRoleName(storedActiveRole) : normalizeRoleName(userData.role);
+        const targetRoute = getRoleHomeRoute(initialRole);
+        setNavigationTarget(targetRoute as any);
+        setShouldNavigate(true);
+
+        // Refresh active role from server in the background (non-blocking)
+        userAPI.getUserRoles().then(async (rolesResponse) => {
+          const activeRole = rolesResponse?.data?.active_role;
+          if (activeRole) {
+            const resolvedRole = normalizeRoleName(activeRole);
+            await AsyncStorage.setItem('current_active_role', resolvedRole);
           }
-        } catch (rolesError) {
-          
-          // Try to get the last known active role from AsyncStorage
-          const storedActiveRole = await AsyncStorage.getItem('current_active_role');
-          
-          if (storedActiveRole) {
-            const targetRoute = getRoleHomeRoute(storedActiveRole);
-            setNavigationTarget(targetRoute as any);
-            setShouldNavigate(true);
-          } else {
-            // Final fallback to userData.role
-            const targetRoute = getRoleHomeRoute(userData.role);
-            setNavigationTarget(targetRoute as any);
-            setShouldNavigate(true);
-          }
-        }
+        }).catch((err) => {
+          console.warn('⚠️ [useAuth] Background role sync warning:', err?.message || err);
+        });
       } else {
         setIsAuthenticated(false);
         setUserData(null);
@@ -148,23 +140,6 @@ export const useAuth = () => {
       setShouldNavigate(true);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const getRoleHomeRoute = (role: string): string => {
-    
-    switch (role) {
-      case 'primary_user':
-        return routes?.userHome || '/(root)/(tabs)/(user)/home';
-      case 'mechanic':
-        return routes?.mechanicHome || '/(root)/(tabs)/(mechanic)/home';
-      case 'merchant':
-      case 'seller':
-      case 'vehicle_rental':
-        return '/(root)/(tabs)/(sellers)/home';
-      default:
-        console.warn('⚠️ Unknown or inactive role:', role);
-        return routes?.userHome || '/(root)/(tabs)/(user)/home';
     }
   };
 
@@ -185,7 +160,15 @@ export const useAuth = () => {
       // Bug 1 & 15 fix: Do NOT call getUserRoles() after logout — the token is
       // about to be cleared, so the call may use an invalidated token. Persisting
       // role data also leaks information to any future session on the same device.
-      // Instead, clear role data as part of the multiRemove below.
+      try {
+        await secureStorage.clearAllData();
+      } catch (_) {}
+
+      try {
+        const { useUserStore } = await import('@/stores/userStore');
+        useUserStore.getState().logout();
+      } catch (_) {}
+
       await AsyncStorage.multiRemove([
         'auth_token',
         'refresh_token',
@@ -226,6 +209,11 @@ export const useAuth = () => {
       const data = await response.json();
       if (data.access) {
         await AsyncStorage.setItem('auth_token', data.access);
+        try {
+          await secureStorage.setSecureItem('auth_token', data.access);
+          const { useUserStore } = await import('@/stores/userStore');
+          useUserStore.getState().setTokens(data.access, refreshToken);
+        } catch (_) {}
         return true;
       }
       return false;

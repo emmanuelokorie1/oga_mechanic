@@ -67,16 +67,17 @@ export const useDeclineRepairRequest = () => {
 };
 
 // Hook to fetch user's repair requests
-export const useUserRepairRequests = (status?: string) => {
+export const useUserRepairRequests = (status?: string, enabled: boolean = true) => {
   return useQuery({
     queryKey: ['user', 'repair-requests', status || 'all'],
     queryFn: () => mechanicAPI.getUserRepairRequests(status),
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    enabled: enabled,
+    staleTime: 60 * 1000, // 1 minute
     gcTime: 5 * 60 * 1000, // 5 minutes
     retry: 1,
-    refetchOnMount: false,
+    refetchOnMount: true,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    refetchOnReconnect: true,
     refetchInterval: false,
     networkMode: 'online',
   });
@@ -88,11 +89,11 @@ export const useRepairRequestDetail = (requestId: string | undefined, pollInterv
     queryKey: ['repair-request', requestId],
     queryFn: () => mechanicAPI.getRepairRequestDetail(requestId!),
     enabled: !!requestId,
-    staleTime: 30 * 1000, // 30 seconds – prevents back-to-back refetches on re-render
+    staleTime: pollInterval > 0 ? 0 : 5 * 1000, // 0ms when actively tracking/polling so refetches are never blocked
     gcTime: 5 * 60 * 1000,
     retry: 1,
-    refetchOnMount: true,
-    refetchOnWindowFocus: false, // Modal open/close fires "focus" in RN — avoid extra calls
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     refetchOnReconnect: true,
     refetchInterval: pollInterval,
     networkMode: 'online',

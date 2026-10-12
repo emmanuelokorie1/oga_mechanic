@@ -75,7 +75,7 @@ const ActiveBids = () => {
         There are currently no active auctions taking place. Please check back later.
       </Text>
       <TouchableOpacity
-        onPress={() => router.push(routes.home as any)}
+        onPress={() => router.replace(routes.home as any)}
         className="bg-primary-500 px-8 py-3 rounded-full shadow-sm"
       >
         <Text className="text-white font-NunitoBold text-base">

@@ -29,8 +29,9 @@ export const rolesAPI = {
   getRoles: async (): Promise<Role[]> => {
     try {
       // Use axios instance to handle redirects properly
-      // Axios will follow redirects once (maxRedirects: 1) to prevent loops
-      const response = await api.get(AUTH_ENDPOINTS.ALL_ROLES);
+      const response = await api.get(AUTH_ENDPOINTS.ALL_ROLES, {
+        headers: { skipAuth: 'true' }
+      });
       const data: RolesResponse = response.data;
 
       

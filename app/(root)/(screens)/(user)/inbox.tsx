@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Image, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { communicationsAPI } from '@/lib/api/communications';
+import { communicationsAPI, extractChatRooms } from '@/lib/api/communications';
 import { usePrimaryUserProfile } from '@/hooks/useUserProfile';
 import { router, useFocusEffect } from 'expo-router';
 import BackArrowBtn from '@/components/BackArrowBtn';
@@ -33,7 +33,7 @@ const InboxScreen = () => {
     }, [refetch])
   );
 
-  const rooms = roomsData?.results?.data || [];
+  const rooms = useMemo(() => extractChatRooms(roomsData), [roomsData]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -42,9 +42,22 @@ const InboxScreen = () => {
   };
 
   const renderRoomItem = ({ item }: { item: any }) => {
-    const participant = item.other_participant;
+    const currentUserId = profileResponse?.data?.user_id || (profileResponse as any)?.id;
+    const participant = item.other_participant || 
+      item.participants?.find((p: any) => p?.id !== currentUserId) || 
+      item.participant || 
+      {};
     const lastMessage = item.last_message;
     const unreadCount = item.unread_count || 0;
+
+    const participantName = 
+      participant.first_name 
+        ? `${participant.first_name} ${participant.last_name || ''}`.trim()
+        : participant.email 
+          ? participant.email.split('@')[0]
+          : participant.name || "User";
+
+    const participantAvatar = participant.avatar || participant.profile_picture || "";
 
     return (
       <TouchableOpacity
@@ -52,8 +65,8 @@ const InboxScreen = () => {
           pathname: "/(root)/(screens)/(user)/chat-room",
           params: {
             roomId: item.id,
-            participantName: participant.first_name || participant.email.split('@')[0],
-            participantAvatar: participant.avatar || "",
+            participantName: participantName,
+            participantAvatar: participantAvatar,
           }
         })}
         className="flex-row items-center px-4 py-4 border-b border-gray-50 bg-white active:bg-gray-50"
@@ -61,8 +74,8 @@ const InboxScreen = () => {
         {/* Avatar */}
         <View className="relative">
           <View className="w-14 h-14 bg-gray-100 rounded-full overflow-hidden items-center justify-center border border-gray-100">
-            {participant.avatar ? (
-              <Image source={{ uri: participant.avatar }} className="w-full h-full" />
+            {participantAvatar ? (
+              <Image source={{ uri: participantAvatar }} className="w-full h-full" />
             ) : (
               <UserIcon size={30} color="#94a3b8" />
             )}
@@ -76,7 +89,7 @@ const InboxScreen = () => {
         <View className="flex-1 ml-4">
           <View className="flex-row justify-between items-center mb-1">
             <Text className="text-base font-NunitoBold text-gray-900" numberOfLines={1}>
-              {participant.first_name} {participant.last_name || ''}
+              {participantName}
             </Text>
             {lastMessage && (
               <Text className="text-[11px] text-gray-400 font-NunitoMedium">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Switch } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { secureStorage } from '@/utils/secureStorage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon, PlusIcon, XMarkIcon } from 'react-native-heroicons/outline'
@@ -271,12 +272,14 @@ const UploadSparePart = () => {
         : `${process.env.EXPO_PUBLIC_API_URL}/products/products/`;
       const method = isEditing && finalProductId ? 'PUT' : 'POST';
 
+      const token = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
+
       // Call the products API endpoint
       const response = await fetch(endpoint, {
         method: method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+          'Authorization': `Bearer ${token}`,
           'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
         },
         body: JSON.stringify(payload),

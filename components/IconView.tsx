@@ -35,11 +35,10 @@ const IconView: React.FC<IconViewProps> = ({
         elevation: shadow ? 8 : 0,
       }}
     >
-      <Image 
-        source={icons.splash} 
-        className="w-full h-full"
-        resizeMode="contain"
-        style={{ tintColor: '#ffffff' }}
+      <icons.splash 
+        width="100%" 
+        height="100%"
+        fill="#ffffff"
       />
     </View>
   );

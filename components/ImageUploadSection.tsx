@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native'
 import { CameraIcon, XMarkIcon } from 'react-native-heroicons/outline'
-import * as ImagePicker from 'expo-image-picker'
 import DeleteImageDrawal from '@/components/modals/DeleteImageDrawal'
+import ImageSourcePickerModal from '@/components/modals/ImageSourcePickerModal'
+import { pickImageWithPermission } from '@/utils/imagePickerHelper'
 
 interface ImageUploadSectionProps {
   images: string[]
@@ -32,12 +33,15 @@ const ImageUploadSection: React.FC<ImageUploadSectionProps> = ({
   deletingImages = new Set()
 }) => {
   const [deleteDrawerVisible, setDeleteDrawerVisible] = useState(false)
+  const [sourcePickerVisible, setSourcePickerVisible] = useState(false)
+  const [activeSlotIndex, setActiveSlotIndex] = useState<number | undefined>(undefined)
   const [selectedImageForDelete, setSelectedImageForDelete] = useState<{
     index: number;
     imageUri: string;
     imageId?: number;
   } | null>(null)
-  const handleImageUpload = async (slotIndex?: number) => {
+
+  const handleImageUpload = (slotIndex?: number) => {
     // Check if we have reached the maximum number of images (only if maxImages is reasonable)
     const currentImageCount = images.filter(img => img).length
     if (maxImages < 999 && currentImageCount >= maxImages) {
@@ -45,30 +49,25 @@ const ImageUploadSection: React.FC<ImageUploadSectionProps> = ({
       return
     }
 
-    try {
-      // Request permission
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync()
-      
-      if (permissionResult.granted === false) {
-        Alert.alert('Permission required', 'Permission to access camera roll is required!')
-        return
-      }
+    setActiveSlotIndex(slotIndex)
+    setSourcePickerVisible(true)
+  }
 
-      // Launch image picker
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  const handlePickSource = async (source: 'camera' | 'gallery') => {
+    try {
+      const result = await pickImageWithPermission(source, {
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
-        allowsMultipleSelection: false,
       })
 
-      if (!result.canceled && result.assets[0]) {
+      if (result && !result.canceled && result.assets[0]) {
         const newImage = result.assets[0].uri
+        const slotIndex = activeSlotIndex
+
         if (slotIndex !== undefined) {
           // Add to specific slot
           const newImages = [...images]
-          // Ensure the array is long enough for the slot
           while (newImages.length <= slotIndex) {
             newImages.push('')
           }
@@ -89,6 +88,8 @@ const ImageUploadSection: React.FC<ImageUploadSectionProps> = ({
     } catch (error) {
       console.error('Error picking image:', error)
       Alert.alert('Error', 'Failed to pick image. Please try again.')
+    } finally {
+      setActiveSlotIndex(undefined)
     }
   }
 
@@ -257,6 +258,16 @@ const ImageUploadSection: React.FC<ImageUploadSectionProps> = ({
         onConfirm={handleConfirmDelete}
         imageUri={selectedImageForDelete?.imageUri}
         isLoading={selectedImageForDelete?.imageId ? deletingImages.has(selectedImageForDelete.imageId) : false}
+      />
+
+      {/* Image Source Picker Modal */}
+      <ImageSourcePickerModal
+        visible={sourcePickerVisible}
+        onClose={() => setSourcePickerVisible(false)}
+        onSelectCamera={() => handlePickSource('camera')}
+        onSelectGallery={() => handlePickSource('gallery')}
+        title="Upload Image"
+        subtitle="Choose whether to take a new photo with your camera or select from your gallery."
       />
     </>
   )

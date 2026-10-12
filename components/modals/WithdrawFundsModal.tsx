@@ -11,12 +11,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Pressable,
+  TouchableWithoutFeedback,
+  StyleSheet,
 } from "react-native";
 import { XMarkIcon } from "react-native-heroicons/outline";
 import { CheckCircleIcon, PlusIcon } from "react-native-heroicons/solid";
 import { NairaCurrency } from "@/utils/useCurrencyFormatter";
 import CustomButton from "../CustomButton";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { mechanicRoutes, sellerRoutes } from "@/constants/routes";
 import AndroidNavBarSpacer from "../AndroidNavBarSpacer";
 import { useBankAccounts, useWithdrawFunds } from "@/hooks/useUserProfile";
@@ -28,7 +31,7 @@ interface WithdrawFundsModalProps {
   isVisible: boolean;
   onClose: () => void;
   availableBalance: number;
-  confirmWithdrawalRoute?: string; // Add route prop
+  confirmWithdrawalRoute?: Href; // Add route prop
   userType?: 'mechanic' | 'seller' | 'driver' | 'rider'; // Add user type for dynamic routing
 }
 
@@ -40,23 +43,24 @@ const WithdrawFundsModal = ({
   userType = 'mechanic', // Default to mechanic for backward compatibility
 }: WithdrawFundsModalProps) => {
   // Auto-determine route if not provided
-  const getDefaultRoute = () => {
+  const getDefaultRoute = (): Href => {
     if (confirmWithdrawalRoute) return confirmWithdrawalRoute;
     
     switch (userType) {
       case 'seller':
-        return sellerRoutes?.ConfirmWithdrawal;
+        return sellerRoutes.ConfirmWithdrawal;
       case 'mechanic':
       case 'driver':
       case 'rider':
       default:
-        return mechanicRoutes?.ConfirmWithdrawal;
+        return mechanicRoutes.ConfirmWithdrawal;
     }
   };
 
   const withdrawalRoute = getDefaultRoute();
-  const [withdrawAmount, setWithdrawAmount] = useState("50,000");
-  const [selectedAmount, setSelectedAmount] = useState("50,000");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [selectedAmount, setSelectedAmount] = useState("");
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>("");
   const [description, setDescription] = useState("");
   const [showAddBankModal, setShowAddBankModal] = useState(false);
@@ -66,7 +70,16 @@ const WithdrawFundsModal = ({
   
   const { mutate: withdraw, isPending: isWithdrawing } = useWithdrawFunds();
 
-  const quickAmounts = ["20,000", "30,000", "40,000", "50,000"];
+  const quickAmounts = ["10,000", "20,000", "30,000", "50,000"];
+
+  // Reset fields when modal is closed
+  React.useEffect(() => {
+    if (!isVisible) {
+      setWithdrawAmount("");
+      setSelectedAmount("");
+      setDescription("");
+    }
+  }, [isVisible]);
 
   // Set default bank if available
   React.useEffect(() => {
@@ -75,19 +88,28 @@ const WithdrawFundsModal = ({
     }
   }, [bankAccounts, selectedBankAccountId]);
 
+  const numericAmount = parseFloat(withdrawAmount.replace(/,/g, "")) || 0;
+
   const handleQuickAmount = (amount: string) => {
-    const numericAmount = parseFloat(amount.replace(/,/g, ""));
-    if (numericAmount <= availableBalance) {
+    const num = parseFloat(amount.replace(/,/g, ""));
+    if (availableBalance > 0 && num > availableBalance) {
+      Alert.alert("Invalid Amount", "Amount cannot exceed available balance");
+      return;
+    }
+    if (selectedAmount === amount) {
+      setSelectedAmount("");
+      setWithdrawAmount("");
+    } else {
       setSelectedAmount(amount);
       setWithdrawAmount(amount);
-    } else {
-      Alert.alert("Invalid Amount", "Amount cannot exceed available balance");
     }
   };
 
   const handleWithdraw = () => {
-    const numericAmount = parseFloat(withdrawAmount.replace(/,/g, ""));
-    
+    if (!numericAmount || numericAmount === 0) {
+      Alert.alert("Amount Required", "Please enter an amount to withdraw");
+      return;
+    }
     if (numericAmount > availableBalance) {
       Alert.alert("Invalid Amount", "Amount cannot exceed available balance");
       return;
@@ -135,14 +157,6 @@ const WithdrawFundsModal = ({
 
   const handleAmountChange = (text: string) => {
     const formatted = formatAmount(text);
-    const numericAmount = parseFloat(formatted.replace(/,/g, ""));
-
-    // Check if amount exceeds available balance
-    if (numericAmount > availableBalance) {
-      Alert.alert("Invalid Amount", "Amount cannot exceed available balance");
-      return;
-    }
-
     setWithdrawAmount(formatted);
     setSelectedAmount(""); // Clear selection when typing
   };
@@ -153,113 +167,186 @@ const WithdrawFundsModal = ({
 
   return (
     <Modal
-        visible={isVisible}
-        animationType="slide"
-        onRequestClose={onClose}
-        presentationStyle="fullScreen"
-      >
-      <View className="flex-1 bg-white">
-        {/* Header */}
-        <View
-          className="bg-white border-b border-gray-100"
-          style={{ paddingTop: Platform.OS === 'ios' ? 50 : 20 }}
-        >
-          <View className="flex-row items-center justify-between px-5 py-4">
-            <TouchableOpacity
-              onPress={onClose}
-              className="w-10 h-10 items-center justify-center rounded-full bg-gray-100"
-              activeOpacity={0.7}
-              disabled={isWithdrawing}
-            >
-              <XMarkIcon size={20} color="#374151" />
-            </TouchableOpacity>
-            <Text className="text-xl font-NunitoBold text-gray-900">
-              Withdraw funds
-            </Text>
-            <View className="w-10" />
-          </View>
-        </View>
+      visible={isVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View className="flex-1 justify-end">
+        {/* Backdrop tap to dismiss */}
+        <TouchableWithoutFeedback onPress={isWithdrawing ? undefined : onClose}>
+          <View
+            className="absolute inset-0 bg-black/50"
+            style={StyleSheet.absoluteFill}
+          />
+        </TouchableWithoutFeedback>
 
-        {/* Main Content */}
-        <KeyboardAvoidingView
-          className="flex-1"
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={0}
+        {/* Modal Sheet Card (88% height) */}
+        <View
+          className="bg-white rounded-t-[32px] overflow-hidden shadow-2xl"
+          style={{ height: "92%" }}
         >
+          {/* Drag Handle Indicator */}
+          <View className="items-center pt-3 pb-1">
+            <View className="w-12 h-1.5 bg-gray-300 rounded-full" />
+          </View>
+
+          {/* Header */}
+          <View className="bg-white border-b border-gray-100">
+            <View className="flex-row items-center justify-between px-5 py-3">
+              <TouchableOpacity
+                onPress={onClose}
+                className="w-10 h-10 items-center justify-center rounded-full bg-gray-100"
+                activeOpacity={0.7}
+                disabled={isWithdrawing}
+              >
+                <XMarkIcon size={20} color="#374151" />
+              </TouchableOpacity>
+              <Text className="text-xl font-NunitoBold text-gray-900">
+                Withdraw funds
+              </Text>
+              <View className="w-10" />
+            </View>
+          </View>
+
+          {/* Main Content */}
+          <KeyboardAvoidingView
+            className="flex-1"
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            keyboardVerticalOffset={0}
+          >
           <ScrollView
             className="flex-1 px-5"
             contentContainerStyle={{ flexGrow: 1 }}
             showsVerticalScrollIndicator={false}
           >
-            {/* Available Balance */}
-            <View className="items-center py-6">
-              <Text className="text-sm text-gray-600 font-NunitoMedium mb-2">
-                Available Balance
-              </Text>
-              <NairaCurrency
-                value={availableBalance}
-                className="text-lg font-NunitoBold text-gray-900"
-              />
+            {/* Available Balance Card */}
+            <View className="bg-gray-50 rounded-2xl p-4 my-4 border border-gray-100 flex-row items-center justify-between">
+              <View>
+                <Text className="text-xs font-NunitoMedium text-gray-500 mb-1">
+                  Available Balance
+                </Text>
+                <NairaCurrency
+                  value={availableBalance}
+                  className="text-xl font-NunitoBold text-gray-900"
+                />
+              </View>
+              {availableBalance > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    const formatted = formatAmount(Math.floor(availableBalance).toString());
+                    setWithdrawAmount(formatted);
+                    setSelectedAmount("");
+                  }}
+                  className="bg-red-50 px-3.5 py-1.5 rounded-xl border border-red-200"
+                  activeOpacity={0.7}
+                  disabled={isWithdrawing}
+                >
+                  <Text className="text-xs font-NunitoBold text-red-600">
+                    Withdraw All
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
-            {/* Amount Input */}
-            <View className="items-center py-8">
-              <Text className="text-sm text-gray-600 font-NunitoMedium mb-4">
-                Enter amount to withdraw
+            {/* Quick Amount Options */}
+            <View className="mb-5">
+              <Text className="text-sm font-NunitoBold text-gray-900 mb-3">
+                Quick Select
               </Text>
-              <View className="flex-row items-center">
-                <Text
-                  className="font-NunitoBold text-red-600 mr-2"
-                  style={{ fontSize: Math.min(24, width * 0.06) }}
-                >
-                  ₦
-                </Text>
-                <TextInput
-                  value={withdrawAmount}
-                  onChangeText={handleAmountChange}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  className="font-NunitoBold text-red-600 text-center border-b-2 border-red-600 pb-2"
-                  style={{
-                    fontSize: Math.min(48, width * 0.12),
-                    minWidth: width * 0.4,
-                  }}
-                  maxLength={10}
-                  editable={!isWithdrawing}
-                />
+              <View className="flex-row justify-between">
+                {quickAmounts.map((amount) => {
+                  const isSelected = selectedAmount === amount;
+                  return (
+                    <TouchableOpacity
+                      key={amount}
+                      onPress={() => handleQuickAmount(amount)}
+                      disabled={isWithdrawing}
+                      className={`flex-1 mx-1 py-3 rounded-2xl items-center justify-center border ${
+                        isSelected
+                          ? "border-red-600 bg-red-50"
+                          : "border-gray-200 bg-white"
+                      }`}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        className={`text-sm font-NunitoBold ${
+                          isSelected ? "text-red-600" : "text-gray-700"
+                        }`}
+                      >
+                        ₦{amount}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
-            {/* Quick Amount Buttons */}
-            <View className="flex-row justify-between mb-10 px-2">
-              {quickAmounts.map((amount) => (
-                <TouchableOpacity
-                  key={amount}
-                  onPress={() => handleQuickAmount(amount)}
-                  style={{
-                    paddingHorizontal: width * 0.03,
-                    paddingVertical: 10,
-                  }}
-                  disabled={isWithdrawing}
-                  className={`rounded-xl border-2 ${
-                    selectedAmount === amount
-                      ? "border-red-600 bg-red-50"
-                      : "border-gray-200 bg-white"
-                  }`}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    className={`font-NunitoBold text-center ${
-                      selectedAmount === amount
-                        ? "text-red-600"
-                        : "text-gray-700"
-                    }`}
-                    style={{ fontSize: Math.min(14, width * 0.035) }}
-                  >
-                    ₦{amount}
+            {/* Custom Amount Input (placed down after money options) */}
+            <View className="mb-6">
+              <View className="flex-row items-center justify-between mb-2">
+                <Text className="text-sm font-NunitoBold text-gray-900">
+                  Or enter custom amount
+                </Text>
+                {numericAmount > availableBalance && availableBalance > 0 && (
+                  <Text className="text-xs font-NunitoMedium text-red-600">
+                    Exceeds balance
                   </Text>
-                </TouchableOpacity>
-              ))}
+                )}
+              </View>
+
+              <View
+                className={`bg-gray-50 rounded-2xl px-4 py-3.5 flex-row items-center border ${
+                  numericAmount > availableBalance && availableBalance > 0
+                    ? "border-red-500 bg-red-50/20"
+                    : isInputFocused
+                    ? "border-red-600 bg-white"
+                    : "border-gray-200"
+                }`}
+              >
+                <View className="w-10 h-10 rounded-xl bg-red-50 items-center justify-center mr-3 border border-red-100">
+                  <Text className="text-lg font-NunitoBold text-red-600">₦</Text>
+                </View>
+
+                <TextInput
+                  value={withdrawAmount}
+                  onChangeText={handleAmountChange}
+                  onFocus={() => setIsInputFocused(true)}
+                  onBlur={() => setIsInputFocused(false)}
+                  placeholder="0.00"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="numeric"
+                  className="flex-1 font-NunitoBold text-2xl text-gray-900 p-0"
+                  maxLength={12}
+                  editable={!isWithdrawing}
+                />
+
+                {withdrawAmount.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setWithdrawAmount("");
+                      setSelectedAmount("");
+                    }}
+                    className="w-8 h-8 rounded-full bg-gray-200 items-center justify-center ml-2"
+                    activeOpacity={0.7}
+                  >
+                    <XMarkIcon size={16} color="#4B5563" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Helper Microcopy */}
+              <View className="flex-row items-center justify-between mt-2 px-1">
+                <Text className="text-xs font-NunitoMedium text-gray-400">
+                  Minimum withdrawal: ₦1,000
+                </Text>
+                {numericAmount >= 1000 && numericAmount <= availableBalance && (
+                  <Text className="text-xs font-NunitoSemiBold text-emerald-600">
+                    ✓ Valid amount
+                  </Text>
+                )}
+              </View>
             </View>
 
             {/* Bank Selection */}
@@ -327,7 +414,7 @@ const WithdrawFundsModal = ({
                 className="bg-gray-50 rounded-2xl p-4 font-NunitoMedium text-gray-900 border border-gray-100"
                 multiline
                 numberOfLines={2}
-                disabled={isWithdrawing}
+                editable={!isWithdrawing}
               />
             </View>
 
@@ -335,24 +422,25 @@ const WithdrawFundsModal = ({
             <View style={{ minHeight: 40 }} />
           </ScrollView>
 
-          <View className="px-5 pb-10 pt-4 bg-white border-t border-gray-100">
+          <View className="px-5 pb-6 pt-4 bg-white border-t border-gray-100">
             <CustomButton 
               title={isWithdrawing ? "Processing..." : "Withdraw Now"} 
               onPress={handleWithdraw} 
-              disabled={isWithdrawing || !selectedBankAccountId}
+              disabled={isWithdrawing || !selectedBankAccountId || !withdrawAmount || numericAmount < 1000}
               loading={isWithdrawing}
             />
             {/* Android Navigation Bar Spacer */}
             <AndroidNavBarSpacer />
           </View>
         </KeyboardAvoidingView>
-
-        {/* Nesting the AddBankModal inside the main Modal to ensure it shows over it on iOS */}
-        <AddBankModal 
-          isVisible={showAddBankModal}
-          onClose={() => setShowAddBankModal(false)}
-        />
+        </View>
       </View>
+
+      {/* Nesting the AddBankModal inside the main Modal to ensure it shows over it on iOS */}
+      <AddBankModal 
+        isVisible={showAddBankModal}
+        onClose={() => setShowAddBankModal(false)}
+      />
     </Modal>
   );
 };

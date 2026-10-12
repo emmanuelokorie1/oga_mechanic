@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
   },
   loadingContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     backgroundColor: '#f3f4f6',
     justifyContent: 'center',
     alignItems: 'center',
@@ -226,7 +226,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Nunito-Bold' : 'sans-serif',
   },
   errorContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     backgroundColor: '#f3f4f6',
     justifyContent: 'center',
     alignItems: 'center',

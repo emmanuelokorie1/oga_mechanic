@@ -36,6 +36,7 @@ export const routes = {
   orderConfirmation: "/(root)/(screens)/(user)/order-confirmation",
   orderTracking: "/(root)/(screens)/(user)/order-tracking",
   chatSpecialist: "/(root)/(screens)/(user)/chat-specialist",
+  chatRoom: "/(root)/(screens)/(user)/chat-room",
   carDetails: "/(root)/(screens)/(user)/car-detail",
   addCar: "/(root)/(screens)/(user)/add-car",
   AllMechanic: "/(root)/(screens)/(mechanicScreens)/all-mechanic",
@@ -60,6 +61,7 @@ export const routes = {
 
   // Rent a car
   rentACar: "/(root)/(screens)/(rentCar)/rent-a-car",
+  chooseRide: "/(root)/(screens)/(rentCar)/rent-a-car",
   carRentalDetail: "/(root)/(screens)/(rentCar)/car-rental-detail",
 
   //payment
@@ -88,6 +90,7 @@ export const mechanicRoutes = {
   EditProfile: "/(root)/(screens)/(mechanic)/editProfile",
   profileDetails: "/(root)/(screens)/(mechanic)/profileDetails",
   orderDetails: "/(root)/(screens)/(mechanic)/order-details",
+  chatRoom: "/(root)/(screens)/(user)/chat-room",
   completeKyc: "/(root)/(screens)/(mechanic)/complete-kyc",
   reviews: "/(root)/(screens)/(mechanic)/reviews",
 } as const;

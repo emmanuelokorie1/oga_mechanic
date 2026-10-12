@@ -18,7 +18,7 @@ class CallService {
   private roomId: string | null = null;
   private isMuted: boolean = false;
   private isConnected: boolean = false;
-  private callTimer: NodeJS.Timeout | null = null;
+  private callTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.initializeAudio();

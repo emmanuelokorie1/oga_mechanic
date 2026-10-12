@@ -8,11 +8,14 @@ import {
   Dimensions,
   Animated
 } from "react-native";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import { icons } from "@/constants";
 import type { BottomTabBarProps } from "expo-router/build/react-navigation/bottom-tabs";
 import { BlurView, BlurTargetView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
+import { useActiveRoleProfile } from "@/hooks/useUserProfile";
+import { normalizeRoleName } from "@/utils/authUtils";
+import { mechanicRoutes, sellerRoutes } from "@/constants/routes";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -133,6 +136,22 @@ const CustomTabBar = ({
 // ── Layout ───────────────────────────────────────────────────────────────
 export default function Layout() {
   const blurTargetRef = useRef<View>(null);
+  const router = useRouter();
+  const { activeRole, isLoading } = useActiveRoleProfile();
+
+  useEffect(() => {
+    if (!activeRole || isLoading) return;
+    const normalized = normalizeRoleName(activeRole);
+    if (normalized === "mechanic") {
+      router.replace(mechanicRoutes.home as any);
+    } else if (
+      normalized === "merchant" ||
+      normalized === "seller" ||
+      normalized === "vehicle_rental"
+    ) {
+      router.replace(sellerRoutes.home as any);
+    }
+  }, [activeRole, isLoading, router]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -141,6 +160,7 @@ export default function Layout() {
           screenOptions={{ headerShown: false }}
           tabBar={(props) => <CustomTabBar {...props} blurTarget={blurTargetRef} />}
           initialRouteName="home"
+          backBehavior="firstRoute"
         >
           <Tabs.Screen name="home" />
           <Tabs.Screen name="shop" />

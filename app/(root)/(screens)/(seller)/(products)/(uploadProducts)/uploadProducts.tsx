@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, Switch, StyleSheet, ActivityIndicator } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { secureStorage } from '@/utils/secureStorage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon, ChevronRightIcon } from 'react-native-heroicons/outline'
@@ -406,11 +407,13 @@ const UploadProducts = () => {
         ? `${process.env.EXPO_PUBLIC_API_URL}/products/products/${finalProductId}/`
         : `${process.env.EXPO_PUBLIC_API_URL}/products/products/`
 
+      const token = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
+
       const response = await fetch(endpoint, {
         method: editing ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+          'Authorization': `Bearer ${token}`,
           'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
         },
         body: JSON.stringify(payload),
@@ -432,7 +435,7 @@ const UploadProducts = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+            'Authorization': `Bearer ${token}`,
             'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
           },
           body: JSON.stringify({
@@ -626,7 +629,7 @@ const UploadProducts = () => {
                             <FormikInput name="number_of_doors" label="Doors" placeholder="4" keyboardType="numeric" type="text" />
                           </View>
                           <View style={{ flex: 1 }}>
-                            <FormikInput name="number_of_seats" label="Seats" placeholder="5" keyboardType="numeric" type="text" />
+                            <FormikInput name="number_of_seats" label="Seats" placeholder="4" keyboardType="numeric" type="text" />
                           </View>
                         </View>
                       </SectionCard>

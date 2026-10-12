@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  Pressable,
 } from "react-native";
 import {
   XMarkIcon,
@@ -19,6 +20,7 @@ import {
   ExclamationTriangleIcon,
   ArrowPathIcon,
 } from "react-native-heroicons/outline";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   useBankAccount,
@@ -40,6 +42,7 @@ const BankAccountDetailsModal = ({
   onClose,
   accountId,
 }: BankAccountDetailsModalProps) => {
+  const insets = useSafeAreaInsets();
   const { data: response, isLoading, error: fetchError } = useBankAccount(
     accountId!,
     isVisible && !!accountId
@@ -205,193 +208,215 @@ const BankAccountDetailsModal = ({
     <Modal
       visible={isVisible}
       animationType="slide"
+      transparent={true}
       onRequestClose={onClose}
-      presentationStyle="pageSheet"
+      statusBarTranslucent
     >
-      <View className="flex-1 bg-white">
-        {/* Header */}
-        <View className="flex-row items-center justify-between px-6 py-5 border-b border-gray-100">
-          <Text className="text-[18px] font-NunitoExtraBold text-[#0F172A]">
-            Account Details
-          </Text>
+      <View className="flex-1 bg-black/60 justify-end">
+        {/* Backdrop tap to dismiss */}
+        <Pressable className="flex-1" onPress={onClose} />
 
-          <TouchableOpacity
-            onPress={onClose}
-            className="w-9 h-9 items-center justify-center rounded-full bg-gray-100"
-          >
-            <XMarkIcon size={18} color="#475569" />
-          </TouchableOpacity>
-        </View>
-
-        {isLoading ? (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color="#7C3AED" />
-            <Text className="mt-4 text-gray-500 font-NunitoMedium">
-              Fetching details...
-            </Text>
+        {/* Modal Sheet Card */}
+        <View
+          className="bg-white rounded-t-[32px] overflow-hidden shadow-2xl"
+          style={{
+            maxHeight: "92%",
+            paddingBottom: Math.max(insets.bottom, 16),
+          }}
+        >
+          {/* Drag Handle */}
+          <View className="items-center pt-3 pb-1">
+            <View className="w-12 h-1.5 bg-gray-300 rounded-full" />
           </View>
-        ) : fetchError ? (
-          <View className="flex-1 items-center justify-center px-10">
-            <Text className="text-red-500 font-NunitoBold text-center mb-2">
-              Error loading details
+
+          {/* Header */}
+          <View className="flex-row items-center justify-between px-6 py-4 border-b border-gray-100">
+            <Text className="text-lg font-NunitoExtraBold text-[#0F172A]">
+              Account Details
             </Text>
 
             <TouchableOpacity
               onPress={onClose}
-              className="mt-6 bg-gray-100 px-6 py-3 rounded-xl"
+              className="w-10 h-10 items-center justify-center rounded-full bg-gray-100"
+              activeOpacity={0.7}
             >
-              <Text className="text-gray-700 font-NunitoBold">Go Back</Text>
+              <XMarkIcon size={18} color="#475569" />
             </TouchableOpacity>
           </View>
-        ) : account ? (
-          <ScrollView
-            className="flex-1 px-6 pt-8"
-            contentContainerStyle={{ paddingBottom: 60 }}
-          >
-            {/* Error Banner */}
-            {error && (
-              <View className="mb-6 bg-red-50 p-4 rounded-2xl border border-red-100 flex-row items-start">
-                <ExclamationTriangleIcon size={20} color="#DC2626" />
 
-                <View className="flex-1 ml-3">
-                  <Text className="text-red-800 font-NunitoBold text-[15px]">
-                    Action Error
-                  </Text>
-
-                  <Text className="text-red-600 font-NunitoMedium text-[14px]">
-                    {error}
-                  </Text>
-                </View>
-
-                <TouchableOpacity onPress={() => setError(null)}>
-                  <XMarkIcon size={20} color="#EF4444" />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Account Header */}
-            <View className="items-center mb-10">
-              <View className="w-24 h-24 bg-violet-50 rounded-[32px] items-center justify-center border border-violet-100 shadow-sm">
-                <BuildingLibraryIcon size={42} color="#7C3AED" />
-              </View>
-
-              <Text className="text-[#0F172A] font-NunitoExtraBold text-[22px] mt-5 uppercase text-center">
-                {account.account_name}
+          {isLoading ? (
+            <View className="py-20 items-center justify-center">
+              <ActivityIndicator size="large" color="#7C3AED" />
+              <Text className="mt-4 text-gray-500 font-NunitoMedium">
+                Fetching details...
+              </Text>
+            </View>
+          ) : fetchError ? (
+            <View className="py-16 items-center justify-center px-10">
+              <Text className="text-red-500 font-NunitoBold text-center mb-2">
+                Error loading details
               </Text>
 
-              <Text className="text-gray-500 font-NunitoMedium text-[14px] mt-1">
-                {account.bank_name || account.bank?.name}
-              </Text>
+              <TouchableOpacity
+                onPress={onClose}
+                className="mt-6 bg-gray-100 px-6 py-3 rounded-xl"
+              >
+                <Text className="text-gray-700 font-NunitoBold">Go Back</Text>
+              </TouchableOpacity>
+            </View>
+          ) : account ? (
+            <ScrollView
+              className="px-6 pt-6"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 40 }}
+            >
+              {/* Error Banner */}
+              {error && (
+                <View className="mb-6 bg-red-50 p-4 rounded-2xl border border-red-100 flex-row items-start">
+                  <ExclamationTriangleIcon size={20} color="#DC2626" />
 
-              {account.is_default && (
-                <View className="mt-3 flex-row items-center bg-violet-50 px-3 py-1 rounded-full border border-violet-100">
-                  <StarIcon size={14} color="#7C3AED" strokeWidth={2} />
+                  <View className="flex-1 ml-3">
+                    <Text className="text-red-800 font-NunitoBold text-[15px]">
+                      Action Error
+                    </Text>
 
-                  <Text className="text-violet-600 text-[12px] font-NunitoBold ml-1">
-                    Default Account
-                  </Text>
+                    <Text className="text-red-600 font-NunitoMedium text-[14px]">
+                      {error}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity onPress={() => setError(null)}>
+                    <XMarkIcon size={20} color="#EF4444" />
+                  </TouchableOpacity>
                 </View>
               )}
-            </View>
 
-            {/* Set Default Button */}
-            {!account.is_default && (
+              {/* Account Header */}
+              <View className="items-center mb-8">
+                <View className="w-20 h-20 bg-violet-50 rounded-[28px] items-center justify-center border border-violet-100 shadow-sm">
+                  <BuildingLibraryIcon size={38} color="#7C3AED" />
+                </View>
+
+                <Text className="text-[#0F172A] font-NunitoExtraBold text-[20px] mt-4 uppercase text-center">
+                  {account.account_name}
+                </Text>
+
+                <Text className="text-gray-500 font-NunitoMedium text-[14px] mt-1">
+                  {account.bank_name || account.bank?.name}
+                </Text>
+
+                {account.is_default && (
+                  <View className="mt-2.5 flex-row items-center bg-violet-50 px-3 py-1 rounded-full border border-violet-100">
+                    <StarIcon size={14} color="#7C3AED" strokeWidth={2} />
+
+                    <Text className="text-violet-600 text-[12px] font-NunitoBold ml-1">
+                      Default Account
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Set Default Button */}
+              {!account.is_default && (
+                <TouchableOpacity
+                  onPress={handleSetDefault}
+                  className="mb-6 flex-row items-center justify-center bg-violet-600 py-3.5 rounded-2xl shadow-sm"
+                  disabled={updateMutation.isPending}
+                  activeOpacity={0.8}
+                >
+                  {updateMutation.isPending ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <>
+                      <StarIcon size={18} color="white" strokeWidth={2} />
+                      <Text className="text-white font-NunitoBold text-[15px] ml-2">
+                        Set as Default Account
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {/* Details Card */}
+              <View className="bg-white rounded-3xl border border-gray-100 px-5 py-2 mb-6 shadow-sm">
+                <DetailItem
+                  label="Bank Name"
+                  value={account.bank_name || account.bank?.name}
+                  icon={BuildingLibraryIcon}
+                  color="#7C3AED"
+                />
+
+                <DetailItem
+                  label="Account Number"
+                  value={account.account_number}
+                  icon={CreditCardIcon}
+                  color="#3B82F6"
+                />
+
+                <DetailItem
+                  label="Account Holder"
+                  value={account.account_name}
+                  icon={UserIcon}
+                  color="#EC4899"
+                />
+
+                <DetailItem
+                  label="Verification Status"
+                  value={account.is_verified ? "Verified" : "Pending Verification"}
+                  icon={CheckCircleIcon}
+                  color={account.is_verified ? "#10B981" : "#F59E0B"}
+                />
+              </View>
+
+              {/* Delete Button */}
               <TouchableOpacity
-                onPress={handleSetDefault}
-                className="mb-8 flex-row items-center justify-center bg-violet-600 py-4 rounded-2xl shadow-sm"
-                disabled={updateMutation.isPending}
+                onPress={handleDelete}
+                className="flex-row items-center justify-center py-3.5 rounded-2xl border border-red-200 bg-red-50"
+                disabled={deleteMutation.isPending}
+                activeOpacity={0.8}
               >
-                {updateMutation.isPending ? (
-                  <ActivityIndicator size="small" color="white" />
+                {deleteMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
                 ) : (
                   <>
-                    <StarIcon size={20} color="white" strokeWidth={2} />
-                    <Text className="text-white font-NunitoBold text-[15px] ml-2">
-                      Set as Default Account
+                    <TrashIcon size={18} color="#DC2626" strokeWidth={2} />
+                    <Text className="text-red-600 font-NunitoBold text-[15px] ml-2">
+                      Remove Bank Account
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
-            )}
 
-            {/* Details Card */}
-            <View className="bg-white rounded-3xl border border-gray-100 px-5 py-2 mb-8 shadow-sm">
-              <DetailItem
-                label="Bank Name"
-                value={account.bank_name || account.bank?.name}
-                icon={BuildingLibraryIcon}
-                color="#7C3AED"
-              />
+              <AndroidNavBarSpacer />
+            </ScrollView>
+          ) : null}
 
-              <DetailItem
-                label="Account Number"
-                value={account.account_number}
-                icon={CreditCardIcon}
-                color="#3B82F6"
-              />
+          <ActionConfirmationModal
+            visible={showDeleteConfirm}
+            onClose={() => setShowDeleteConfirm(false)}
+            onConfirm={confirmDelete}
+            title="Remove bank account"
+            description="Are you sure you want to remove this bank account?"
+            icon={TrashIcon}
+            themeColor="#D30309"
+            iconBg="#D30309"
+            iconColor="white"
+            titleColor="#D30309"
+          />
 
-              <DetailItem
-                label="Account Holder"
-                value={account.account_name}
-                icon={UserIcon}
-                color="#EC4899"
-              />
-
-              <DetailItem
-                label="Verification Status"
-                value={account.is_verified ? "Verified" : "Pending Verification"}
-                icon={CheckCircleIcon}
-                color={account.is_verified ? "#10B981" : "#F59E0B"}
-              />
-            </View>
-
-            {/* Delete Button */}
-            <TouchableOpacity
-              onPress={handleDelete}
-              className="flex-row items-center justify-center py-4 rounded-2xl border border-red-200 bg-red-50"
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? (
-                <ActivityIndicator size="small" color="#DC2626" />
-              ) : (
-                <>
-                  <TrashIcon size={20} color="#DC2626" strokeWidth={2} />
-                  <Text className="text-red-600 font-NunitoBold text-[15px] ml-2">
-                    Remove Bank Account
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            <AndroidNavBarSpacer />
-          </ScrollView>
-        ) : null}
-
-        <ActionConfirmationModal
-          visible={showDeleteConfirm}
-          onClose={() => setShowDeleteConfirm(false)}
-          onConfirm={confirmDelete}
-          title="Remove bank account"
-          description="Are you sure you want to remove this bank account?"
-          icon={TrashIcon}
-          themeColor="#D30309"
-          iconBg="#D30309"
-          iconColor="white"
-          titleColor="#D30309"
-        />
-
-        <ActionConfirmationModal
-          visible={showDefaultConfirm}
-          onClose={() => setShowDefaultConfirm(false)}
-          onConfirm={confirmSetDefault}
-          title="Switch withdrawal account"
-          description="Are you sure you want to make this account your default account for withdrawals?"
-          icon={ArrowPathIcon}
-          themeColor="#7C3AED"
-          iconBg="#F5F3FF"
-          iconColor="#7C3AED"
-          titleColor="#0F172A"
-        />
+          <ActionConfirmationModal
+            visible={showDefaultConfirm}
+            onClose={() => setShowDefaultConfirm(false)}
+            onConfirm={confirmSetDefault}
+            title="Switch withdrawal account"
+            description="Are you sure you want to make this account your default account for withdrawals?"
+            icon={ArrowPathIcon}
+            themeColor="#7C3AED"
+            iconBg="#F5F3FF"
+            iconColor="#7C3AED"
+            titleColor="#0F172A"
+          />
+        </View>
       </View>
     </Modal>
   );

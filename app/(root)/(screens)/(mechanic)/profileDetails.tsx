@@ -43,6 +43,8 @@ import { getStatesByCountry } from "@/constants/locationData";
 import { getLGAs } from "@/constants/nigeriaData";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
+import ImageSourcePickerModal from "@/components/modals/ImageSourcePickerModal";
+import { pickImageWithPermission } from "@/utils/imagePickerHelper";
 
 interface ProfileEditModalProps {
   isVisible: boolean;
@@ -65,6 +67,8 @@ const ProfileEditModal = ({
   handleImagePick,
   specializationOptions,
 }: ProfileEditModalProps) => {
+  const [avatarPickerVisible, setAvatarPickerVisible] = useState(false);
+  const [activeSetFieldValue, setActiveSetFieldValue] = useState<any>(null);
 
   const getSectionSchema = (section: string | null) => {
     const personalSchema = Yup.object().shape({
@@ -129,7 +133,6 @@ const ProfileEditModal = ({
       case "business":
         return {
           nin_number: mechanicProfile?.nin_number || "",
-          nin_document: mechanicProfile?.nin_document || "",
         };
       default:
         return {};
@@ -173,7 +176,7 @@ const ProfileEditModal = ({
                     {editingSection === "personal" && (
                       <View>
                         <View className="items-center mb-6">
-                          <TouchableOpacity onPress={() => handleImagePick(setFieldValue)} className="relative">
+                          <TouchableOpacity onPress={() => { setActiveSetFieldValue(() => setFieldValue); setAvatarPickerVisible(true); }} className="relative">
                             <View className="w-24 h-24 rounded-2xl items-center justify-center border-4 border-white shadow-lg mb-2 overflow-hidden">
                               {values.profile_picture ? (
                                 <Image source={{ uri: values.profile_picture }} className="w-full h-full" resizeMode="cover" />
@@ -366,6 +369,18 @@ const ProfileEditModal = ({
           </View>
         </KeyboardAvoidingView>
       </View>
+
+      <ImageSourcePickerModal
+        visible={avatarPickerVisible}
+        onClose={() => {
+          setAvatarPickerVisible(false);
+          setActiveSetFieldValue(null);
+        }}
+        onSelectCamera={() => handleImagePick(activeSetFieldValue, "camera")}
+        onSelectGallery={() => handleImagePick(activeSetFieldValue, "gallery")}
+        title="Upload Profile Photo"
+        subtitle="Choose whether to capture a photo with your camera or select from your gallery."
+      />
     </Modal>
   );
 };
@@ -503,21 +518,15 @@ const ProfileDetails = () => {
     }
   };
 
-  const handleImagePick = async (setFieldValue: any) => {
+  const handleImagePick = async (setFieldValue: any, source: "camera" | "gallery" = "gallery") => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        showToast.error("Permission required!");
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const result = await pickImageWithPermission(source, {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.6,
         base64: true,
       });
-      if (!result.canceled && result.assets[0]) {
+      if (result && !result.canceled && result.assets[0]) {
         setFieldValue("profile_picture", result.assets[0].uri);
       }
     } catch (error) {
@@ -663,10 +672,10 @@ const ProfileDetails = () => {
                 }}
               />
               <View className="flex-row items-center justify-between py-4 border-b border-gray-50">
-                <Text className="text-gray-400 font-NunitoBold text-xs uppercase tracking-widest">NIN Document</Text>
-                <View className={`px-4 py-1.5 rounded-full ${mechanicProfile?.nin_document ? "bg-green-50" : "bg-amber-50"}`}>
-                  <Text className={`text-[10px] font-NunitoExtraBold uppercase tracking-widest ${mechanicProfile?.nin_document ? "text-green-600" : "text-amber-600"}`}>
-                    {mechanicProfile?.nin_document ? "Verified" : "Pending"}
+                <Text className="text-gray-400 font-NunitoBold text-xs uppercase tracking-widest">NIN Status</Text>
+                <View className={`px-4 py-1.5 rounded-full ${mechanicProfile?.nin_is_verified ? "bg-green-50" : "bg-amber-50"}`}>
+                  <Text className={`text-[10px] font-NunitoExtraBold uppercase tracking-widest ${mechanicProfile?.nin_is_verified ? "text-green-600" : "text-amber-600"}`}>
+                    {mechanicProfile?.nin_is_verified ? "Verified" : "Pending"}
                   </Text>
                 </View>
               </View>

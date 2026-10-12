@@ -21,6 +21,8 @@ import { Formik } from "formik";
 import * as Yup from "yup";
 import * as ImagePicker from "expo-image-picker";
 import { CameraIcon } from "react-native-heroicons/outline";
+import ImageSourcePickerModal from "@/components/modals/ImageSourcePickerModal";
+import { pickImageWithPermission } from "@/utils/imagePickerHelper";
 import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 import FormikInput from "@/components/forms/FormikInput";
 import DateInput from "@/components/forms/DateInput";
@@ -127,34 +129,37 @@ const EditProfile = () => {
     { label: "Prefer not to say", value: "prefer_not_to_say" },
   ];
 
-  const handleImagePick = async (setFieldValue: any) => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (status !== "granted") {
-        showToast.error("Permission to access camera roll is required!");
-        return;
-      }
+  const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
+  const [activeSetFieldValue, setActiveSetFieldValue] = useState<((field: string, value: any) => void) | null>(null);
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  const handleOpenImagePicker = (setFieldValue: any) => {
+    setActiveSetFieldValue(() => setFieldValue);
+    setSourcePickerVisible(true);
+  };
+
+  const handleExecuteImagePick = async (source: "camera" | "gallery") => {
+    if (!activeSetFieldValue) return;
+
+    try {
+      const result = await pickImageWithPermission(source, {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.5,
         base64: true,
       });
 
-      if (!result.canceled && result.assets[0]) {
+      if (result && !result.canceled && result.assets[0]) {
         if (result.assets[0].base64) {
-          // Construct base64 string
           const base64Image = `data:${result.assets[0].mimeType || 'image/jpeg'};base64,${result.assets[0].base64}`;
-          setFieldValue("selfie", base64Image);
+          activeSetFieldValue("selfie", base64Image);
         } else {
-             setFieldValue("selfie", result.assets[0].uri);
+          activeSetFieldValue("selfie", result.assets[0].uri);
         }
       }
     } catch (error) {
       showToast.error("Failed to pick image");
+    } finally {
+      setActiveSetFieldValue(null);
     }
   };
 
@@ -187,7 +192,7 @@ const EditProfile = () => {
               {/* Avatar Placeholder / Image */}
               <View className="items-center mb-8">
                 <TouchableOpacity 
-                   onPress={() => handleImagePick(setFieldValue)}
+                   onPress={() => handleOpenImagePicker(setFieldValue)}
                    className="relative"
                 >
                   <View className="w-24 h-24 bg-primary-50 rounded-full items-center justify-center border-4 border-white shadow-sm mb-3 overflow-hidden">
@@ -301,6 +306,19 @@ const EditProfile = () => {
           )}
         </Formik>
       </KeyboardAwareScrollView>
+
+      {/* Image Source Picker Modal */}
+      <ImageSourcePickerModal
+        visible={sourcePickerVisible}
+        onClose={() => {
+          setSourcePickerVisible(false);
+          setActiveSetFieldValue(null);
+        }}
+        onSelectCamera={() => handleExecuteImagePick("camera")}
+        onSelectGallery={() => handleExecuteImagePick("gallery")}
+        title="Upload Profile Photo"
+        subtitle="Choose whether to take a new photo with your camera or select from your gallery."
+      />
     </SafeAreaView>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Formik, FormikProps } from "formik";
 import * as Yup from "yup";
 import * as ImagePicker from "expo-image-picker";
+import * as Device from "expo-device";
 import {
   ChevronLeftIcon,
   UserIcon,
@@ -45,6 +46,8 @@ import SelfieUpload from "@/components/SelfieUpload";
 import CustomAlert from "@/components/CustomAlert";
 import SuccessModal from "@/components/modals/SuccessModal";
 import { useCustomAlert } from "@/hooks/useCustomAlert";
+import { useNINVerification } from "@/hooks/useNINVerification";
+import NINVerificationSection from "@/components/forms/NINVerificationSection";
 import { userAPI } from "@/lib/api/user";
 import { mechanicAPI } from "@/lib/api/mechanic";
 import { useProfileStore } from "@/hooks/useProfileStore";
@@ -53,16 +56,6 @@ import { mechanicRoutes } from "@/constants/routes";
 import { getStatesByCountry } from "@/constants/locationData";
 import { getLGAs } from "@/constants/nigeriaData";
 import * as Location from "expo-location";
-
-// Step 1 Validation Schema
-const step1ValidationSchema = Yup.object().shape({
-  location: Yup.string().required("Please enter your location"),
-  state: Yup.string().required("Please select your state"),
-  lga: Yup.string().required("Please select your LGA"),
-  bio: Yup.string().required("Please tell us about your experience"),
-  nin_number: Yup.string().required("NIN is required"),
-  specializations: Yup.array().min(1, "Select at least one specialization").required("Specializations are required"),
-});
 
 interface FormValues {
   location: string;
@@ -92,15 +85,24 @@ const CompleteKYC = () => {
   const params = useLocalSearchParams();
   const initialStep = params.step ? parseInt(params.step as string, 10) : 1;
   const [currentStep, setCurrentStep] = useState(initialStep);
-  const [ninDocument, setNinDocument] = useState<DocumentFile | null>(null);
   const [selfie, setSelfie] = useState<DocumentFile | null>(null);
   const [certificateOfLearning, setCertificateOfLearning] = useState<DocumentFile | null>(null);
 
   const submitKYCMutation = useSubmitMechanicKYC();
   const submitExpertiseMutation = useSubmitVehicleExpertise();
+
+  const {
+    isRoleNinVerified,
+    verifiedNin,
+    verifyNIN,
+    isVerifying: isVerifyingNIN,
+    isLoadingStatus: isLoadingNINStatus,
+  } = useNINVerification("mechanic");
   
   const [showLivenessModal, setShowLivenessModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [submissionPhase, setSubmissionPhase] = useState<'idle' | 'verifying_nin' | 'saving_profile'>('idle');
+  const [ninVerificationError, setNinVerificationError] = useState<string | null>(null);
   const { visible, alertConfig, hideAlert, showSuccess, showError, showWarning } = useCustomAlert()
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isLoadingExpertise, setIsLoadingExpertise] = useState(true);
@@ -111,6 +113,24 @@ const CompleteKYC = () => {
   
   // Step 2 State
   const [expertiseRecords, setExpertiseRecords] = useState<ExpertiseRecord[]>([]);
+  const scrollViewRef = useRef<any>(null);
+  const scrollY = useRef(0);
+
+  const scrollToTop = useCallback((delay = 50) => {
+    setTimeout(() => {
+      if (!scrollViewRef.current) return;
+      if (typeof scrollViewRef.current.scrollToPosition === "function") {
+        scrollViewRef.current.scrollToPosition(0, 0, false);
+      } else if (scrollViewRef.current.scrollTo) {
+        scrollViewRef.current.scrollTo({ y: 0, animated: false });
+      }
+    }, delay);
+  }, []);
+
+  // When switching steps / just landed, always stay at the top
+  useEffect(() => {
+    scrollToTop(50);
+  }, [currentStep, scrollToTop]);
 
   const nigerianStates = getStatesByCountry('NG');
   const states = nigerianStates.map(state => ({
@@ -126,6 +146,29 @@ const CompleteKYC = () => {
     { label: "Certified", value: "certified" },
   ];
 
+  // Dynamic Step 1 Validation Schema based on NIMC verification status
+  const step1ValidationSchema = React.useMemo(() => {
+    return Yup.object().shape({
+      location: Yup.string().trim().required("Please enter your location"),
+      state: Yup.string().trim().required("Please select your state"),
+      lga: Yup.string().trim().required("Please select your LGA"),
+      bio: Yup.string().trim().required("Please tell us about your experience"),
+      nin_number: isRoleNinVerified
+        ? Yup.string() // NIMC identity confirmed
+        : Yup.string()
+            .trim()
+            .required("NIN is required")
+            .test(
+              "nin-format",
+              "NIN must be exactly 11 digits",
+              (val) => Boolean(val && (val.includes("*") || /^\d{11}$/.test(val.replace(/\s/g, ""))))
+            ),
+      specializations: Yup.array()
+        .min(1, "Select at least one specialization")
+        .required("Specializations are required"),
+    });
+  }, [isRoleNinVerified]);
+
   const [initialFormValues, setInitialFormValues] = useState<FormValues>({
     location: "",
     latitude: "",
@@ -137,6 +180,16 @@ const CompleteKYC = () => {
     specializations: [],
   });
 
+  // Sync verified NIN into form values when loaded
+  useEffect(() => {
+    if (verifiedNin && !initialFormValues.nin_number) {
+      setInitialFormValues((prev) => ({
+        ...prev,
+        nin_number: verifiedNin,
+      }));
+    }
+  }, [verifiedNin]);
+
   const [isPendingApproval, setIsPendingApproval] = useState(false);
   const formikRef = useRef<FormikProps<FormValues>>(null);
 
@@ -147,11 +200,10 @@ const CompleteKYC = () => {
       vals.state &&
       vals.lga &&
       vals.bio &&
-      vals.nin_number &&
+      (vals.nin_number || isRoleNinVerified || verifiedNin) &&
       vals.specializations &&
       vals.specializations.length > 0 &&
-      selfie?.uri &&
-      ninDocument?.uri
+      selfie?.uri
     );
   };
 
@@ -169,7 +221,6 @@ const CompleteKYC = () => {
         const { dirty } = formikRef.current;
         const hasNewImages = Boolean(
           (selfie?.uri && !selfie.uri.startsWith("http")) ||
-          (ninDocument?.uri && !ninDocument.uri.startsWith("http")) ||
           (certificateOfLearning?.uri && !certificateOfLearning.uri.startsWith("http"))
         );
         if (dirty || hasNewImages) {
@@ -252,15 +303,6 @@ const CompleteKYC = () => {
             setSelfie({
               uri: profile.selfie,
               name: 'selfie.jpg',
-              type: 'image/jpeg',
-              size: 0,
-            });
-          }
-
-          if (profile.nin_document) {
-            setNinDocument({
-              uri: profile.nin_document,
-              name: 'nin_document.jpg',
               type: 'image/jpeg',
               size: 0,
             });
@@ -381,26 +423,47 @@ const CompleteKYC = () => {
   }
 
   // Document Picking Logic
-  const pickDocument = async (type: "nin_document" | "selfie" | "certificate_of_learning") => {
+  const pickDocument = async (type: "selfie" | "certificate_of_learning", source: "camera" | "gallery" = "gallery") => {
     if (type === 'selfie') {
       setShowLivenessModal(true);
       return;
     }
 
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        showWarning("Permission Required", "Please grant camera roll permissions.");
-        return;
+      let result;
+      if (source === 'camera') {
+        if (!Device.isDevice) {
+          showWarning(
+            "Simulator Notice",
+            "Camera hardware is not available on the iOS Simulator. Opening photo gallery instead."
+          );
+          return pickDocument(type, "gallery");
+        }
+
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          showWarning("Permission Required", "Please grant camera permissions.");
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          quality: 0.8,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          showWarning("Permission Required", "Please grant camera roll permissions.");
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          quality: 0.8,
+        });
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
+      if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
         const file: DocumentFile = {
           uri: asset.uri,
@@ -410,7 +473,6 @@ const CompleteKYC = () => {
         };
 
         switch (type) {
-          case "nin_document": setNinDocument(file); break;
           case "certificate_of_learning": setCertificateOfLearning(file); break;
         }
       }
@@ -480,10 +542,6 @@ const CompleteKYC = () => {
 
   // Step 1 Submission
   const handleStep1Submit = async (values: FormValues) => {
-    if (!ninDocument) {
-      showWarning("Required", "Please upload your NIN document.");
-      return;
-    }
     if (!selfie) {
       showWarning("Required", "Please capture your selfie to continue.");
       return;
@@ -517,7 +575,8 @@ const CompleteKYC = () => {
       if (finalLat) formData.append('latitude', finalLat);
       if (finalLng) formData.append('longitude', finalLng);
       formData.append('bio', values.bio);
-      formData.append('nin_number', values.nin_number);
+      const ninToSubmit = values.nin_number || verifiedNin || (isRoleNinVerified ? "VERIFIED" : "");
+      formData.append('nin_number', ninToSubmit);
       formData.append('specializations', JSON.stringify(values.specializations));
 
       const getFileObject = (image: any) => {
@@ -529,11 +588,6 @@ const CompleteKYC = () => {
         } as any;
       };
 
-      if (ninDocument) {
-        const file = getFileObject(ninDocument);
-        if (file) formData.append('nin_document', file);
-      }
-
       if (selfie) {
         const file = getFileObject(selfie);
         if (file) formData.append('selfie', file);
@@ -544,20 +598,44 @@ const CompleteKYC = () => {
         if (file) formData.append('certificate_of_learning', file);
       }
 
-      submitKYCMutation.mutate(formData, {
-        onSuccess: () => {
-          setCurrentStep(2);
-        },
-        onError: (error: any) => {
-          const errMsg = error?.response?.data?.message || 
-                         error?.response?.data?.detail || 
-                         error?.message || 
-                         "There was an error submitting your verification. Please try again.";
-          showError("Submission Failed", errMsg);
+      // Step 1a: If NIN is not yet verified against NIMC, verify it now in real time
+      setNinVerificationError(null);
+      if (!isRoleNinVerified) {
+        if (!values.nin_number) {
+          showError("NIN Required", "Please enter your 11-digit NIN.");
+          return;
         }
-      });
+        setSubmissionPhase('verifying_nin');
+        try {
+          await verifyNIN({
+            nin_number: values.nin_number,
+            role: "mechanic",
+          });
+        } catch (ninErr: any) {
+          setSubmissionPhase('idle');
+          const errMsg =
+            ninErr?.response?.data?.message ||
+            ninErr?.message ||
+            "NIN verification failed. Please ensure your names match your official NIMC records.";
+          setNinVerificationError(errMsg);
+          showError("NIN Verification Failed", errMsg);
+          return;
+        }
+      }
+
+      // Step 1b: Save profile + documents to backend
+      setSubmissionPhase('saving_profile');
+      await submitKYCMutation.mutateAsync(formData);
+      showSuccess("Profile Saved ✅", "Your profile and documents have been saved successfully.");
+      setCurrentStep(2);
     } catch (error: any) {
-      showError("Error", "Failed to prepare submission data.");
+      const errMsg = error?.response?.data?.message ||
+                     error?.response?.data?.detail ||
+                     error?.message ||
+                     "There was an error submitting your verification. Please try again.";
+      showError("Submission Failed", errMsg);
+    } finally {
+      setSubmissionPhase('idle');
     }
   };
 
@@ -597,7 +675,21 @@ const CompleteKYC = () => {
     if (Platform.OS === 'ios' || Platform.OS === 'android') {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }
-    setExpertiseRecords([...expertiseRecords, { vehicle_make_id: "", years_of_experience: "", certification_level: "basic" }]);
+    setExpertiseRecords(prev => {
+      const next = [...prev, { vehicle_make_id: "", years_of_experience: "", certification_level: "basic" }];
+      // Smoothly scroll down just enough to reveal the new card (~240px)
+      if (next.length > 1) {
+        setTimeout(() => {
+          const targetY = scrollY.current + 240;
+          if (typeof scrollViewRef.current?.scrollToPosition === 'function') {
+            scrollViewRef.current.scrollToPosition(0, targetY, true);
+          } else if (scrollViewRef.current?.scrollTo) {
+            scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+          }
+        }, 150);
+      }
+      return next;
+    });
   };
 
   const removeExpertiseRow = (index: number) => {
@@ -731,11 +823,21 @@ const CompleteKYC = () => {
       </View>
 
       <KeyboardAwareScrollView 
+        ref={scrollViewRef}
         className="flex-1" 
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 24 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 24, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         enableOnAndroid={true}
+        enableAutomaticScroll={true}
+        extraScrollHeight={Platform.OS === 'ios' ? 40 : 60}
+        extraHeight={Platform.OS === 'ios' ? 40 : 60}
+        keyboardOpeningTime={0}
+        enableResetScrollToCoords={false}
         keyboardShouldPersistTaps="handled"
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         {currentStep === 1 ? (
           <View>
@@ -762,7 +864,7 @@ const CompleteKYC = () => {
               validationSchema={step1ValidationSchema}
               onSubmit={handleStep1Submit}
             >
-              {({ handleChange, handleSubmit, values, errors, touched, setFieldValue, dirty }) => (
+              {({ handleChange, handleSubmit, validateForm, setTouched, values, errors, touched, setFieldValue, dirty }) => (
                 <View className="pb-10">
                   <View className="bg-white px-4 py-2 rounded-2xl mb-5 border border-gray-100 shadow-sm">
                     <SectionHeader icon={UserIcon} title="Professional Profile" />
@@ -835,26 +937,19 @@ const CompleteKYC = () => {
 
                   <View className="bg-white p-5 rounded-2xl mb-5 border border-gray-100 shadow-sm">
                     <SectionHeader icon={BriefcaseIcon} title="Identity & Expertise" />
-                    <View className="mb-5">
-                      <InputField
-                        label="NIN Number"
-                        placeholder="Enter your 11-digit NIN"
-                        value={values.nin_number}
-                        onChangeText={handleChange("nin_number")}
-                        error={errors.nin_number}
-                        touched={touched.nin_number}
-                        required
-                      />
-                    </View>
-                    <View className="mb-5">
-                      <ImageUpload
-                        label="Upload NIN Document"
-                        isUploaded={!!ninDocument}
-                        imageUri={ninDocument?.uri}
-                        onPress={() => pickDocument("nin_document")}
-                        required
-                      />
-                    </View>
+                    <NINVerificationSection
+                      ninValue={values.nin_number}
+                      onChangeNIN={(text) => {
+                        setFieldValue("nin_number", text);
+                        if (ninVerificationError) setNinVerificationError(null);
+                      }}
+                      isVerified={isRoleNinVerified}
+                      maskedNin={verifiedNin}
+                      error={errors.nin_number as string}
+                      touched={touched.nin_number}
+                      isVerifying={isVerifyingNIN || submissionPhase === 'verifying_nin'}
+                      verificationError={ninVerificationError}
+                    />
                     <View className="mb-5">
                       <MultiSelectField
                         label="Areas of Specialization"
@@ -873,40 +968,89 @@ const CompleteKYC = () => {
                         label="Certificate of Learning (Optional)"
                         isUploaded={!!certificateOfLearning}
                         imageUri={certificateOfLearning?.uri}
-                        onPress={() => pickDocument("certificate_of_learning")}
+                        onPress={(source) => pickDocument("certificate_of_learning", source)}
                       />
                     </View>
                   </View>
 
+
+
                     {(() => {
                       const hasNewImages = Boolean(
                         (selfie?.uri && !selfie.uri.startsWith("http")) ||
-                        (ninDocument?.uri && !ninDocument.uri.startsWith("http")) ||
                         (certificateOfLearning?.uri && !certificateOfLearning.uri.startsWith("http"))
                       );
                       const hasChanges = dirty || hasNewImages;
+                      const isWorking = submissionPhase !== 'idle' || submitKYCMutation.isPending || isVerifyingNIN;
 
-                      const handleNext = () => {
+                      const handleNext = async () => {
                         if (!hasChanges && checkIsStep1Valid()) {
+                          // No local changes — profile already saved. Proceed straight to Step 2.
                           setCurrentStep(2);
-                        } else {
-                          handleSubmit();
+                          return;
                         }
+
+                        // Mark all step 1 fields touched so validation errors appear in the UI
+                        setTouched({
+                          location: true,
+                          state: true,
+                          lga: true,
+                          bio: true,
+                          nin_number: true,
+                          specializations: true as any,
+                        });
+
+                        const formErrors = await validateForm();
+
+                        if (!selfie) {
+                          showWarning("Required", "Please capture your selfie to continue.");
+                          return;
+                        }
+
+                        const errorKeys = Object.keys(formErrors);
+                        if (errorKeys.length > 0) {
+                          const firstErrorMessage = formErrors[errorKeys[0] as keyof typeof formErrors];
+                          showWarning(
+                            "Incomplete Form",
+                            typeof firstErrorMessage === "string"
+                              ? firstErrorMessage
+                              : "Please fill in all required fields."
+                          );
+                          return;
+                        }
+
+                        handleSubmit();
+                      };
+
+                      const buttonLabel = () => {
+                        if (submissionPhase === 'verifying_nin' || isVerifyingNIN) {
+                          return 'Verifying Identity with NIMC…';
+                        }
+                        if (submissionPhase === 'saving_profile' || submitKYCMutation.isPending) {
+                          return 'Saving Profile & Documents…';
+                        }
+                        if (hasChanges) return 'Save & Continue to Expertise';
+                        return 'Next: Vehicle Expertise →';
                       };
 
                       return (
                         <TouchableOpacity
                           onPress={handleNext}
-                          className={`py-4 rounded-xl mb-8 items-center shadow-md ${
-                            submitKYCMutation.isPending ? "bg-primary-300" : "bg-primary-500"
+                          className={`py-4 rounded-xl mb-8 items-center shadow-md flex-row justify-center ${
+                            isWorking ? "bg-primary-300" : "bg-primary-500"
                           }`}
-                          disabled={submitKYCMutation.isPending}
+                          disabled={isWorking}
                         >
-                          {submitKYCMutation.isPending ? (
-                            <ActivityIndicator color="white" />
+                          {isWorking ? (
+                            <>
+                              <ActivityIndicator color="white" />
+                              <Text className="text-white font-NunitoBold text-lg ml-3">
+                                {buttonLabel()}
+                              </Text>
+                            </>
                           ) : (
                             <Text className="text-white font-NunitoBold text-lg">
-                              {hasChanges ? "Save & Continue to Expertise" : "Next: Vehicle Expertise →"}
+                              {buttonLabel()}
                             </Text>
                           )}
                         </TouchableOpacity>
@@ -917,14 +1061,14 @@ const CompleteKYC = () => {
               </Formik>
           </View>
         ) : (
-          <View className="pb-10">
+          <View className="pb-2">
             <View className="mb-6">
               <Text className="text-gray-500 font-NunitoMedium text-base leading-5">
                 Specify the vehicle brands you are experienced with to help us match you with the right repair requests.
               </Text>
             </View>
 
-            {isPendingApproval && (
+            {/* {isPendingApproval && (
               <View className="bg-amber-50 border border-amber-200 p-4 rounded-2xl mb-6 flex-row items-start">
                 <InformationCircleIcon size={24} color="#D97706" />
                 <View className="ml-3 flex-1">
@@ -934,7 +1078,7 @@ const CompleteKYC = () => {
                   </Text>
                 </View>
               </View>
-            )}
+            )} */}
 
             <View className="flex-row items-center justify-between mb-4">
               <Text className="text-lg font-NunitoBold text-gray-900">Expertise Records</Text>

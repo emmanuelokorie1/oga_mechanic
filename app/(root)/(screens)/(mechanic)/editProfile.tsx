@@ -22,6 +22,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Formik } from "formik";
 import * as Yup from "yup";
 import * as ImagePicker from "expo-image-picker";
+import ImageSourcePickerModal from "@/components/modals/ImageSourcePickerModal";
+import { pickImageWithPermission } from "@/utils/imagePickerHelper";
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import FormikInput from "@/components/forms/FormikInput";
 import FormikButton from "@/components/forms/FormikButton";
@@ -79,7 +81,6 @@ const EditMechanicProfile = () => {
     specializations: string[];
     selfie: string;
     nin_number: string;
-    nin_document: string;
   }
 
   const [initialValues, setInitialValues] = useState<FormValues>({
@@ -96,7 +97,6 @@ const EditMechanicProfile = () => {
     specializations: [],
     selfie: "",
     nin_number: "",
-    nin_document: "",
   });
 
   useEffect(() => {
@@ -117,7 +117,6 @@ const EditMechanicProfile = () => {
           : (mechanicProfileInfo as any)?.specialization ? [String((mechanicProfileInfo as any).specialization)] : [],
         selfie: (mechanicProfileInfo as any)?.selfie || (userData as any)?.profile_picture || "",
         nin_number: mechanicProfileInfo?.nin_number || "",
-        nin_document: mechanicProfileInfo?.nin_document || "",
       });
     }
   }, [userData, mechanicProfileInfo]);
@@ -180,7 +179,6 @@ const EditMechanicProfile = () => {
 
       const documentFields = [
         { field: 'selfie', name: 'selfie' },
-        { field: 'nin_document', name: 'nin_document' },
       ];
 
       const formData = new FormData();
@@ -232,28 +230,33 @@ const EditMechanicProfile = () => {
     }
   };
 
-  const handleImagePick = async (field: string, setFieldValue: any) => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (status !== "granted") {
-        showToast.error("Permission to access camera roll is required!");
-        return;
-      }
+  const [sourcePickerVisible, setSourcePickerVisible] = useState(false);
+  const [activePickerField, setActivePickerField] = useState<{ field: string; setFieldValue: any; label?: string } | null>(null);
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  const handleOpenImagePicker = (field: string, setFieldValue: any, label?: string) => {
+    setActivePickerField({ field, setFieldValue, label });
+    setSourcePickerVisible(true);
+  };
+
+  const handleExecuteImagePick = async (source: "camera" | "gallery") => {
+    if (!activePickerField) return;
+    const { field, setFieldValue } = activePickerField;
+
+    try {
+      const result = await pickImageWithPermission(source, {
         allowsEditing: true,
         aspect: field === "selfie" ? [1, 1] : [4, 3],
         quality: 0.5,
         base64: true,
       });
 
-      if (!result.canceled && result.assets[0]) {
+      if (result && !result.canceled && result.assets[0]) {
         setFieldValue(field, result.assets[0].uri);
       }
     } catch (error) {
       showToast.error("Failed to pick image");
+    } finally {
+      setActivePickerField(null);
     }
   };
 
@@ -261,7 +264,7 @@ const EditMechanicProfile = () => {
     <View className="mb-4">
       <Text className="text-gray-700 font-NunitoSemiBold mb-2">{label}</Text>
       <TouchableOpacity 
-        onPress={() => handleImagePick(field, setFieldValue)}
+        onPress={() => handleOpenImagePicker(field, setFieldValue, label)}
         className="w-full h-40 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 items-center justify-center overflow-hidden"
       >
         {value ? (
@@ -331,7 +334,7 @@ const EditMechanicProfile = () => {
               {/* Avatar Section */}
               <View className="items-center mb-8">
                 <TouchableOpacity 
-                  onPress={() => handleImagePick("selfie", setFieldValue)}
+                  onPress={() => handleOpenImagePicker("selfie", setFieldValue, "Profile Photo")}
                   className="relative"
                 >
                   <View className="w-28 h-28 rounded-2xl items-center justify-center border-4 border-white shadow-lg mb-3 overflow-hidden">
@@ -577,15 +580,6 @@ const EditMechanicProfile = () => {
                   label="NIN Number" 
                   placeholder="Enter 11-digit NIN" 
                 />
-
-                <View className="mt-3">
-                  <DocumentPicker 
-                    label="NIN Document" 
-                    field="nin_document" 
-                    value={values.nin_document} 
-                    setFieldValue={setFieldValue} 
-                  />
-                </View>
               </View>
 
 
@@ -605,6 +599,19 @@ const EditMechanicProfile = () => {
           )}
         </Formik>
       </KeyboardAwareScrollView>
+
+      {/* Image Source Picker Modal */}
+      <ImageSourcePickerModal
+        visible={sourcePickerVisible}
+        onClose={() => {
+          setSourcePickerVisible(false);
+          setActivePickerField(null);
+        }}
+        onSelectCamera={() => handleExecuteImagePick("camera")}
+        onSelectGallery={() => handleExecuteImagePick("gallery")}
+        title={activePickerField?.label ? `Upload ${activePickerField.label}` : "Upload Image"}
+        subtitle="Choose whether to capture a photo with your camera or select from your gallery."
+      />
     </SafeAreaView>
   );
 };

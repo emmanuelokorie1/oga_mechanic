@@ -18,7 +18,7 @@ const JobCompletedModal: React.FC<JobCompletedModalProps> = ({
 }) => {
   const handleGoHome = () => {
     onClose();
-    router.push(mechanicRoutes.home);
+    router.replace(mechanicRoutes.home);
   };
 
   return (

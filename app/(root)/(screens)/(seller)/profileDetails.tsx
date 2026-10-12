@@ -9,6 +9,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -37,8 +38,10 @@ import { showToast } from "@/utils/toastUtils";
 import { getStatesByCountry } from "@/constants/locationData";
 import { getLGAs } from "@/constants/nigeriaData";
 import * as ImagePicker from "expo-image-picker";
+import * as Device from "expo-device";
 import * as Location from "expo-location";
 import ImageUpload from "@/components/ImageUpload";
+import ImageSourcePickerModal from "@/components/modals/ImageSourcePickerModal";
 
 interface ProfileEditModalProps {
   isVisible: boolean;
@@ -47,7 +50,7 @@ interface ProfileEditModalProps {
   merchantProfile: any;
   userObj: any;
   handleSectionSave: any;
-  handleImagePick: (setFieldValue: any, fieldName: string) => void;
+  handleImagePick: (setFieldValue: any, fieldName: string, source?: "camera" | "gallery") => void;
   isVehicleRental: boolean;
 }
 
@@ -63,6 +66,8 @@ const ProfileEditModal = ({
 }: ProfileEditModalProps) => {
   const nigerianStates = getStatesByCountry('NG');
   const states = nigerianStates.map(s => ({ label: s.name, value: s.name }));
+  const [avatarPickerVisible, setAvatarPickerVisible] = useState(false);
+  const [activeSetFieldValue, setActiveSetFieldValue] = useState<any>(null);
 
 
   const getSectionSchema = (section: string | null) => {
@@ -78,7 +83,6 @@ const ProfileEditModal = ({
 
     const documentationSchema = Yup.object().shape({
       selfie: Yup.string().required("Selfie is required"),
-      nin_document: Yup.string().required("NIN document is required"),
     });
 
     switch (section) {
@@ -123,7 +127,6 @@ const ProfileEditModal = ({
       case "documentation":
         return {
           selfie: merchantProfile?.selfie || "",
-          nin_document: merchantProfile?.nin_document || "",
         };
       default:
         return {};
@@ -167,7 +170,7 @@ const ProfileEditModal = ({
                     {editingSection === "personal" && (
                       <View>
                         <View className="items-center mb-6">
-                          <TouchableOpacity onPress={() => handleImagePick(setFieldValue, "profile_picture")} className="relative">
+                          <TouchableOpacity onPress={() => { setActiveSetFieldValue(() => setFieldValue); setAvatarPickerVisible(true); }} className="relative">
                             <View className="w-24 h-24 rounded-2xl items-center justify-center border-4 border-white shadow-lg mb-2 overflow-hidden">
                               {values.profile_picture ? (
                                 <Image source={{ uri: values.profile_picture }} className="w-full h-full" resizeMode="cover" />
@@ -314,17 +317,9 @@ const ProfileEditModal = ({
                       <View className="space-y-6">
                         <ImageUpload
                           label="Selfie / Profile Picture"
-                          onPress={() => handleImagePick(setFieldValue, "selfie")}
+                          onPress={(source) => handleImagePick(setFieldValue, "selfie", source)}
                           isUploaded={!!values.selfie}
                           imageUri={values.selfie}
-                          required
-                        />
-
-                        <ImageUpload
-                          label="NIN Document"
-                          onPress={() => handleImagePick(setFieldValue, "nin_document")}
-                          isUploaded={!!values.nin_document}
-                          imageUri={values.nin_document}
                           required
                         />
                       </View>
@@ -349,6 +344,18 @@ const ProfileEditModal = ({
           </View>
         </KeyboardAvoidingView>
       </View>
+
+      <ImageSourcePickerModal
+        visible={avatarPickerVisible}
+        onClose={() => {
+          setAvatarPickerVisible(false);
+          setActiveSetFieldValue(null);
+        }}
+        onSelectCamera={() => handleImagePick(activeSetFieldValue, "profile_picture", "camera")}
+        onSelectGallery={() => handleImagePick(activeSetFieldValue, "profile_picture", "gallery")}
+        title="Upload Profile Photo"
+        subtitle="Choose whether to capture a photo with your camera or select from your gallery."
+      />
     </Modal>
   );
 };
@@ -421,7 +428,6 @@ const SellerProfileDetails = () => {
 
       const profilePicFile = getFileObject(values.profile_picture, 'profile_picture');
       const selfieFile = getFileObject(values.selfie, 'selfie');
-      const cacDocFile = getFileObject(values.nin_document, 'nin_document');
 
       const formData = new FormData();
       formData.append('requestType', 'inbound');
@@ -457,8 +463,6 @@ const SellerProfileDetails = () => {
       // Append Files (now as file objects or existing URLs)
       if (profilePicFile) formData.append('selfie', profilePicFile);
       else if (selfieFile) formData.append('selfie', selfieFile);
-      
-      if (cacDocFile) formData.append('nin_document', cacDocFile);
 
       await submitKYCMutation.mutateAsync(formData);
       showToast.success("Profile updated successfully");
@@ -471,20 +475,44 @@ const SellerProfileDetails = () => {
     }
   };
 
-  const handleImagePick = async (setFieldValue: any, fieldName: string) => {
+  const handleImagePick = async (setFieldValue: any, fieldName: string, source: "camera" | "gallery" = "gallery") => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        showToast.error("Permission required!");
-        return;
+      let result;
+      if (source === "camera") {
+        if (!Device.isDevice) {
+          Alert.alert(
+            "Simulator Notice",
+            "Camera hardware is not available on the iOS Simulator. Opening photo gallery instead."
+          );
+          return handleImagePick(setFieldValue, fieldName, "gallery");
+        }
+
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          showToast.error("Camera permission required!");
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.6,
+          base64: true,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          showToast.error("Permission required!");
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.6,
+          base64: true,
+        });
       }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.6,
-        base64: true,
-      });
       if (!result.canceled && result.assets[0].base64) {
         setFieldValue(fieldName, `data:image/jpeg;base64,${result.assets[0].base64}`);
       }
@@ -620,9 +648,9 @@ const SellerProfileDetails = () => {
                 </Text>
               </View>
               <View className="flex-row items-center justify-between py-3">
-                <Text className="text-gray-500 font-NunitoMedium text-sm">NIN Document</Text>
-                <Text className={merchantProfile?.nin_document ? "text-green-600 font-NunitoBold" : "text-amber-600 font-NunitoBold"}>
-                  {merchantProfile?.nin_document ? "Uploaded" : "Pending"}
+                <Text className="text-gray-500 font-NunitoMedium text-sm">NIN Status</Text>
+                <Text className={merchantProfile?.nin_is_verified ? "text-green-600 font-NunitoBold" : "text-amber-600 font-NunitoBold"}>
+                  {merchantProfile?.nin_is_verified ? "Verified" : "Pending"}
                 </Text>
               </View>
             </View>

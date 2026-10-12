@@ -47,7 +47,7 @@ import { StarIcon, HeartIcon as HeartIconSolid, CheckCircleIcon as CheckCircleIc
 import { useProductDetail, useToggleFavorite } from "@/hooks/useProducts";
 import { useMerchantProfileByUuid, usePrimaryUserProfile, useUserCars } from "@/hooks/useUserProfile";
 import { useVehicleMakes } from "@/hooks/useVehicleMakes";
-import { communicationsAPI } from "@/lib/api/communications";
+import { communicationsAPI, extractChatRooms } from "@/lib/api/communications";
 import { showToast } from "@/utils/toastUtils";
 import { getApiErrorMessage } from "@/utils/errorMessages";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -271,7 +271,7 @@ const ProductDetail = () => {
       }
 
       const roomsResponse = await communicationsAPI.getChatRooms();
-      const rooms = roomsResponse?.results?.data || [];
+      const rooms = extractChatRooms(roomsResponse);
       
       const existingRoom = rooms.find((room: any) => 
         room.participants?.some((p: any) => p.id === sellerUserId) ||

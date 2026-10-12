@@ -5,14 +5,19 @@ import { GoogleSigninButton } from '@react-native-google-signin/google-signin';
 import { useGoogleSignIn } from '@/hooks/useGoogleSignIn';
 import CustomButton from './CustomButton'; // Optional: Use existing CustomButton
 
-export const SignInWithGoogleButton = () => {
+interface SignInWithGoogleButtonProps {
+  role?: string;
+  phoneNumber?: string;
+}
+
+export const SignInWithGoogleButton: React.FC<SignInWithGoogleButtonProps> = ({ role, phoneNumber }) => {
   const { signIn, isCheckingSignIn } = useGoogleSignIn();
   const [isLoading, setIsLoading] = useState(false);
 
   const handlePress = async () => {
     try {
       setIsLoading(true);
-      await signIn();
+      await signIn({ role, phoneNumber });
       // On success, the hook/backend handler will update the app's auth state
     } catch (error) {
       // Error handling is already done in the hook, but you can add UI alerts here

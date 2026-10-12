@@ -215,6 +215,81 @@ export interface LoginResponse {
   referenceId: string;
 }
 
+export interface GoogleAuthPayload {
+  id_token?: string;
+  access_token?: string;
+  code?: string;
+  credential?: string;
+  role?: string;
+  phone_number?: string;
+}
+
+export interface GoogleAuthResponse {
+  requestTime: string;
+  requestType: string;
+  referenceId: string;
+  status: boolean;
+  message: string;
+  data: {
+    access: string;
+    refresh: string;
+    is_new_user: boolean;
+    user: {
+      id: string;
+      email: string;
+      first_name: string;
+      last_name: string;
+      active_role: string;
+      date_joined: string;
+      phone_number?: string;
+    };
+  };
+}
+
+// NIN Status and Verification Interfaces
+export interface NINStatusResponse {
+  status: boolean;
+  message: string;
+  data: {
+    is_nin_verified: boolean;
+    verified_nin?: string;
+    verified_at?: string;
+    active_role: string;
+    profiles?: Record<string, {
+      has_profile: boolean;
+      nin_number?: string;
+      nin_is_verified: boolean;
+      nin_verified_at?: string;
+    }>;
+    recent_verifications?: Array<{
+      id: string;
+      masked_nin: string;
+      status: string;
+      verified_at: string;
+    }>;
+  };
+}
+
+export interface NINVerifyRequest {
+  nin_number: string;
+  first_name?: string;
+  last_name?: string;
+  date_of_birth?: string;
+  role?: string;
+}
+
+export interface NINVerifyResponse {
+  status: boolean;
+  message: string;
+  data: {
+    verification_id: string;
+    status: string;
+    nin_masked: string;
+    updated_profiles: string[];
+    verified_at: string;
+  };
+}
+
 // Mechanic Profile specific interfaces
 export interface MechanicProfile {
   id: number;
@@ -249,7 +324,10 @@ export interface MechanicProfile {
   government_id_front?: string | null;
   government_id_back?: string | null;
   nin_number?: string | null;
+  nin_is_verified?: boolean;
+  nin_verified_at?: string | null;
   nin_document?: string | null;
+  certificate_of_learning?: string | null;
   specializations?: (string | number)[];
   vehicle_expertise?: (string | number)[];
   created_at: string;
@@ -299,6 +377,8 @@ export interface MerchantProfile {
   latitude?: string | null;
   longitude?: string | null;
   nin_number?: string | null;
+  nin_is_verified?: boolean;
+  nin_verified_at?: string | null;
   nin_document?: string | null;
   is_approved: boolean;
   is_subscribed?: boolean;
@@ -1210,6 +1290,35 @@ export const userAPI = {
   subscribeVehicleRental: async (data: { payment_reference: string; payment_url: string; amount: number }): Promise<any> => {
     try {
       const response = await api.post('users/profile/vehicle-rental/subscribe/', data);
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
+  // Google Sign-In / Sign-Up
+  googleAuth: async (payload: GoogleAuthPayload): Promise<GoogleAuthResponse> => {
+    try {
+      const response = await api.post<GoogleAuthResponse>(USER_ENDPOINTS.GOOGLE, payload);
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
+  // NIN Status & Real-time Verification
+  getNINStatus: async (): Promise<NINStatusResponse> => {
+    try {
+      const response = await api.get<NINStatusResponse>(USER_ENDPOINTS.NIN_STATUS);
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
+  verifyNIN: async (data: NINVerifyRequest): Promise<NINVerifyResponse> => {
+    try {
+      const response = await api.post<NINVerifyResponse>(USER_ENDPOINTS.NIN_VERIFY, data);
       return response.data;
     } catch (error: any) {
       throw error;

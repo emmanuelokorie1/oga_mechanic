@@ -11,8 +11,22 @@ class AuthEventEmitter {
     };
   }
 
+  private lastEmitTime = 0;
+
   emit() {
-    this.listeners.forEach((listener) => listener());
+    const now = Date.now();
+    // Throttle emits so rapid concurrent 401s don't fire multiple logouts / reloads
+    if (now - this.lastEmitTime < 2000) {
+      return;
+    }
+    this.lastEmitTime = now;
+    this.listeners.forEach((listener) => {
+      try {
+        listener();
+      } catch (err) {
+        console.error('Error in auth event listener:', err);
+      }
+    });
   }
 }
 

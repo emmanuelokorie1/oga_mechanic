@@ -24,7 +24,7 @@ export const useDebouncedQuantityUpdate = (options: UseDebouncedQuantityUpdateOp
   
   const updateCartItemQuantityMutation = useUpdateCartItemQuantity();
   const pendingUpdatesRef = useRef<Map<number, PendingUpdate>>(new Map());
-  const timeoutsRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
+  const timeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const [loadingItems, setLoadingItems] = useState<Set<number>>(new Set());
   const [optimisticQuantities, setOptimisticQuantities] = useState<Map<number, number>>(new Map());
 

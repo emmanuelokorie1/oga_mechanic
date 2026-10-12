@@ -4,11 +4,11 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   ActivityIndicator,
   RefreshControl,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
   ChevronLeftIcon,
@@ -89,7 +89,7 @@ const BankInfo = () => {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F9FBFC]">
+    <SafeAreaView className="flex-1 bg-[#F9FBFC]" edges={["top"]}>
       <StatusBar style="dark" />
 
       {/* Navbar/Back Button */}

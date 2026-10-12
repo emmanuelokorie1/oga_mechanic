@@ -118,6 +118,7 @@ export const icons = {
   customerService,
   spareParts: sparePartIcon,
   cars: car,
+  carRent,
   activeFleetTab: carRent
 };
 
@@ -164,16 +165,6 @@ export const Services: ServicesProps[] = [
     badge: "Insured",
   },
   {
-    id: 10,
-    name: "VIN Search",
-    description: "Instant chassis & diagnostic report",
-    image: searchCar,
-    isSmall: true,
-    bgColor: "#F0FDF4",
-    border: "#86EFAC",
-    badge: "Instant Report",
-  },
-  {
     id: 8,
     name: "My Repair Orders",
     description: "Track active jobs & order status",
@@ -182,6 +173,16 @@ export const Services: ServicesProps[] = [
     bgColor: "#FEF2F2",
     border: "#FCA5A5",
     badge: "Live Tracking",
+  },
+  {
+    id: 10,
+    name: "VIN Search",
+    description: "Instant chassis & diagnostic report",
+    image: searchCar,
+    isSmall: true,
+    bgColor: "#F0FDF4",
+    border: "#86EFAC",
+    badge: "Instant Report",
   },
   {
     id: 11,

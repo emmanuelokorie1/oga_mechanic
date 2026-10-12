@@ -5,10 +5,13 @@ import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon } from 'react-native-heroicons/outline'
 import { router, useLocalSearchParams } from 'expo-router'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { secureStorage } from '@/utils/secureStorage'
 import ImageUploadSection from '@/components/ImageUploadSection'
 import { sellerRoutes } from '@/constants/routes'
 import CustomButton from '@/components/CustomButton'
 import { useVehicleMakes } from '@/hooks/useVehicleMakes'
+import api from '@/lib/axios'
+import { createFormDataFile } from '@/utils/imagePickerHelper'
 
 const UploadCarImages = () => {
   const [images, setImages] = useState<string[]>([])
@@ -80,35 +83,21 @@ const UploadCarImages = () => {
       // Add each local image URI to the form data as a file object
       images.forEach((imageUri, index) => {
         if (imageUri) {
-          // Format the file object for FormData (required by React Native fetch)
-          const uriParts = imageUri.split('.');
-          const fileExtension = uriParts[uriParts.length - 1].toLowerCase();
-          const fileName = `image_${Date.now()}_${index}.${fileExtension}`;
-          
-          formData.append('images', {
-            uri: imageUri,
-            type: `image/${fileExtension === 'jpg' || fileExtension === 'jpeg' ? 'jpeg' : fileExtension}`,
-            name: fileName,
-          } as any);
+          const file = createFormDataFile(imageUri, `image_${index}`);
+          formData.append('images', file as any);
         }
       })
 
-      // API call: POST to products/products/{id}/images/upload/
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/products/products/${currentProductId}/images/upload/`, {
-        method: 'POST',
+      console.log(`📤 [uploadCarImages] Uploading ${images.length} images to /products/products/${currentProductId}/images/upload/`);
+      const response = await api.post(`/products/products/${currentProductId}/images/upload/`, formData, {
         headers: {
-          'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
-          'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
+          'Content-Type': 'multipart/form-data',
         },
-        body: formData,
-      })
+      });
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      if (response.data && response.data.status === false) {
+        throw new Error(response.data.message || 'Upload failed');
       }
-
-      const responseData = await response.json()
       
       setUploadStep('complete')
 

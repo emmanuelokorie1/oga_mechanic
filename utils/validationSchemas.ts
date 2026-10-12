@@ -297,18 +297,18 @@ export const contactSchema = Yup.object().shape({
 export const fileUploadSchema = Yup.object().shape({
   file: Yup.mixed()
     .required('File is required')
-    .test('file-size', 'File size must be less than 10MB', function(value) {
+    .test('file-size', 'File size must be less than 10MB', function(value: any) {
       if (!value) return true;
-      return value.size <= 10 * 1024 * 1024; // 10MB
+      return (value?.size ?? 0) <= 10 * 1024 * 1024; // 10MB
     })
-    .test('file-type', 'Invalid file type', function(value) {
+    .test('file-type', 'Invalid file type', function(value: any) {
       if (!value) return true;
       const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-      return allowedTypes.includes(value.type);
+      return allowedTypes.includes(value?.type);
     })
-    .test('file-name', 'Invalid file name', function(value) {
+    .test('file-name', 'Invalid file name', function(value: any) {
       if (!value) return true;
-      const fileName = value.name || '';
+      const fileName = value?.name || '';
       const invalidChars = /[<>:"/\\|?*]/;
       return !invalidChars.test(fileName);
     }),

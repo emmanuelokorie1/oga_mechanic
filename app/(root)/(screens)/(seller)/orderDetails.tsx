@@ -1,13 +1,14 @@
 import React, { useState } from 'react'
-import { View, Text, TouchableOpacity, ScrollView, Image, Dimensions } from 'react-native'
+import { View, Text, TouchableOpacity, ScrollView, Image, Dimensions, ActivityIndicator } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon, CalendarIcon, CreditCardIcon, ShoppingBagIcon, MapPinIcon, CheckCircleIcon, ClockIcon, TruckIcon, UserIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon } from 'react-native-heroicons/outline'
 import { CheckCircleIcon as CheckCircleIconSolid } from 'react-native-heroicons/solid'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { productsAPI } from '@/lib/api/products'
 import LoadingErrorWrapper from '@/components/LoadingErrorWrapper'
+import { showToast } from '@/utils/toastUtils'
 import { LAYOUT } from '@/constants/units'
 
 const { CONTAINER_PADDING } = LAYOUT;
@@ -169,6 +170,35 @@ const OrderDetails = () => {
     });
 
     const orderData: OrderData | null = orderResponse?.data || null;
+    const queryClient = useQueryClient();
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+    const handleUpdateStatus = async () => {
+        if (!orderData?.id) return;
+        const currentStatus = orderData.status.toLowerCase();
+        let nextStatus = '';
+        if (currentStatus === 'pending') nextStatus = 'processing';
+        else if (currentStatus === 'processing') nextStatus = 'shipped';
+        else if (currentStatus === 'shipped') nextStatus = 'delivered';
+        else return;
+
+        try {
+            setIsUpdatingStatus(true);
+            await productsAPI.updateOrderStatus(orderData.id, nextStatus);
+            showToast.success(`Order marked as ${nextStatus}!`);
+            await Promise.all([
+                refetch(),
+                queryClient.invalidateQueries({ queryKey: ['orders'] }),
+                queryClient.invalidateQueries({ queryKey: ['orderDetail', orderData.id] }),
+                queryClient.invalidateQueries({ queryKey: ['orderStatus', orderData.id] }),
+                queryClient.invalidateQueries({ queryKey: ['merchant-analytics'] }),
+            ]);
+        } catch (err: any) {
+            showToast.error(err?.response?.data?.message || err?.message || 'Failed to update order status');
+        } finally {
+            setIsUpdatingStatus(false);
+        }
+    };
 
     // Enhanced status configuration
     const getStatusConfig = (status: string) => {
@@ -474,12 +504,24 @@ const OrderDetails = () => {
                             </View>
 
                             {/* Action Button */}
-                            {(orderData.status.toLowerCase() === 'pending' || orderData.status.toLowerCase() === 'processing') && (
+                            {(['pending', 'processing', 'shipped'].includes(orderData.status.toLowerCase())) && (
                                 <View className="mt-6 pt-6 border-t border-gray-100">
-                                    <TouchableOpacity className="bg-primary-600 py-4 rounded-2xl shadow-sm">
-                                        <Text className="text-white font-NunitoBold text-center text-lg">
-                                            {orderData.status.toLowerCase() === 'pending' ? 'Process Order' : 'Mark as Shipped'}
-                                        </Text>
+                                    <TouchableOpacity 
+                                        disabled={isUpdatingStatus}
+                                        onPress={handleUpdateStatus}
+                                        className="bg-primary-600 py-4 rounded-2xl shadow-sm flex-row items-center justify-center"
+                                    >
+                                        {isUpdatingStatus ? (
+                                            <ActivityIndicator color="white" />
+                                        ) : (
+                                            <Text className="text-white font-NunitoBold text-center text-lg">
+                                                {orderData.status.toLowerCase() === 'pending'
+                                                    ? 'Process Order'
+                                                    : orderData.status.toLowerCase() === 'processing'
+                                                    ? 'Mark as Shipped'
+                                                    : 'Mark as Delivered'}
+                                            </Text>
+                                        )}
                                     </TouchableOpacity>
                                 </View>
                             )}

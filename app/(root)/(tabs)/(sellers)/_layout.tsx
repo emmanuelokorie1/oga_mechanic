@@ -14,6 +14,8 @@ import type { BottomTabBarProps } from "expo-router/build/react-navigation/botto
 import { BlurView, BlurTargetView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { useActiveRoleProfile } from "@/hooks/useUserProfile";
+import { normalizeRoleName } from "@/utils/authUtils";
+import { routes, mechanicRoutes } from "@/constants/routes";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -130,10 +132,21 @@ const CustomTabBar = ({
 // ── Layout ───────────────────────────────────────────────────────────────
 export default function Layout() {
   const blurTargetRef = useRef<View>(null);
-  const { activeRole } = useActiveRoleProfile();
-  const isVehicleRental = activeRole === "vehicle_rental";
+  const { activeRole, isLoading } = useActiveRoleProfile();
+  const normalized = normalizeRoleName(activeRole);
+  const isVehicleRental = normalized === "vehicle_rental";
   const { tab } = useLocalSearchParams();
   const router = useRouter();
+
+  // Role guard: redirect if active role belongs elsewhere
+  useEffect(() => {
+    if (!activeRole || isLoading) return;
+    if (normalized === "primary_user" || normalized === "user") {
+      router.replace(routes.userHome as any);
+    } else if (normalized === "mechanic") {
+      router.replace(mechanicRoutes.home as any);
+    }
+  }, [activeRole, isLoading, normalized, router]);
 
   // Backward compatibility for links passing ?tab=products
   useEffect(() => {
@@ -157,6 +170,7 @@ export default function Layout() {
             />
           )}
           initialRouteName="home"
+          backBehavior="firstRoute"
         >
           <Tabs.Screen name="home" />
           <Tabs.Screen name="product" />

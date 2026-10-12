@@ -17,7 +17,6 @@ import { images, icons } from "@/constants";
 import { useEffect, useRef, useState } from "react";
 import React from "react";
 import type { ComponentType } from "react";
-import { useRoles } from "@/hooks/useRoles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import LoadingOverlay from "@/components/LoadingOverlay";
 
@@ -84,8 +83,6 @@ const Welcome = () => {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const flatListRef = useRef<Animated.FlatList<any>>(null);
-
-  const { refetch: refetchRoles } = useRoles();
 
   const handleSignUp = async () => {
     if (isSigningUp || isSigningIn) return;

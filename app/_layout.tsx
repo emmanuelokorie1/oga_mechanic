@@ -59,10 +59,20 @@ function AppContent() {
 
       const handleChatNotification = (data: any) => {
         const relatedId = data.related_object_id || data.related_id || data.id || data.roomId;
-        router.push({
-          pathname: "/(root)/(screens)/(user)/chat-specialist",
-          params: { roomId: data.roomId || relatedId },
-        } as any);
+        if (data.chatType === 'support' || data.type === 'support_chat') {
+          router.push({
+            pathname: "/(root)/(screens)/(user)/chat-specialist",
+            params: { roomId: data.roomId || relatedId },
+          } as any);
+        } else {
+          router.push({
+            pathname: "/(root)/(screens)/(user)/chat-room",
+            params: {
+              roomId: String(data.roomId || relatedId),
+              participantName: data.senderName || data.participantName || "User",
+            },
+          } as any);
+        }
       };
 
       const handleGenericNotification = (data: any) => {
@@ -100,23 +110,18 @@ function AppContent() {
   }, []);
   // ──────────────────────────────────────────────────────────────────────────
 
-  // Show splash screen while auth is loading
-  if (auth.isLoading) {
-    return (
-      <AnimatedSplash
-        onAnimationEnd={() => {
-          // Animation done, but keep showing splash until auth is complete
-        }}
-      />
-    );
-  }
+  const [showSplash, setShowSplash] = React.useState(true);
+  const handleSplashFinished = React.useCallback(() => {
+    setShowSplash(false);
+  }, []);
 
   return (
     <CartProvider>
       <LocationProvider>
-        <View className="flex-1">
-          <StatusBar style="dark" />
-          <Stack>
+        <View className="flex-1 bg-white">
+          <StatusBar style={showSplash ? "light" : "dark"} />
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="(root)" options={{ headerShown: false, gestureEnabled: false }} />
           </Stack>
@@ -137,6 +142,14 @@ function AppContent() {
                 borderTopColor: "#F3F4F6", // Subtle separator
                 zIndex: 1000,
               }}
+            />
+          )}
+
+          {/* Seamless Root Splash Overlay */}
+          {showSplash && (
+            <AnimatedSplash
+              isReady={!auth.isLoading}
+              onAnimationEnd={handleSplashFinished}
             />
           )}
         </View>
@@ -183,7 +196,9 @@ export default function RootLayout() {
 
   if (!loaded) {
     return (
-      <AnimatedSplash onAnimationEnd={() => {}} />
+      <View style={{ flex: 1, backgroundColor: "#DC2626" }}>
+        <StatusBar style="light" />
+      </View>
     );
   }
 

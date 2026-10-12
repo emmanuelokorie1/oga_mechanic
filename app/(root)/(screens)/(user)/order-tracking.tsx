@@ -248,7 +248,7 @@ const OrderTracking = () => {
 
           <CustomButton 
             title="Back to Home"
-            onPress={() => router.push(routes.home)}
+            onPress={() => router.replace(routes.home)}
             bgVariant="primary"
           />
         </Animated.View>

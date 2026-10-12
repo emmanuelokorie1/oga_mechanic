@@ -6,6 +6,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { userAPI } from '@/lib/api/user';
 import { useMechanicStore } from '@/stores/mechanicStore';
 import { useRegistrationStore } from '@/stores/registrationStore';
+import { useUserStore } from '@/stores/userStore';
+import { secureStorage } from '@/utils/secureStorage';
 
 export const useCentralizedLogout = () => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -32,37 +34,32 @@ export const useCentralizedLogout = () => {
         }
       }
       
-      // Call /users/roles/ endpoint before clearing auth data
-      try {
-        console.log('🔄 Fetching user roles before logout...');
-        const rolesResponse = await userAPI.getUserRoles();
-        console.log('✅ User roles fetched:', rolesResponse);
-        
-        // Store roles data in local storage
-        await AsyncStorage.setItem('user_roles_data', JSON.stringify(rolesResponse));
-        console.log('✅ User roles data stored in AsyncStorage');
-      } catch (rolesError) {
-        console.error('❌ Failed to fetch roles during logout:', rolesError);
-      }
-      
-      // Clear TanStack Query cache
+      // Cancel active queries and clear cache
+      await queryClient.cancelQueries();
       queryClient.clear();
       
       // Clear global stores
       useMechanicStore.getState().reset();
       useRegistrationStore.getState().clearStepByStepData();
+      useUserStore.getState().logout();
 
-      // Clear all stored auth data (but keep roles data)
+      // Clear all stored auth data (both secure storage and AsyncStorage)
+      try {
+        await secureStorage.clearAllData();
+      } catch (e) {
+        console.warn('Error clearing secureStorage:', e);
+      }
+
       await AsyncStorage.multiRemove([
         'auth_token',
         'refresh_token',
         'user_data',
         'is_logged_in',
-        'current_active_role', // Clear the stored active role on logout
-        'user_roles_data'      // Added for complete wipe
+        'current_active_role',
+        'user_roles_data'
       ]);
       
-      console.log('✅ All auth data cleared from AsyncStorage (roles data preserved)');
+      console.log('✅ All auth data cleared from storage');
       
       // Navigate to login page
       router.replace(routes?.signIn as any);
@@ -73,11 +70,14 @@ export const useCentralizedLogout = () => {
       console.error('❌ Error during centralized logout:', error);
       
       // Fallback: clear storage and navigate even if everything fails
+      await queryClient.cancelQueries().catch(() => {});
       queryClient.clear();
       useMechanicStore.getState().reset();
       useRegistrationStore.getState().clearStepByStepData();
+      useUserStore.getState().logout();
       
       try {
+        await secureStorage.clearAllData();
         await AsyncStorage.multiRemove([
           'auth_token',
           'refresh_token',

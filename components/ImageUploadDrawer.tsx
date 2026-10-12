@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { View, Text, TouchableOpacity, Image, Modal, Pressable } from 'react-native'
 import { CameraIcon, XMarkIcon, PhotoIcon } from 'react-native-heroicons/outline'
-import * as ImagePicker from 'expo-image-picker'
 import AndroidNavBarSpacer from './AndroidNavBarSpacer'
+import { pickImageWithPermission } from '@/utils/imagePickerHelper'
 
 interface ImageUploadDrawerProps {
   images: string[]
@@ -22,35 +22,13 @@ const ImageUploadDrawer: React.FC<ImageUploadDrawerProps> = ({
 
   const handleImageUpload = async (source: 'camera' | 'gallery') => {
     try {
-      let result
-      
-      if (source === 'camera') {
-        const permissionResult = await ImagePicker.requestCameraPermissionsAsync()
-        if (permissionResult.granted === false) {
-          alert('Permission to access camera is required!')
-          return
-        }
-        result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        })
-      } else {
-        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync()
-        if (permissionResult.granted === false) {
-          alert('Permission to access camera roll is required!')
-          return
-        }
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.8,
-        })
-      }
+      const result = await pickImageWithPermission(source, {
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
 
-      if (!result.canceled && result.assets[0]) {
+      if (result && !result.canceled && result.assets[0]) {
         const newImage = result.assets[0].uri
         const newImages = [...images]
         

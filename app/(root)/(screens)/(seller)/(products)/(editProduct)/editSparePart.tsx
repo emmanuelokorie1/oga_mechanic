@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { secureStorage } from '@/utils/secureStorage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar'
 import { ArrowLeftIcon } from 'react-native-heroicons/outline'
@@ -311,11 +312,13 @@ const EditSparePart = () => {
 
       const endpoint = `${process.env.EXPO_PUBLIC_API_URL}/products/products/${productId}/`;
 
+      const token = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
+
       const response = await fetch(endpoint, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await AsyncStorage.getItem('auth_token')}`,
+          'Authorization': `Bearer ${token}`,
           'X-Api-Key': process.env.EXPO_PUBLIC_API_KEY || '',
         },
         body: JSON.stringify(payload),

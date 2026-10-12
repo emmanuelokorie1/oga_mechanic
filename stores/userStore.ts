@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { userAPI, LoginCredentials, RegisterData, UserProfile } from '../lib/api/user';
 import { showToast } from '../utils/toastUtils';
+import { secureStorage } from '../utils/secureStorage';
 
 interface UserState {
   // State
@@ -120,18 +121,19 @@ export const useUserStore = create<UserState>()(
 
       logout: async () => {
         try {
-          // Call /users/roles/ endpoint before clearing auth data
           try {
-            const rolesResponse = await userAPI.getUserRoles();
-
-            // Store roles data in local storage
-            await AsyncStorage.setItem('user_roles_data', JSON.stringify(rolesResponse));
-          } catch (rolesError) {
-            console.error('❌ Failed to fetch roles during logout:', rolesError);
-          }
+            await secureStorage.clearAllData();
+          } catch (_) {}
           
-          // Clear auth tokens from AsyncStorage (but keep roles data)
-          await AsyncStorage.multiRemove(['auth_token', 'refresh_token', 'user_data']);
+          // Clear all auth tokens from AsyncStorage
+          await AsyncStorage.multiRemove([
+            'auth_token',
+            'refresh_token',
+            'user_data',
+            'is_logged_in',
+            'current_active_role',
+            'user_roles_data'
+          ]);
         } catch (error) {
           console.error('Error during logout process:', error);
         }

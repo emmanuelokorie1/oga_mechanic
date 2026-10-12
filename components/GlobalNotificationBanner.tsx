@@ -11,9 +11,10 @@ import {
 } from 'react-native-heroicons/solid';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userAPI } from '@/lib/api/user';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname, useLocalSearchParams } from 'expo-router';
 import { routes, mechanicRoutes } from '@/constants/routes';
-import { usePrimaryUserProfile } from '@/hooks/useUserProfile';
+import { usePrimaryUserProfile, userProfileKeys } from '@/hooks/useUserProfile';
+import { extractChatRooms } from '@/lib/api/communications';
 
 export const getIconForType = (type: string, color: string) => {
   switch (type) {
@@ -43,8 +44,12 @@ const NotificationCard = ({ item, onDismiss, onPress }: { item: any, onDismiss: 
         {getIconForType(type, color)}
       </View>
       <View className="flex-1 mr-2">
-        <Text className="text-gray-900 font-NunitoExtraBold text-[16px] mb-0.5">{item.title}</Text>
-        <Text className="text-gray-500 font-NunitoMedium text-[13px]">{item.message}</Text>
+        <Text className="text-gray-900 font-NunitoExtraBold text-[16px] mb-0.5">
+          {typeof item.title === 'string' ? item.title : String(item.title || '')}
+        </Text>
+        <Text className="text-gray-500 font-NunitoMedium text-[13px]">
+          {typeof item.message === 'string' ? item.message : (item.message?.content || item.message?.text || String(item.message || ''))}
+        </Text>
       </View>
       <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDismiss(); }} className="p-2 -mr-2">
         <XMarkIcon size={20} color="#9CA3AF" />
@@ -55,6 +60,8 @@ const NotificationCard = ({ item, onDismiss, onPress }: { item: any, onDismiss: 
 
 const GlobalNotificationBanner = () => {
   const router = useRouter();
+  const pathname = usePathname();
+  const currentParams = useLocalSearchParams();
   const { 
     isVisible, title, message, type, data: bannerData,
     hideNotification, 
@@ -77,20 +84,43 @@ const GlobalNotificationBanner = () => {
 
     console.log('🚀 [Notification Navigation]', { notificationType, relatedObjectId, userRole });
 
-    const isRepairNotification = notificationType === 'repair_update' || notificationType === 'repair_status';
+    const title = (bannerData?.title || rawData.title || '').toLowerCase();
+    const isRepairNotification =
+      notificationType === 'repair_update' ||
+      notificationType === 'repair_status' ||
+      notificationType?.includes('repair') ||
+      notificationType?.includes('transit') ||
+      title.includes('repair') ||
+      title.includes('transit');
 
-    if (isRepairNotification && relatedObjectId) {
-      // Intelligent Routing based on Role
-      if (userRole === 'mechanic') {
-        router.push({
-          pathname: mechanicRoutes.orderDetails as any,
-          params: { orderId: relatedObjectId }
-        });
-      } else {
-        router.push({
-          pathname: routes.trackMechanicOrder as any,
-          params: { orderId: relatedObjectId }
-        });
+    if (isRepairNotification) {
+      const targetOrderId = relatedObjectId || rawData.order_id || rawData.repair_request_id || rawData.repair_id || rawData.id;
+      // Invalidate queries so screen refreshes
+      queryClient.invalidateQueries({ queryKey: ['repair-request'] });
+      if (targetOrderId) {
+        queryClient.invalidateQueries({ queryKey: ['repair-request', String(targetOrderId)] });
+        queryClient.refetchQueries({ queryKey: ['repair-request', String(targetOrderId)], type: 'active' });
+      }
+
+      if (targetOrderId) {
+        const currentPath = pathname || '';
+        const isAlreadyOnScreen =
+          (currentPath.includes('track-mechanic-order') || currentPath.includes('order-details')) &&
+          String(currentParams?.orderId) === String(targetOrderId);
+
+        if (!isAlreadyOnScreen) {
+          if (userRole === 'mechanic') {
+            router.push({
+              pathname: mechanicRoutes.orderDetails as any,
+              params: { orderId: targetOrderId }
+            });
+          } else {
+            router.push({
+              pathname: routes.trackMechanicOrder as any,
+              params: { orderId: targetOrderId }
+            });
+          }
+        }
       }
       hideNotification();
       toggleHistoryModal(false);
@@ -101,6 +131,69 @@ const GlobalNotificationBanner = () => {
        });
        hideNotification();
        toggleHistoryModal(false);
+    } else if (
+      notificationType === 'chat' ||
+      notificationType === 'chat_message' ||
+      notificationType === 'p2p' ||
+      rawData.chatType === 'p2p' ||
+      !!rawData.roomId
+    ) {
+      const targetRoomId = rawData.roomId || relatedObjectId;
+      if (targetRoomId) {
+        // If the user is already viewing this exact chat room, do not reload or push duplicate screen
+        const currentPath = pathname || '';
+        const isAlreadyInRoom =
+          (currentPath.includes('chat-room') || currentPath.includes('chat-mechanic')) &&
+          String(currentParams?.roomId) === String(targetRoomId);
+
+        if (isAlreadyInRoom) {
+          queryClient.invalidateQueries({ queryKey: ['chat-messages', String(targetRoomId)] });
+          queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
+          queryClient.refetchQueries({ queryKey: ['chat-messages', String(targetRoomId)], type: 'active' });
+          queryClient.invalidateQueries({ queryKey: ['chatRooms'] });
+          hideNotification();
+          toggleHistoryModal(false);
+          return;
+        }
+
+        // Resolve real participant name & avatar from chatRooms query cache or notification payload
+        const chatRoomsData = queryClient.getQueryData(['chatRooms']);
+        const chatRooms = extractChatRooms(chatRoomsData);
+        const matchedRoom = chatRooms.find((r: any) => String(r.id) === String(targetRoomId));
+        const roomParticipant = matchedRoom?.other_participant;
+        const roomParticipantName = roomParticipant?.first_name
+          ? `${roomParticipant.first_name} ${roomParticipant.last_name || ''}`.trim()
+          : roomParticipant?.email ? roomParticipant.email.split('@')[0] : null;
+
+        const resolvedName =
+          (rawData.participantName && rawData.participantName !== 'User' && rawData.participantName !== 'Participant' ? rawData.participantName : null) ||
+          (rawData.senderName && rawData.senderName !== 'User' && rawData.senderName !== 'Participant' ? rawData.senderName : null) ||
+          (rawData.sender?.full_name ? rawData.sender.full_name : null) ||
+          (rawData.sender?.first_name ? `${rawData.sender.first_name} ${rawData.sender.last_name || ''}`.trim() : null) ||
+          roomParticipantName ||
+          "User";
+
+        const resolvedAvatar = rawData.participantAvatar || roomParticipant?.avatar || "";
+
+        router.push({
+          pathname: "/(root)/(screens)/(user)/chat-room" as any,
+          params: {
+            roomId: String(targetRoomId),
+            participantName: resolvedName,
+            participantAvatar: resolvedAvatar,
+          }
+        });
+        hideNotification();
+        toggleHistoryModal(false);
+      }
+    } else {
+      const rawText = `${rawData?.title || notifData?.title || ''} ${rawData?.message || notifData?.message || ''}`.toLowerCase();
+      if (rawText.includes('approv') || rawText.includes('kyc') || rawText.includes('verif') || rawText.includes('profile')) {
+        queryClient.invalidateQueries({ queryKey: userProfileKeys.all });
+        queryClient.refetchQueries({ queryKey: userProfileKeys.all });
+      }
+      hideNotification();
+      toggleHistoryModal(false);
     }
   };
 
@@ -207,9 +300,11 @@ const GlobalNotificationBanner = () => {
             {getIconForType(type, "#D30309")}
           </View>
           <View className="flex-1 mr-3">
-            <Text className="text-gray-900 font-NunitoExtraBold text-[16px] mb-0.5 tracking-tight">{title}</Text>
+            <Text className="text-gray-900 font-NunitoExtraBold text-[16px] mb-0.5 tracking-tight">
+              {typeof title === 'string' ? title : String(title || '')}
+            </Text>
             <Text className="text-gray-500 font-NunitoMedium text-[13px] leading-[18px]" numberOfLines={2}>
-              {message}
+              {typeof message === 'string' ? message : ((message as any)?.content || (message as any)?.text || String(message || ''))}
             </Text>
           </View>
           <TouchableOpacity onPress={hideNotification} className="w-8 h-8 bg-gray-50 rounded-full items-center justify-center border border-gray-100">

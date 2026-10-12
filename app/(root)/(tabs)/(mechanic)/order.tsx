@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, ScrollView, RefreshControl, Animated } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, RefreshControl, Animated, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { LAYOUT } from "@/constants/units";
@@ -193,9 +193,29 @@ const MechanicOrder = () => {
       setActionModalVisible(false);
       setActionType(null);
       setSelectedOrderId("");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing action:", error);
-      // Keep modal open on error so user can retry
+      setActionModalVisible(false);
+      setActionType(null);
+      setSelectedOrderId("");
+      refetchRequests();
+      const rawMsg = error?.response?.data?.message || error?.message || '';
+      const isAlreadyTaken =
+        rawMsg.toLowerCase().includes('accept') ||
+        rawMsg.toLowerCase().includes('taken') ||
+        rawMsg.toLowerCase().includes('assigned') ||
+        rawMsg.toLowerCase().includes('status') ||
+        rawMsg.toLowerCase().includes('pending') ||
+        error?.response?.status === 400 ||
+        error?.response?.status === 404 ||
+        error?.response?.status === 409;
+
+      Alert.alert(
+        "Request Unavailable",
+        isAlreadyTaken
+          ? "This repair request has already been accepted by another specialist or cancelled."
+          : (rawMsg || "This request is no longer available.")
+      );
     }
   };
 
