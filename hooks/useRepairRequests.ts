@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useIsFocused } from 'expo-router/react-navigation';
 import { mechanicAPI } from '@/lib/api/mechanic';
 import { useUserStore } from '@/stores/userStore';
 
@@ -102,36 +103,36 @@ export const useUserRepairRequests = (
 // Hook to fetch repair request detail by ID with smart status-aware polling
 export const useRepairRequestDetail = (requestId: string | undefined, pollInterval?: number) => {
   const token = useUserStore((state) => state.accessToken);
+  const isFocused = useIsFocused();
 
   return useQuery({
     queryKey: ['repair-request', requestId],
     queryFn: () => mechanicAPI.getRepairRequestDetail(requestId!),
     enabled: !!requestId && !!token,
-    staleTime: 3 * 1000,
+    staleTime: 5 * 1000,
     gcTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnMount: 'always',
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     refetchInterval: (query) => {
-      if (!token) return false;
-      // If caller explicitly passed a custom interval
-      if (pollInterval !== undefined && pollInterval > 0) {
-        return pollInterval;
+      // If the screen is not currently visible/focused (e.g. user pushed Chat, Settings, etc.), STOP ALL POLLING!
+      if (!token || !isFocused) return false;
+
+      // If caller explicitly configured an interval
+      if (pollInterval !== undefined) {
+        return pollInterval > 0 ? pollInterval : false;
       }
+
       // Smart status-based polling:
       const data = query.state.data as any;
       const status = (data?.data?.status || data?.status || '').toLowerCase();
       
-      // Actively poll transitions while the repair order lifecycle is active:
-      if (status === 'pending') return 5000;       // Waiting for mechanic response
-      if (status === 'accepted') return 5000;      // Waiting for mechanic to dispatch / start transit
-      if (status === 'in_transit') return 6000;    // Active transit & GPS coordinate streaming
-      if (status === 'arrived') return 5000;       // Awaiting OTP verification
-      if (status === 'in_progress') return 8000;   // In progress repair job
-      if (status === 'completed') return 6000;     // Completed, waiting for customer verification
+      // Live GPS coordinate tracking for map while mechanic is actively traveling to customer:
+      if (status === 'in_transit') return 8000;
       
-      // Terminal states (verified, verify_completed, cancelled, declined) - stop polling
+      // All other statuses (pending, accepted, arrived, in_progress, completed, verified)
+      // are delivered instantly via WebSocket events. No polling spam!
       return false;
     },
     networkMode: 'online',

@@ -132,14 +132,10 @@ export const useNotificationWebSocket = ({
    * Invalidate & actively refetch chat room list and open chat messages.
    */
   const invalidateChatCaches = useCallback((data?: any) => {
-    queryClient.invalidateQueries({ queryKey: ['chatRooms'] });
-    queryClient.invalidateQueries({ queryKey: ['chat-messages'] });
-    queryClient.refetchQueries({ queryKey: ['chat-messages'], type: 'active' });
-
+    queryClient.invalidateQueries({ queryKey: ['chatRooms'], refetchType: 'active' });
     const roomId = extractRoomId(data);
     if (roomId) {
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', String(roomId)] });
-      queryClient.refetchQueries({ queryKey: ['chat-messages', String(roomId)], type: 'active' });
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', String(roomId)], refetchType: 'active' });
     }
   }, [queryClient, extractRoomId]);
 
@@ -1087,14 +1083,20 @@ export const useNotificationWebSocket = ({
           invalidateProfileCaches();
         }
 
+        const isChat = type === 'support_chat' || type === 'chat_message' || type === 'chat' || type === 'p2p' || type.includes('chat');
+        if (isChat) {
+          queryClient.invalidateQueries({ queryKey: ['support-conversations'], refetchType: 'active' });
+          queryClient.invalidateQueries({ queryKey: ['support-messages'], refetchType: 'active' });
+          invalidateChatCaches(notifData);
+        }
+
         const isRepair =
-          isRepairUpdateType(type) ||
-          type.includes('repair') ||
-          type.includes('transit') ||
-          type.includes('accepted') ||
-          type.includes('mechanic') ||
-          type.includes('order') ||
-          Boolean(resolvedStatus);
+          !isChat &&
+          (isRepairUpdateType(type) ||
+            type.includes('repair') ||
+            type.includes('transit') ||
+            type.includes('accepted') ||
+            Boolean(resolvedStatus));
 
         const isNewDispatch = isGenuineNewDispatch(type, rawTitle, rawMessage);
 
@@ -1108,15 +1110,8 @@ export const useNotificationWebSocket = ({
           } else {
             playGeneralNotificationSound();
           }
-        } else {
+        } else if (!isChat) {
           playGeneralNotificationSound();
-        }
-
-        const isChat = type === 'support_chat' || type === 'chat_message' || type === 'chat' || type === 'p2p';
-        if (isChat) {
-          queryClient.invalidateQueries({ queryKey: ['support-conversations'], refetchType: 'active' });
-          queryClient.invalidateQueries({ queryKey: ['support-messages'], refetchType: 'active' });
-          invalidateChatCaches(notifData);
         }
 
         const isOtpVerifiedEvent =
@@ -1182,14 +1177,20 @@ export const useNotificationWebSocket = ({
           invalidateProfileCaches();
         }
 
+        const isChat = type === 'support_chat' || type === 'chat_message' || type === 'chat' || type === 'p2p' || type.includes('chat');
+        if (isChat) {
+          queryClient.invalidateQueries({ queryKey: ['support-conversations'], refetchType: 'active' });
+          queryClient.invalidateQueries({ queryKey: ['support-messages'], refetchType: 'active' });
+          invalidateChatCaches(notifData);
+        }
+
         const isRepair =
-          isRepairUpdateType(type) ||
-          type.includes('repair') ||
-          type.includes('transit') ||
-          type.includes('accepted') ||
-          type.includes('mechanic') ||
-          type.includes('order') ||
-          Boolean(resolvedStatus);
+          !isChat &&
+          (isRepairUpdateType(type) ||
+            type.includes('repair') ||
+            type.includes('transit') ||
+            type.includes('accepted') ||
+            Boolean(resolvedStatus));
 
         const isNewDispatch = isGenuineNewDispatch(type, rawTitle, rawMessage);
 
@@ -1203,15 +1204,8 @@ export const useNotificationWebSocket = ({
           } else {
             playGeneralNotificationSound();
           }
-        } else {
+        } else if (!isChat) {
           playGeneralNotificationSound();
-        }
-
-        const isChat = type === 'support_chat' || type === 'chat_message' || type === 'chat' || type === 'p2p';
-        if (isChat) {
-          queryClient.invalidateQueries({ queryKey: ['support-conversations'], refetchType: 'active' });
-          queryClient.invalidateQueries({ queryKey: ['support-messages'], refetchType: 'active' });
-          invalidateChatCaches(notifData);
         }
 
         const isOtpVerifiedEvent =

@@ -80,6 +80,7 @@ export const useP2PChatSocket = (roomId: string, enabled: boolean = true) => {
   const queryClient = useQueryClient();
   const baseSendMessageRef = useRef<(event: string, data?: any) => void>(() => {});
   const markedIdsSetRef = useRef<Set<string>>(new Set());
+  const isFetchingRef = useRef(false);
 
   const markMessagesAsRead = useCallback(
     async (messageIds: string[] = []) => {
@@ -98,40 +99,30 @@ export const useP2PChatSocket = (roomId: string, enabled: boolean = true) => {
 
       // Check if all of these valid IDs were already processed
       const unhandled = validBackendIds.filter((id) => !markedIdsSetRef.current.has(id));
-      if (validBackendIds.length > 0 && unhandled.length === 0) {
+      if (unhandled.length === 0) {
         return;
       }
-      validBackendIds.forEach((id) => markedIdsSetRef.current.add(id));
+      unhandled.forEach((id) => markedIdsSetRef.current.add(id));
 
-      console.log(`👁️ [markMessagesAsRead] Marking ${validBackendIds.length} messages read in room ${roomId}:`, validBackendIds);
+      console.log(`👁️ [markMessagesAsRead] Marking ${unhandled.length} messages read in room ${roomId}:`, unhandled);
 
       // 1. Optimistic local state update in current room
-      if (validBackendIds.length > 0) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            validBackendIds.includes(String(m.id)) ? { ...m, is_read: true, read: true, status: 'read' } : m
-          )
-        );
-      } else {
-        setMessages((prev) =>
-          prev.map((m) => ({ ...m, is_read: true, read: true, status: 'read' }))
-        );
-      }
+      setMessages((prev) =>
+        prev.map((m) =>
+          unhandled.includes(String(m.id)) ? { ...m, is_read: true, read: true, status: 'read' } : m
+        )
+      );
 
-      // 2. WebSocket event: Send { type: "read_messages", message_ids: validBackendIds }
-      if (validBackendIds.length > 0) {
-        try {
-          baseSendMessageRef.current('read_messages', { message_ids: validBackendIds });
-        } catch (wsErr) {
-          console.warn('⚠️ [P2P Chat WS Mark Read]:', wsErr);
-        }
+      // 2. WebSocket event: Send { type: "read_messages", message_ids: unhandled }
+      try {
+        baseSendMessageRef.current('read_messages', { message_ids: unhandled });
+      } catch (wsErr) {
+        console.warn('⚠️ [P2P Chat WS Mark Read]:', wsErr);
       }
 
       // 3. REST API call: POST /chat-rooms/{roomId}/mark-read/
       try {
-        console.log(`📡 [P2P Chat REST Mark Read] Sending request for room ${roomId} with ${validBackendIds.length} IDs...`);
-        const res = await communicationsAPI.markMessagesAsRead(roomId, validBackendIds);
-        console.log(`✅ [P2P Chat REST Mark Read Success]:`, res);
+        await communicationsAPI.markMessagesAsRead(roomId, unhandled);
       } catch (err: any) {
         console.warn('⚠️ [P2P Chat Mark Read REST Error]:', err?.response?.data || err?.message || err);
       }
@@ -171,12 +162,16 @@ export const useP2PChatSocket = (roomId: string, enabled: boolean = true) => {
   /**
    * Fetch historical messages from the REST API.
    * Runs immediately on mount when roomId is available and periodically in background.
+  /**
+   * Fetch historical messages from the REST API.
+   * Runs once on mount and when reconnected or when a chat notification for this room arrives.
    */
   const fetchHistory = useCallback(
     async (isSilent: boolean = false) => {
-      if (!roomId || !enabled) return;
+      if (!roomId || !enabled || isFetchingRef.current) return;
 
       try {
+        isFetchingRef.current = true;
         if (!isSilent) {
           setIsLoadingHistory(true);
         }
@@ -262,26 +257,20 @@ export const useP2PChatSocket = (roomId: string, enabled: boolean = true) => {
           );
         });
 
-        // Extract all message IDs from history to mark as read
-        const allHistoryIds = deduplicatedHistory
+        // Extract incoming unread message IDs to mark as read (never mark already-read or self-sent messages)
+        const unreadIncomingIds = deduplicatedHistory
+          .filter((m: any) => !m.isSent && !m.is_read && !m.read && m.status !== 'read')
           .map((m: any) => m.id || m.uuid || m.message_id || m.message?.id)
           .filter((id: any) => id && !String(id).startsWith('local-') && !String(id).startsWith('ws-') && !String(id).startsWith('temp-'))
           .map(String);
 
-        const incomingHistoryIds = deduplicatedHistory
-          .filter((m: any) => !m.isSent)
-          .map((m: any) => m.id || m.uuid || m.message_id || m.message?.id)
-          .filter((id: any) => id && !String(id).startsWith('local-') && !String(id).startsWith('ws-') && !String(id).startsWith('temp-'))
-          .map(String);
-
-        const idsToMark = incomingHistoryIds.length > 0 ? incomingHistoryIds : allHistoryIds;
-
-        if (idsToMark.length > 0) {
-          markMessagesAsRead(idsToMark);
+        if (unreadIncomingIds.length > 0) {
+          markMessagesAsRead(unreadIncomingIds);
         }
       } catch (err) {
         console.error(`❌ [P2P Chat History] Failed:`, err);
       } finally {
+        isFetchingRef.current = false;
         if (!isSilent) {
           setIsLoadingHistory(false);
         }
@@ -295,42 +284,7 @@ export const useP2PChatSocket = (roomId: string, enabled: boolean = true) => {
     fetchHistory(false);
   }, [roomId, enabled]);
 
-  // Periodic silent background sync every 3.5s while active in the chat room
-  useEffect(() => {
-    if (!roomId || !enabled) return;
-
-    const interval = setInterval(() => {
-      fetchHistory(true);
-    }, 3500);
-
-    return () => clearInterval(interval);
-  }, [roomId, enabled, fetchHistory]);
-
-  // Watch for query cache invalidations from notification socket or global banner
-  useEffect(() => {
-    if (!roomId || !enabled) return;
-
-    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-      if (
-        event?.type === 'updated' ||
-        event?.type === 'observerResultsUpdated' ||
-        event?.type === 'removed'
-      ) {
-        const queryKey = event.query?.queryKey;
-        if (
-          Array.isArray(queryKey) &&
-          (queryKey[0] === 'chat-messages' || queryKey[0] === 'chatRooms') &&
-          (!queryKey[1] || String(queryKey[1]) === String(roomId))
-        ) {
-          fetchHistory(true);
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [roomId, enabled, queryClient, fetchHistory]);
-
-  // Watch for latest chat notification in notification store
+  // Watch for latest chat notification in notification store specifically for this room
   const lastNotification = useNotificationStore((state) => state.recentNotifications[0]);
   useEffect(() => {
     if (!lastNotification || !roomId) return;
@@ -342,10 +296,10 @@ export const useP2PChatSocket = (roomId: string, enabled: boolean = true) => {
       lastNotification.data?.related_object_id;
 
     const isChat = rawType === 'chat' || rawType.includes('chat') || rawType === 'p2p';
-    if (isChat && (!notifRoomId || String(notifRoomId) === String(roomId))) {
+    if (isChat && notifRoomId && String(notifRoomId) === String(roomId)) {
       fetchHistory(true);
     }
-  }, [lastNotification?.timestamp, roomId, fetchHistory]);
+  }, [lastNotification?.id, roomId, fetchHistory]);
 
   /**
    * Incoming WebSocket message handler
@@ -534,9 +488,12 @@ export const useP2PChatSocket = (roomId: string, enabled: boolean = true) => {
 
   const handleWebSocketConnect = useCallback(() => {
     console.log('🟢 [P2P Chat WS onConnect] Connected to room:', roomId);
-    // Send read receipt over WebSocket for all existing incoming messages once socket connects
+    // Sync any messages missed while disconnected
+    fetchHistory(true);
+
+    // Send read receipt over WebSocket for existing unread incoming messages once socket connects
     const incomingIds = messages
-      .filter((m) => !m.isSent && m.id && !String(m.id).startsWith('local-') && !String(m.id).startsWith('ws-') && !String(m.id).startsWith('temp-'))
+      .filter((m) => !m.isSent && !m.is_read && !m.read && m.id && !String(m.id).startsWith('local-') && !String(m.id).startsWith('ws-') && !String(m.id).startsWith('temp-'))
       .map((m) => String(m.id));
 
     if (incomingIds.length > 0) {
@@ -544,7 +501,7 @@ export const useP2PChatSocket = (roomId: string, enabled: boolean = true) => {
         baseSendMessageRef.current('read_messages', { message_ids: incomingIds });
       } catch (_) {}
     }
-  }, [roomId, messages]);
+  }, [roomId, messages, fetchHistory]);
 
   const { isConnected, sendMessage: baseSendMessage, reconnect } = useWebSocket({
     urlPath,
@@ -632,6 +589,7 @@ export const useP2PChatSocket = (roomId: string, enabled: boolean = true) => {
     sendMessage,
     sendTypingStatus,
     markMessagesAsRead,
+    refreshHistory: () => fetchHistory(false),
     reconnect,
   };
 };
