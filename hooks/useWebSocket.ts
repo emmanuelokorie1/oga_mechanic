@@ -23,9 +23,29 @@ export type UseWebSocketOptions = {
   enabled?: boolean;
 };
 
+// Shared connection pool by urlPath to prevent duplicate concurrent WebSockets
+interface Subscriber {
+  id: string;
+  eventHandlersRef: React.MutableRefObject<EventHandlers>;
+  onConnectRef: React.MutableRefObject<(() => void) | undefined>;
+  onDisconnectRef: React.MutableRefObject<(() => void) | undefined>;
+  setIsConnected: (connected: boolean) => void;
+}
+
+interface SharedConnection {
+  ws: WebSocket | null;
+  subscribers: Map<string, Subscriber>;
+  reconnectTimeout: ReturnType<typeof setTimeout> | null;
+  reconnectAttempts: number;
+  messageQueue: string[];
+  cleanPath: string;
+}
+
+const sharedPool = new Map<string, SharedConnection>();
+
 /**
- * Production-Ready WebSocket Hook
- * Features: Exponential Backoff, Closure Protection (Ref-based handlers), Stable Connection Refs, Exhaustive Logging.
+ * Production-Ready WebSocket Hook with Connection Pooling
+ * Features: Connection Pooling by urlPath, Exponential Backoff, Closure Protection, Automatic Queue Flushing.
  */
 export default function useWebSocket({
   urlPath,
@@ -36,17 +56,12 @@ export default function useWebSocket({
   reconnectInterval = 3000,
   enabled = true,
 }: UseWebSocketOptions) {
-  const ws = useRef<WebSocket | null>(null);
-  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reconnectAttempts = useRef(0);
+  const subscriberId = useRef(`sub_${Math.random().toString(36).slice(2)}`).current;
   const eventHandlersRef = useRef<EventHandlers>(eventHandlers);
   const onConnectRef = useRef(onConnect);
   const onDisconnectRef = useRef(onDisconnect);
-  const messageQueue = useRef<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
-  // Silent in production — connection state is surfaced via isConnected
-  
   // Use state for local token to handle hydration fallback
   const storeToken = useUserStore((state) => state.accessToken);
   const [activeToken, setActiveToken] = useState<string | null>(storeToken || null);
@@ -79,151 +94,171 @@ export default function useWebSocket({
     onDisconnectRef.current = onDisconnect;
   }, [eventHandlers, onConnect, onDisconnect]);
 
+  const cleanPath = urlPath?.replace(/^\/+|\/+$/g, '') || '';
+
   const connect = useCallback(() => {
-    // 1. Clear existing timeouts
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
-      reconnectTimeout.current = null;
-    }
-
     const currentToken = activeToken || storeToken;
-
-    // Verify required conditions
-    if (!enabled || !urlPath || !currentToken) {
-      if (!currentToken && enabled && urlPath) {
-        (async () => {
-          try {
-            const token = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
-            if (token) {
-              setActiveToken(token);
-            }
-          } catch (_) {}
-        })();
-      }
-      if (ws.current) {
-        ws.current.onopen = null;
-        ws.current.onmessage = null;
-        ws.current.onerror = null;
-        ws.current.onclose = null;
-        ws.current.close();
-        ws.current = null;
-        setIsConnected(false);
-      }
+    if (!enabled || !cleanPath || !currentToken) {
       return;
     }
 
-    // Clean up existing connection
-    if (ws.current) {
-      ws.current.onclose = null;
-      ws.current.close();
+    let shared = sharedPool.get(cleanPath);
+    if (!shared) {
+      shared = {
+        ws: null,
+        subscribers: new Map(),
+        reconnectTimeout: null,
+        reconnectAttempts: 0,
+        messageQueue: [],
+        cleanPath,
+      };
+      sharedPool.set(cleanPath, shared);
+    }
+
+    // Register this subscriber
+    shared.subscribers.set(subscriberId, {
+      id: subscriberId,
+      eventHandlersRef,
+      onConnectRef,
+      onDisconnectRef,
+      setIsConnected,
+    });
+
+    // If socket is already open, notify immediately
+    if (shared.ws && shared.ws.readyState === WebSocket.OPEN) {
+      setIsConnected(true);
+      return;
+    }
+
+    // If socket is already connecting, let it finish
+    if (shared.ws && shared.ws.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+
+    // Clear existing timeouts
+    if (shared.reconnectTimeout) {
+      clearTimeout(shared.reconnectTimeout);
+      shared.reconnectTimeout = null;
     }
 
     // URL Construction
     const baseRaw = ENV_CONFIG.WEBSOCKET_URL.replace(/\/$/, '');
     const protocol = baseRaw.startsWith('wss') ? 'wss' : 'ws';
     const baseNoProto = baseRaw.replace(/^wss?:\/\//, '');
-    const cleanPath = urlPath.replace(/^\//, '');
     const fullPath = `${baseNoProto}/${cleanPath}`.replace(/\/+/g, '/');
     const finalUrl = `${protocol}://${fullPath}?token=${currentToken}`;
 
     try {
-      ws.current = new WebSocket(finalUrl);
+      const socket = new WebSocket(finalUrl);
+      shared.ws = socket;
 
-      ws.current.onopen = () => {
-        console.log('🟢 [WebSocket Connected]:', fullPath);
-        reconnectAttempts.current = 0;
-        setIsConnected(true);
-        // Flush any messages queued before socket opened (e.g. read_messages)
-        while (messageQueue.current.length > 0) {
-          const queued = messageQueue.current.shift();
-          if (queued && ws.current?.readyState === WebSocket.OPEN) {
-            console.log('🚀 [WebSocket Outgoing Flushed]:', queued);
-            ws.current.send(queued);
+      socket.onopen = () => {
+        console.log('🟢 [WebSocket Shared Connected]:', cleanPath, `(Subscribers: ${shared?.subscribers.size})`);
+        if (shared) {
+          shared.reconnectAttempts = 0;
+          shared.subscribers.forEach((sub) => {
+            sub.setIsConnected(true);
+            sub.onConnectRef.current?.();
+          });
+
+          // Flush any queued messages
+          while (shared.messageQueue.length > 0) {
+            const queued = shared.messageQueue.shift();
+            if (queued && shared.ws?.readyState === WebSocket.OPEN) {
+              shared.ws.send(queued);
+            }
           }
         }
-        onConnectRef.current?.();
       };
 
-      ws.current.onmessage = (event) => {
+      socket.onmessage = (event) => {
         try {
           const data: WebSocketMessage = JSON.parse(event.data);
           const rawType = data.type || data.event || data.action || data.notification_type || '';
-          console.log('📡 [WebSocket Incoming]:', rawType, data);
 
-          let handler = eventHandlersRef.current[rawType];
-          if (!handler && typeof rawType === 'string') {
-            handler =
-              eventHandlersRef.current[rawType.replace(/-/g, '_')] ||
-              eventHandlersRef.current[rawType.replace(/_/g, '-')] ||
-              eventHandlersRef.current[rawType.replace(/\./g, '_')];
-          }
+          if (shared) {
+            shared.subscribers.forEach((sub) => {
+              let handler = sub.eventHandlersRef.current[rawType];
+              if (!handler && typeof rawType === 'string') {
+                handler =
+                  sub.eventHandlersRef.current[rawType.replace(/-/g, '_')] ||
+                  sub.eventHandlersRef.current[rawType.replace(/_/g, '-')] ||
+                  sub.eventHandlersRef.current[rawType.replace(/\./g, '_')];
+              }
 
-          if (handler) {
-            handler(data);
-          } else {
-            const fallback = eventHandlersRef.current['*'] || eventHandlersRef.current['message'];
-            if (fallback) {
-              fallback(data);
-            }
+              if (handler) {
+                handler(data);
+              } else {
+                const fallback = sub.eventHandlersRef.current['*'] || sub.eventHandlersRef.current['message'];
+                if (fallback) {
+                  fallback(data);
+                }
+              }
+            });
           }
-        } catch (error) {
-          // Silently ignore malformed WS messages
+        } catch {
+          // Silently ignore malformed WS frames
         }
       };
 
-      ws.current.onclose = (event) => {
-        console.log('🔴 [WebSocket Disconnected]:', fullPath, event.code, event.reason);
-        setIsConnected(false);
-        onDisconnectRef.current?.();
-        // Exponential backoff: 3s, 6s... max 30s
-        if (enabled && reconnect) {
-          reconnectAttempts.current += 1;
-          const backoff = Math.min(reconnectInterval * Math.pow(2, reconnectAttempts.current - 1), 30000);
-          reconnectTimeout.current = setTimeout(connect, backoff);
+      socket.onclose = (event) => {
+        console.log('🔴 [WebSocket Shared Disconnected]:', cleanPath, event.code, event.reason);
+        if (shared) {
+          shared.subscribers.forEach((sub) => {
+            sub.setIsConnected(false);
+            sub.onDisconnectRef.current?.();
+          });
+
+          if (enabled && reconnect && shared.subscribers.size > 0) {
+            shared.reconnectAttempts += 1;
+            const backoff = Math.min(reconnectInterval * Math.pow(2, shared.reconnectAttempts - 1), 30000);
+            shared.reconnectTimeout = setTimeout(connect, backoff);
+          }
         }
       };
 
-      ws.current.onerror = (err) => {
-        console.warn('⚠️ [WebSocket Error]:', fullPath, err);
-        ws.current?.close();
+      socket.onerror = (err) => {
+        console.warn('⚠️ [WebSocket Shared Error]:', cleanPath, err);
+        socket.close();
       };
-
     } catch (err) {
-      console.warn('⚠️ [WebSocket Setup Failed]:', fullPath, err);
+      console.warn('⚠️ [WebSocket Shared Setup Failed]:', cleanPath, err);
     }
-  }, [urlPath, enabled, reconnect, reconnectInterval, activeToken, storeToken]);
+  }, [cleanPath, enabled, reconnect, reconnectInterval, activeToken, storeToken, subscriberId]);
 
-  // Handle (re)connection logic
   useEffect(() => {
     connect();
     return () => {
-      if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
-      if (ws.current) {
-        ws.current.onclose = null;
-        ws.current.close();
+      const shared = sharedPool.get(cleanPath);
+      if (shared) {
+        shared.subscribers.delete(subscriberId);
+        if (shared.subscribers.size === 0) {
+          // No more active subscribers for this path, clean up connection
+          if (shared.reconnectTimeout) {
+            clearTimeout(shared.reconnectTimeout);
+          }
+          if (shared.ws) {
+            shared.ws.onclose = null;
+            shared.ws.close();
+            shared.ws = null;
+          }
+          sharedPool.delete(cleanPath);
+        }
       }
     };
-  }, [connect]);
+  }, [cleanPath, connect, subscriberId]);
 
-  /**
-   * Safe sendMessage function
-   */
-  // Bug 6 fix: urlPath is not used inside sendMessage's body (it reads from
-  // ws.current directly). Keeping it in deps caused a new callback reference
-  // every time the URL changed, destabilising downstream memoised hooks.
   const sendMessage = useCallback((type: string, payload: object = {}, isRaw: boolean = false) => {
     const data = isRaw ? payload : { type, ...payload };
     const serialized = JSON.stringify(data);
+    const shared = sharedPool.get(cleanPath);
 
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      console.log('🚀 [WebSocket Outgoing]:', type, data);
-      ws.current.send(serialized);
-    } else {
-      console.log('⏳ [WebSocket Queueing payload for connection]:', type, data);
-      messageQueue.current.push(serialized);
+    if (shared?.ws?.readyState === WebSocket.OPEN) {
+      shared.ws.send(serialized);
+    } else if (shared) {
+      shared.messageQueue.push(serialized);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cleanPath]);
 
   return { isConnected, sendMessage, reconnect: connect };
 }

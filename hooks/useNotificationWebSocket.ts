@@ -9,6 +9,27 @@ import { userProfileKeys, useActiveRoleProfile } from './useUserProfile';
 import { useProfileStore } from './useProfileStore';
 import { playMechanicNotificationSound, playGeneralNotificationSound } from '../utils/sound';
 
+// Module-level deduplication and throttling to prevent cascade of identical invalidations across hook instances
+const lastInvalidationMap = new Map<string, number>();
+
+function shouldThrottleInvalidation(key: string, cooldownMs: number = 1500): boolean {
+  const now = Date.now();
+  const last = lastInvalidationMap.get(key) || 0;
+  if (now - last < cooldownMs) {
+    return true; // Already invalidated within cooldown window
+  }
+  lastInvalidationMap.set(key, now);
+  return false;
+}
+
+let lastSoundTimestamp = 0;
+function playDebouncedMechanicSound(cooldownMs: number = 2500) {
+  const now = Date.now();
+  if (now - lastSoundTimestamp < cooldownMs) return;
+  lastSoundTimestamp = now;
+  playMechanicNotificationSound();
+}
+
 interface UseNotificationWebSocketOptions {
   onNewOrder?: (order: any) => void;
   onOrderRemoved?: (orderId: string) => void;
@@ -153,19 +174,29 @@ export const useNotificationWebSocket = ({
       });
     }
 
-    // 2. Invalidate list queries selectively based on active role (only active queries refetched)
+    // 2. Invalidate list queries selectively based on active role (only active queries refetched, with throttling)
     if (isMechanic) {
-      queryClient.invalidateQueries({ queryKey: ['mechanic', 'repair-requests'], refetchType: 'active' });
-      queryClient.invalidateQueries({ queryKey: ['mechanic', 'analytics'], refetchType: 'active' });
+      if (!shouldThrottleInvalidation('mechanic-repair-requests', 1500)) {
+        queryClient.invalidateQueries({ queryKey: ['mechanic', 'repair-requests'], refetchType: 'active' });
+      }
+      if (!shouldThrottleInvalidation('mechanic-analytics', 2000)) {
+        queryClient.invalidateQueries({ queryKey: ['mechanic', 'analytics'], refetchType: 'active' });
+      }
     } else {
-      queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'], refetchType: 'active' });
+      if (!shouldThrottleInvalidation('user-repair-requests', 1500)) {
+        queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'], refetchType: 'active' });
+      }
     }
 
     // 3. Invalidate detail queries cleanly (only active query refetched, avoiding prefix duplicates)
     if (orderId) {
-      queryClient.invalidateQueries({ queryKey: ['repair-request', String(orderId)], refetchType: 'active' });
+      if (!shouldThrottleInvalidation(`repair-request-${orderId}`, 1500)) {
+        queryClient.invalidateQueries({ queryKey: ['repair-request', String(orderId)], refetchType: 'active' });
+      }
     } else {
-      queryClient.invalidateQueries({ queryKey: ['repair-request'], refetchType: 'active' });
+      if (!shouldThrottleInvalidation('repair-request-generic', 1500)) {
+        queryClient.invalidateQueries({ queryKey: ['repair-request'], refetchType: 'active' });
+      }
     }
 
     // 4. Trigger onRepairUpdate callback
@@ -206,6 +237,9 @@ export const useNotificationWebSocket = ({
    * Invalidate profile caches whenever an account, KYC, or profile status changes.
    */
   const invalidateProfileCaches = useCallback(() => {
+    if (shouldThrottleInvalidation('user-profile-caches', 3000)) {
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: userProfileKeys.all, refetchType: 'active' });
     queryClient.invalidateQueries({ queryKey: ['primary-profile'], refetchType: 'active' });
     queryClient.invalidateQueries({ queryKey: ['merchant-analytics'], refetchType: 'active' });
@@ -217,26 +251,27 @@ export const useNotificationWebSocket = ({
     const tit = title.toLowerCase();
     const msg = message.toLowerCase();
 
+    // STRICT: Only genuine KYC / profile status lifecycle changes
+    // MUST NOT match mechanic repair requests, orders, or general notifications!
     return (
-      t.includes('kyc') ||
-      t.includes('profile') ||
-      t.includes('approval') ||
-      t.includes('approved') ||
-      t.includes('account') ||
-      t.includes('verification') ||
-      t.includes('merchant') ||
-      t.includes('mechanic') ||
-      tit.includes('approv') ||
-      tit.includes('kyc') ||
-      tit.includes('verif') ||
-      tit.includes('profile') ||
-      tit.includes('account') ||
-      msg.includes('approv') ||
-      msg.includes('verified') ||
-      msg.includes('verification') ||
-      msg.includes('kyc') ||
-      msg.includes('profile') ||
-      msg.includes('account')
+      t === 'kyc_approved' ||
+      t === 'kyc_rejected' ||
+      t === 'kyc_verified' ||
+      t === 'kyc_update' ||
+      t === 'kyc-update' ||
+      t === 'nin_verification' ||
+      t === 'nin_verified' ||
+      t === 'account_approved' ||
+      t === 'profile_completed' ||
+      t === 'merchant_approved' ||
+      t === 'mechanic_approved' ||
+      tit.includes('kyc approved') ||
+      tit.includes('kyc verified') ||
+      tit.includes('nin verified') ||
+      tit.includes('account approved') ||
+      msg.includes('kyc has been approved') ||
+      msg.includes('account has been approved') ||
+      msg.includes('profile has been approved')
     );
   }, []);
 
@@ -297,8 +332,8 @@ export const useNotificationWebSocket = ({
     type === 'order-updated';
 
   const handleRepairStatusChange = useCallback((data: WebSocketMessage) => {
-    // 1. Play notification sound & haptics
-    playMechanicNotificationSound();
+    // 1. Play notification sound & haptics (debounced)
+    playDebouncedMechanicSound();
 
     // 2. Extract status and order info
     const rawData = (data as any)?.data || data;
@@ -456,10 +491,9 @@ export const useNotificationWebSocket = ({
     // ── New Order Events (All backend naming conventions) ─────────────────────
     new_repair_request: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -471,10 +505,9 @@ export const useNotificationWebSocket = ({
 
     'new-repair-request': (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -486,10 +519,9 @@ export const useNotificationWebSocket = ({
 
     new_repair: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -501,10 +533,9 @@ export const useNotificationWebSocket = ({
 
     'new-repair': (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -516,10 +547,9 @@ export const useNotificationWebSocket = ({
 
     repair_request: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -531,10 +561,9 @@ export const useNotificationWebSocket = ({
 
     'repair-request': (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -546,10 +575,9 @@ export const useNotificationWebSocket = ({
 
     mechanic_request: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -561,10 +589,9 @@ export const useNotificationWebSocket = ({
 
     'mechanic-request': (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -576,10 +603,9 @@ export const useNotificationWebSocket = ({
 
     new_mechanic_request: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -591,10 +617,9 @@ export const useNotificationWebSocket = ({
 
     'new-mechanic-request': (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -606,10 +631,9 @@ export const useNotificationWebSocket = ({
 
     repair_created: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -621,10 +645,9 @@ export const useNotificationWebSocket = ({
 
     'repair-created': (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -636,10 +659,9 @@ export const useNotificationWebSocket = ({
 
     request_created: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -651,10 +673,9 @@ export const useNotificationWebSocket = ({
 
     'request-created': (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
@@ -665,11 +686,14 @@ export const useNotificationWebSocket = ({
     },
 
     new_order: (data: WebSocketMessage) => {
-      invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
+      if (isMechanic) {
+        invalidateRepairCaches(data);
+      } else {
+        invalidateOrderCaches(data);
+      }
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Order';
       const message = notifData?.message || notifData?.body || 'A new order has been placed.';
@@ -683,11 +707,14 @@ export const useNotificationWebSocket = ({
     },
 
     'new-order': (data: WebSocketMessage) => {
-      invalidateRepairCaches(data);
-      invalidateOrderCaches(data);
+      if (isMechanic) {
+        invalidateRepairCaches(data);
+      } else {
+        invalidateOrderCaches(data);
+      }
       const orderPayload = resolveOrderPayload(data);
       if (onNewOrder) onNewOrder(orderPayload);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Order';
       const message = notifData?.message || notifData?.body || 'A new order has been placed.';
@@ -736,7 +763,7 @@ export const useNotificationWebSocket = ({
     },
     rental_booked: (data: WebSocketMessage) => {
       invalidateOrderCaches(data);
-      playMechanicNotificationSound();
+      playDebouncedMechanicSound();
       if (triggerPush) {
         scheduleGenericNotification('Rental Booking', 'A new vehicle rental booking was received!', data);
         useNotificationStore.getState().showNotification('Rental Booking', 'A new vehicle rental booking was received!', 'order', data);
@@ -928,14 +955,10 @@ export const useNotificationWebSocket = ({
 
     // ── Canonical Backend Notification Events ─────────────────────────────────
     'notification.count': () => {
-      queryClient.refetchQueries({ queryKey: ['support-conversations'] });
-      queryClient.refetchQueries({ queryKey: ['primary-profile'] });
-      invalidateProfileCaches();
+      queryClient.invalidateQueries({ queryKey: userProfileKeys.notifications(), refetchType: 'active' });
     },
     'notification.count_update': (_data: any) => {
-      queryClient.refetchQueries({ queryKey: ['support-conversations'] });
-      queryClient.refetchQueries({ queryKey: [...userProfileKeys.notifications()] });
-      invalidateProfileCaches();
+      queryClient.invalidateQueries({ queryKey: userProfileKeys.notifications(), refetchType: 'active' });
     },
 
     // Top-level account & KYC approval events
@@ -956,9 +979,6 @@ export const useNotificationWebSocket = ({
 
     // Notification wrapper — nested .type field may be any of the repair variants
     'notification.new': (data: WebSocketMessage) => {
-      queryClient.refetchQueries({ queryKey: ['support-conversations'] });
-      queryClient.refetchQueries({ queryKey: ['support-messages'] });
-
       const notifData = data.notification || data.data || data;
       if (notifData) {
         const rawTitle = notifData.title || 'Notification';
@@ -1003,7 +1023,7 @@ export const useNotificationWebSocket = ({
             message.toLowerCase().includes('request');
 
           if (isNewOrderOrRequest) {
-            playMechanicNotificationSound();
+            playDebouncedMechanicSound();
             if (onNewOrder) {
               onNewOrder(resolveOrderPayload(notifData));
             }
@@ -1016,6 +1036,8 @@ export const useNotificationWebSocket = ({
 
         const isChat = type === 'support_chat' || type === 'chat_message' || type === 'chat' || type === 'p2p';
         if (isChat) {
+          queryClient.invalidateQueries({ queryKey: ['support-conversations'], refetchType: 'active' });
+          queryClient.invalidateQueries({ queryKey: ['support-messages'], refetchType: 'active' });
           invalidateChatCaches(notifData);
         }
 
@@ -1059,8 +1081,6 @@ export const useNotificationWebSocket = ({
     },
 
     notification: (data: WebSocketMessage) => {
-      queryClient.refetchQueries({ queryKey: ['support-conversations'] });
-
       const notifData = data.notification || data.data || data;
       if (notifData) {
         const rawTitle = notifData.title || 'Notification';
@@ -1105,7 +1125,7 @@ export const useNotificationWebSocket = ({
             message.toLowerCase().includes('request');
 
           if (isNewOrderOrRequest) {
-            playMechanicNotificationSound();
+            playDebouncedMechanicSound();
             if (onNewOrder) {
               onNewOrder(resolveOrderPayload(notifData));
             }
@@ -1118,6 +1138,8 @@ export const useNotificationWebSocket = ({
 
         const isChat = type === 'support_chat' || type === 'chat_message' || type === 'chat' || type === 'p2p';
         if (isChat) {
+          queryClient.invalidateQueries({ queryKey: ['support-conversations'], refetchType: 'active' });
+          queryClient.invalidateQueries({ queryKey: ['support-messages'], refetchType: 'active' });
           invalidateChatCaches(notifData);
         }
 
@@ -1160,8 +1182,8 @@ export const useNotificationWebSocket = ({
       }
     },
 
-    message: () => queryClient.refetchQueries({ queryKey: ['support-conversations'] }),
-    update: () => queryClient.refetchQueries({ queryKey: ['support-conversations'] }),
+    message: () => queryClient.invalidateQueries({ queryKey: ['support-conversations'], refetchType: 'active' }),
+    update: () => {},
 
   }), [
     onNewOrder,

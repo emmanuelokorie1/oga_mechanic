@@ -351,6 +351,56 @@ const MechanicHome = () => {
     return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val.trim()) || val.length >= 26;
   };
 
+  const inFlightDetailRequests = useRef<Set<string>>(new Set());
+  const lastDetailFetchMap = useRef<Map<string, number>>(new Map());
+
+  const fetchAndHydrateOrderDetail = useCallback((targetId?: string | null) => {
+    if (!targetId || targetId === 'undefined' || !isUuidLike(targetId)) return;
+    const now = Date.now();
+    const lastFetch = lastDetailFetchMap.current.get(targetId) || 0;
+    if (inFlightDetailRequests.current.has(targetId) || now - lastFetch < 4000) {
+      return;
+    }
+
+    inFlightDetailRequests.current.add(targetId);
+    lastDetailFetchMap.current.set(targetId, now);
+
+    mechanicAPI.getRepairRequestDetail(targetId)
+      .then((res: any) => {
+        const detail = res?.data || res;
+        if (detail && detail.id) {
+          const resolvedCust = detail.customer
+            ? `${detail.customer.first_name || ''} ${detail.customer.last_name || ''}`.trim()
+            : detail.customer_name;
+          const detailMake = detail.vehicle_make ? (isNaN(Number(detail.vehicle_make)) ? String(detail.vehicle_make) : getMakeName(detail.vehicle_make)) : '';
+          const detailModel = detail.vehicle_model ? (isNaN(Number(detail.vehicle_model)) ? String(detail.vehicle_model) : getModelName(detail.vehicle_make, detail.vehicle_model)) : '';
+
+          setActiveOrders((prev) =>
+            prev.map((o) => {
+              if (o.id !== targetId) return o;
+              return {
+                ...o,
+                customerName: (resolvedCust && resolvedCust !== 'Customer Breakdown Request' ? resolvedCust : o.customerName),
+                customerPhone: detail.customer?.phone_number || detail.phone_number || o.customerPhone,
+                vehicleMake: detailMake || o.vehicleMake,
+                vehicleModel: detailModel || o.vehicleModel,
+                vehicleYear: detail.vehicle_year || detail.year || o.vehicleYear,
+                serviceAddress: detail.service_address || detail.address || detail.location || o.serviceAddress,
+                problemDescription: detail.problem_description || detail.issue_description || o.problemDescription,
+                estimatedCost: detail.estimated_cost ?? o.estimatedCost,
+                serviceType: (detail.service_name || (!isUuidLike(detail.service_type) ? detail.service_type : null)) || o.serviceType,
+                orderNumber: detail.order_number || o.orderNumber,
+              };
+            })
+          );
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        inFlightDetailRequests.current.delete(targetId);
+      });
+  }, [getMakeName, getModelName]);
+
   // ── Real-time Notifications (WebSocket) ──────────────────────────────────
   useNotificationWebSocket({
     enabled: isMechanic,
@@ -472,84 +522,15 @@ const MechanicHome = () => {
         return [formattedOrder, ...prev];
       });
 
-      // 2. Asynchronously fetch full repair request detail to hydrate all missing vehicle & customer fields
-      if (orderId && orderId !== 'undefined') {
-        mechanicAPI.getRepairRequestDetail(orderId).then((res: any) => {
-          const detail = res?.data || res;
-          if (detail && detail.id) {
-            const resolvedCust = detail.customer
-              ? `${detail.customer.first_name || ''} ${detail.customer.last_name || ''}`.trim()
-              : detail.customer_name;
-            const detailMake = detail.vehicle_make ? (isNaN(Number(detail.vehicle_make)) ? String(detail.vehicle_make) : getMakeName(detail.vehicle_make)) : '';
-            const detailModel = detail.vehicle_model ? (isNaN(Number(detail.vehicle_model)) ? String(detail.vehicle_model) : getModelName(detail.vehicle_make, detail.vehicle_model)) : '';
-            
-            setActiveOrders((prev) =>
-              prev.map((o) => {
-                if (o.id !== orderId) return o;
-                return {
-                  ...o,
-                  customerName: (resolvedCust && resolvedCust !== 'Customer Breakdown Request' ? resolvedCust : o.customerName),
-                  customerPhone: detail.customer?.phone_number || detail.phone_number || o.customerPhone,
-                  vehicleMake: detailMake || o.vehicleMake,
-                  vehicleModel: detailModel || o.vehicleModel,
-                  vehicleYear: detail.vehicle_year || detail.year || o.vehicleYear,
-                  serviceAddress: detail.service_address || detail.address || detail.location || o.serviceAddress,
-                  problemDescription: detail.problem_description || detail.issue_description || o.problemDescription,
-                  estimatedCost: detail.estimated_cost ?? o.estimatedCost,
-                  serviceType: (detail.service_name || (!isUuidLike(detail.service_type) ? detail.service_type : null)) || o.serviceType,
-                  orderNumber: detail.order_number || o.orderNumber,
-                };
-              })
-            );
-          }
-        }).catch(() => {});
-      }
-
-      // Immediately refresh the requests list & analytics in real time
-      refetchRequests();
-      refetchAnalytics();
+      // 2. Asynchronously fetch full repair request detail to hydrate all missing vehicle & customer fields (deduplicated)
+      fetchAndHydrateOrderDetail(orderId);
     },
     onOrderRemoved: (orderId) => {
       setActiveOrders((prev) => prev.filter((o) => o.id !== String(orderId)));
-      refetchRequests();
-      refetchAnalytics();
     },
     onRepairUpdate: (orderId, _status, _data) => {
-      refetchRequests();
-      refetchAnalytics();
-
       const targetId = orderId ? String(orderId) : null;
-      if (targetId) {
-        mechanicAPI.getRepairRequestDetail(targetId).then((res: any) => {
-          const detail = res?.data || res;
-          if (detail && detail.id) {
-            const resolvedCust = detail.customer
-              ? `${detail.customer.first_name || ''} ${detail.customer.last_name || ''}`.trim()
-              : detail.customer_name;
-            const detailMake = detail.vehicle_make ? (isNaN(Number(detail.vehicle_make)) ? String(detail.vehicle_make) : getMakeName(detail.vehicle_make)) : '';
-            const detailModel = detail.vehicle_model ? (isNaN(Number(detail.vehicle_model)) ? String(detail.vehicle_model) : getModelName(detail.vehicle_make, detail.vehicle_model)) : '';
-
-            setActiveOrders((prev) =>
-              prev.map((o) => {
-                if (o.id !== targetId) return o;
-                return {
-                  ...o,
-                  customerName: (resolvedCust && resolvedCust !== 'Customer Breakdown Request' ? resolvedCust : o.customerName),
-                  customerPhone: detail.customer?.phone_number || detail.phone_number || o.customerPhone,
-                  vehicleMake: detailMake || o.vehicleMake,
-                  vehicleModel: detailModel || o.vehicleModel,
-                  vehicleYear: detail.vehicle_year || detail.year || o.vehicleYear,
-                  serviceAddress: detail.service_address || detail.address || detail.location || o.serviceAddress,
-                  problemDescription: detail.problem_description || detail.issue_description || o.problemDescription,
-                  estimatedCost: detail.estimated_cost ?? o.estimatedCost,
-                  serviceType: (detail.service_name || (!isUuidLike(detail.service_type) ? detail.service_type : null)) || o.serviceType,
-                  orderNumber: detail.order_number || o.orderNumber,
-                };
-              })
-            );
-          }
-        }).catch(() => {});
-      }
+      fetchAndHydrateOrderDetail(targetId);
     },
   });
 
