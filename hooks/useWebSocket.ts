@@ -38,14 +38,15 @@ interface SharedConnection {
   reconnectTimeout: ReturnType<typeof setTimeout> | null;
   reconnectAttempts: number;
   messageQueue: string[];
-  cleanPath: string;
+  normalizedPath: string;
+  token: string | null;
 }
 
 const sharedPool = new Map<string, SharedConnection>();
 
 /**
  * Production-Ready WebSocket Hook with Connection Pooling
- * Features: Connection Pooling by urlPath, Exponential Backoff, Closure Protection, Automatic Queue Flushing.
+ * Features: Connection Pooling by normalizedPath, Exponential Backoff, Closure Protection, Automatic Queue Flushing.
  */
 export default function useWebSocket({
   urlPath,
@@ -94,15 +95,16 @@ export default function useWebSocket({
     onDisconnectRef.current = onDisconnect;
   }, [eventHandlers, onConnect, onDisconnect]);
 
-  const cleanPath = urlPath?.replace(/^\/+|\/+$/g, '') || '';
+  // Normalize path to ensure it always preserves or adds a trailing slash (required by Django Channels ASGI router)
+  const normalizedPath = urlPath ? urlPath.replace(/^\/+/, '').replace(/\/*$/, '/') : '';
 
   const connect = useCallback(() => {
     const currentToken = activeToken || storeToken;
-    if (!enabled || !cleanPath || !currentToken) {
+    if (!enabled || !normalizedPath || !currentToken) {
       return;
     }
 
-    let shared = sharedPool.get(cleanPath);
+    let shared = sharedPool.get(normalizedPath);
     if (!shared) {
       shared = {
         ws: null,
@@ -110,10 +112,22 @@ export default function useWebSocket({
         reconnectTimeout: null,
         reconnectAttempts: 0,
         messageQueue: [],
-        cleanPath,
+        normalizedPath,
+        token: currentToken,
       };
-      sharedPool.set(cleanPath, shared);
+      sharedPool.set(normalizedPath, shared);
     }
+
+    // If user changed accounts/tokens, close existing connection so new socket authenticates properly
+    if (shared.token && shared.token !== currentToken) {
+      if (shared.ws) {
+        shared.ws.onclose = null;
+        shared.ws.close();
+        shared.ws = null;
+      }
+      shared.reconnectAttempts = 0;
+    }
+    shared.token = currentToken;
 
     // Register this subscriber
     shared.subscribers.set(subscriberId, {
@@ -141,11 +155,11 @@ export default function useWebSocket({
       shared.reconnectTimeout = null;
     }
 
-    // URL Construction
-    const baseRaw = ENV_CONFIG.WEBSOCKET_URL.replace(/\/$/, '');
+    // URL Construction (Strictly maintaining trailing slash for Django Channels)
+    const baseRaw = ENV_CONFIG.WEBSOCKET_URL.replace(/\/+$/, '');
     const protocol = baseRaw.startsWith('wss') ? 'wss' : 'ws';
-    const baseNoProto = baseRaw.replace(/^wss?:\/\//, '');
-    const fullPath = `${baseNoProto}/${cleanPath}`.replace(/\/+/g, '/');
+    const baseNoProto = baseRaw.replace(/^wss?:\/\//, '').replace(/\/+$/, '');
+    const fullPath = `${baseNoProto}/${normalizedPath}`;
     const finalUrl = `${protocol}://${fullPath}?token=${currentToken}`;
 
     try {
@@ -153,7 +167,7 @@ export default function useWebSocket({
       shared.ws = socket;
 
       socket.onopen = () => {
-        console.log('🟢 [WebSocket Shared Connected]:', cleanPath, `(Subscribers: ${shared?.subscribers.size})`);
+        console.log('🟢 [WebSocket Shared Connected]:', normalizedPath, `(Subscribers: ${shared?.subscribers.size})`);
         if (shared) {
           shared.reconnectAttempts = 0;
           shared.subscribers.forEach((sub) => {
@@ -202,8 +216,9 @@ export default function useWebSocket({
       };
 
       socket.onclose = (event) => {
-        console.log('🔴 [WebSocket Shared Disconnected]:', cleanPath, event.code, event.reason);
+        console.log('🔴 [WebSocket Shared Disconnected]:', normalizedPath, event.code, event.reason);
         if (shared) {
+          shared.ws = null;
           shared.subscribers.forEach((sub) => {
             sub.setIsConnected(false);
             sub.onDisconnectRef.current?.();
@@ -211,54 +226,54 @@ export default function useWebSocket({
 
           if (enabled && reconnect && shared.subscribers.size > 0) {
             shared.reconnectAttempts += 1;
-            const backoff = Math.min(reconnectInterval * Math.pow(2, shared.reconnectAttempts - 1), 30000);
+            const backoff = Math.min(reconnectInterval * Math.pow(1.5, shared.reconnectAttempts - 1), 30000);
             shared.reconnectTimeout = setTimeout(connect, backoff);
           }
         }
       };
 
       socket.onerror = (err) => {
-        console.warn('⚠️ [WebSocket Shared Error]:', cleanPath, err);
-        socket.close();
+        console.warn('⚠️ [WebSocket Shared Error]:', normalizedPath, err);
       };
     } catch (err) {
-      console.warn('⚠️ [WebSocket Shared Setup Failed]:', cleanPath, err);
+      console.warn('⚠️ [WebSocket Shared Setup Failed]:', normalizedPath, err);
     }
-  }, [cleanPath, enabled, reconnect, reconnectInterval, activeToken, storeToken, subscriberId]);
+  }, [normalizedPath, enabled, reconnect, reconnectInterval, activeToken, storeToken, subscriberId]);
 
   useEffect(() => {
     connect();
     return () => {
-      const shared = sharedPool.get(cleanPath);
+      const shared = sharedPool.get(normalizedPath);
       if (shared) {
         shared.subscribers.delete(subscriberId);
         if (shared.subscribers.size === 0) {
           // No more active subscribers for this path, clean up connection
           if (shared.reconnectTimeout) {
             clearTimeout(shared.reconnectTimeout);
+            shared.reconnectTimeout = null;
           }
           if (shared.ws) {
             shared.ws.onclose = null;
             shared.ws.close();
             shared.ws = null;
           }
-          sharedPool.delete(cleanPath);
+          sharedPool.delete(normalizedPath);
         }
       }
     };
-  }, [cleanPath, connect, subscriberId]);
+  }, [normalizedPath, connect, subscriberId]);
 
   const sendMessage = useCallback((type: string, payload: object = {}, isRaw: boolean = false) => {
     const data = isRaw ? payload : { type, ...payload };
     const serialized = JSON.stringify(data);
-    const shared = sharedPool.get(cleanPath);
+    const shared = sharedPool.get(normalizedPath);
 
     if (shared?.ws?.readyState === WebSocket.OPEN) {
       shared.ws.send(serialized);
     } else if (shared) {
       shared.messageQueue.push(serialized);
     }
-  }, [cleanPath]);
+  }, [normalizedPath]);
 
   return { isConnected, sendMessage, reconnect: connect };
 }
