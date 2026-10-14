@@ -108,11 +108,11 @@ export const useRepairRequestDetail = (requestId: string | undefined, pollInterv
   return useQuery({
     queryKey: ['repair-request', requestId],
     queryFn: () => mechanicAPI.getRepairRequestDetail(requestId!),
-    enabled: !!requestId && !!token,
-    staleTime: 5 * 1000,
+    enabled: !!requestId && !!token && isFocused,
+    staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
     retry: 1,
-    refetchOnMount: 'always',
+    refetchOnMount: true,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     refetchInterval: (query) => {

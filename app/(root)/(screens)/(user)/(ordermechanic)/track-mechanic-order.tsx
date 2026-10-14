@@ -789,7 +789,15 @@ const TrackMechanicOrder = () => {
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top", "bottom"]}>
       {/* Header */}
       <View className="flex-row items-center justify-between px-5 py-4 bg-white border-b border-gray-100">
-        <BackArrowBtn onPress={() => router.push(routes.myMechanicOrders)} />
+        <BackArrowBtn
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace(routes.home as any);
+            }
+          }}
+        />
         <Text className="text-xl font-NunitoBold text-gray-900">
           Track Order
         </Text>
