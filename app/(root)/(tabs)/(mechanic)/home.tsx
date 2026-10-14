@@ -39,6 +39,8 @@ import SpecialistIconBtn from "@/components/SpecialistIconBtn";
 import { useMechanicOrderNotifications } from "@/hooks/useMechanicOrderNotifications";
 import { useNotificationWebSocket } from "@/hooks/useNotificationWebSocket";
 import { registerPushNotificationsAndSyncDevice } from "@/services/notificationService";
+import Toast from 'react-native-toast-message';
+import { useNotificationStore } from "@/stores/notificationStore";
 import { NewOrderBanner, MechanicRequestItem } from "@/components/NewOrderBanner";
 import { 
   ExclamationCircleIcon, 
@@ -732,14 +734,51 @@ const MechanicHome = () => {
       if (actionType === 'accept') {
         await acceptRequestMutation.mutateAsync(targetOrderId);
         console.log("Request accepted:", targetOrderId);
+
+        // Show immediate visual confirmation
+        Toast.show({
+          type: 'success',
+          text1: 'Request Accepted ✅',
+          text2: 'Opening job details...',
+        });
+        useNotificationStore.getState().showNotification(
+          'Request Accepted ✅',
+          'You have accepted this repair request. Opening job details...',
+          'success',
+          { related_object_id: targetOrderId, orderId: targetOrderId, status: 'accepted' }
+        );
+
+        setActionModalVisible(false);
+        setActionType(null);
+        setSelectedOrderId(null);
+        setActiveOrders((prev) => prev.filter((o) => o.id !== targetOrderId && o.id !== selectedOrderId));
+
+        // Immediately route to the order details screen for seamless transit & workflow
+        router.push({
+          pathname: mechanicRoutes.orderDetails,
+          params: { orderId: targetOrderId },
+        });
+        return;
       } else if (actionType === 'decline') {
         await declineRequestMutation.mutateAsync(targetOrderId);
         console.log("Request declined:", targetOrderId);
+
+        Toast.show({
+          type: 'info',
+          text1: 'Request Declined',
+          text2: 'Repair request removed from your queue.',
+        });
+        useNotificationStore.getState().showNotification(
+          'Request Declined',
+          'You have declined this repair request.',
+          'info'
+        );
       }
 
       setActionModalVisible(false);
       setActionType(null);
       setSelectedOrderId(null);
+      setActiveOrders((prev) => prev.filter((o) => o.id !== targetOrderId && o.id !== selectedOrderId));
     } catch (error: any) {
       console.error("Error processing action:", error);
       setActionModalVisible(false);

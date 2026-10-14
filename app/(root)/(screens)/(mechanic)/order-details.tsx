@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Linking, Platform, Alert, ActivityIndicator } from 'react-native';
+import Toast from 'react-native-toast-message';
+import { useNotificationStore } from '@/stores/notificationStore';
 import { useIsFocused } from 'expo-router/react-navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { communicationsAPI, extractChatRooms } from '@/lib/api/communications';
@@ -68,13 +70,13 @@ const MechanicOrderDetails = () => {
   const [mechanicLocation, setMechanicLocation] = useState<{ latitude: number, longitude: number } | null>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
 
-  // Fetch repair request detail from API
+  // Fetch repair request detail from API with smart status-aware polling
   const { 
     data: orderData, 
     isLoading: isLoadingData, 
     error: errorData, 
     refetch 
-  } = useRepairRequestDetail(orderId, 0);
+  } = useRepairRequestDetail(orderId);
 
   // Fetch vehicle makes to resolve make/model names
   const { data: vehicleMakes } = useVehicleMakes();
@@ -314,6 +316,17 @@ const MechanicOrderDetails = () => {
       setIsVerifyingOtp(false);
       setOtpModalVisible(false);
       showSuccess('Verified', 'Arrival code verified successfully. Starting repair...');
+      Toast.show({
+        type: 'success',
+        text1: 'Code Verified ✅',
+        text2: 'Customer arrival confirmed. Repair is now in progress.',
+      });
+      useNotificationStore.getState().showNotification(
+        'Code Verified ✅',
+        'Customer arrival confirmed. Repair is now in progress.',
+        'success',
+        { related_object_id: orderId, status: 'in_progress' }
+      );
       await refetch();
     } catch (error: any) {
       setIsVerifyingOtp(false);
@@ -473,7 +486,20 @@ const MechanicOrderDetails = () => {
         await updateStatusMutation.mutateAsync({ requestId: orderId, status: actionType });
         setActionModalVisible(false);
         setActionType(null);
-        showSuccess('Success', 'Status updated successfully.');
+        const statusLabel = actionType === 'in_transit' ? 'On The Way 🚗' : actionType === 'arrived' ? 'Arrived at Location 📍' : 'Status Updated';
+        const statusMsg = actionType === 'in_transit' ? 'Transit started. Heading to customer location.' : actionType === 'arrived' ? 'Arrival confirmed. Ask customer for 6-digit OTP.' : 'Status updated successfully.';
+        showSuccess('Success', statusMsg);
+        Toast.show({
+          type: 'success',
+          text1: statusLabel,
+          text2: statusMsg,
+        });
+        useNotificationStore.getState().showNotification(
+          statusLabel,
+          statusMsg,
+          'order',
+          { related_object_id: orderId, status: actionType }
+        );
       }
     } catch (error: any) {
       refetch();

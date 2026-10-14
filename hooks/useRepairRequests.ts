@@ -107,7 +107,7 @@ export const useRepairRequestDetail = (requestId: string | undefined, pollInterv
     queryKey: ['repair-request', requestId],
     queryFn: () => mechanicAPI.getRepairRequestDetail(requestId!),
     enabled: !!requestId && !!token,
-    staleTime: 5 * 1000,
+    staleTime: 3 * 1000,
     gcTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnMount: 'always',
@@ -115,16 +115,23 @@ export const useRepairRequestDetail = (requestId: string | undefined, pollInterv
     refetchOnReconnect: true,
     refetchInterval: (query) => {
       if (!token) return false;
-      // If caller explicitly passed a poll interval (e.g. 0 to disable, or a custom number)
-      if (pollInterval !== undefined) {
-        return pollInterval > 0 ? pollInterval : false;
+      // If caller explicitly passed a custom interval
+      if (pollInterval !== undefined && pollInterval > 0) {
+        return pollInterval;
       }
       // Smart status-based polling:
       const data = query.state.data as any;
       const status = (data?.data?.status || data?.status || '').toLowerCase();
-      // Only poll when mechanic is actively in transit towards the customer (GPS coordinate updates)
-      if (status === 'in_transit') return 8000;
-      // For all other statuses (pending, accepted, arrived, in_progress, completed, verified, cancelled) — NO polling!
+      
+      // Actively poll transitions while the repair order lifecycle is active:
+      if (status === 'pending') return 5000;       // Waiting for mechanic response
+      if (status === 'accepted') return 5000;      // Waiting for mechanic to dispatch / start transit
+      if (status === 'in_transit') return 6000;    // Active transit & GPS coordinate streaming
+      if (status === 'arrived') return 5000;       // Awaiting OTP verification
+      if (status === 'in_progress') return 8000;   // In progress repair job
+      if (status === 'completed') return 6000;     // Completed, waiting for customer verification
+      
+      // Terminal states (verified, verify_completed, cancelled, declined) - stop polling
       return false;
     },
     networkMode: 'online',

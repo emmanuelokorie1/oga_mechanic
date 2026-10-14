@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import Toast from 'react-native-toast-message';
 import useWebSocket, { WebSocketMessage } from './useWebSocket';
 import { scheduleGenericNotification, scheduleSuccessNotification, formatBrandedNotificationCopy } from '../services/notificationService';
 import { useNotificationStore } from '@/stores/notificationStore';
@@ -143,67 +144,152 @@ export const useNotificationWebSocket = ({
   }, [queryClient, extractRoomId]);
 
   /**
+   * Safely resolve repair request lifecycle status string.
+   * Rejects boolean envelope flags (e.g. status: true) and maps verbal status descriptions.
+   */
+  const resolveStatusString = useCallback((data?: any): string | null => {
+    if (!data) return null;
+    const candidates = [
+      data?.status,
+      data?.order_status,
+      data?.repair_status,
+      data?.data?.status,
+      data?.data?.order_status,
+      data?.data?.repair_status,
+      data?.notification?.status,
+      data?.notification?.order_status,
+      data?.notification?.repair_status,
+      data?.order?.status,
+    ];
+    for (const c of candidates) {
+      if (typeof c === 'string') {
+        const clean = c.trim().toLowerCase();
+        if (clean && clean !== 'true' && clean !== 'false' && clean !== 'success' && clean !== 'error' && clean !== 'ok') {
+          return clean;
+        }
+      }
+    }
+
+    const title = String(data?.title || data?.data?.title || data?.notification?.title || '').toLowerCase();
+    const msg = String(data?.message || data?.data?.message || data?.notification?.message || data?.body || '').toLowerCase();
+    const type = String(data?.notification_type || data?.type || data?.data?.type || '').toLowerCase();
+
+    const combined = `${title} ${msg} ${type}`;
+    if (combined.includes('verify_completed') || combined.includes('job verified')) return 'verify_completed';
+    if (combined.includes('verified') || combined.includes('otp verified') || combined.includes('code verified')) return 'verified';
+    if (combined.includes('completed') || combined.includes('finished')) return 'completed';
+    if (combined.includes('in_progress') || combined.includes('started work') || combined.includes('repair in progress')) return 'in_progress';
+    if (combined.includes('arrived')) return 'arrived';
+    if (combined.includes('in_transit') || combined.includes('on the way') || combined.includes('transit')) return 'in_transit';
+    if (combined.includes('accepted') || combined.includes('confirmed')) return 'accepted';
+    if (combined.includes('cancelled') || combined.includes('canceled')) return 'cancelled';
+    if (combined.includes('declined') || combined.includes('rejected')) return 'declined';
+    return null;
+  }, []);
+
+  /**
+   * Discriminate genuine new incoming dispatch modal events from status updates.
+   * Prevents updates (like "Repair Request Accepted") from suppressing toasts or spamming modals.
+   */
+  const isGenuineNewDispatch = useCallback((type: string = '', title: string = '', message: string = ''): boolean => {
+    const t = type.toLowerCase();
+    const tit = title.toLowerCase();
+    const msg = message.toLowerCase();
+
+    const isExplicitNewType =
+      t === 'new_repair_request' ||
+      t === 'new-repair-request' ||
+      t === 'new_repair' ||
+      t === 'new-repair' ||
+      t === 'new_mechanic_request' ||
+      t === 'new-mechanic-request' ||
+      t === 'repair_broadcast' ||
+      t === 'repair-broadcast' ||
+      t === 'repair_request_broadcast' ||
+      t === 'repair-request-broadcast' ||
+      t === 'new_order' ||
+      t === 'new-order';
+
+    const hasNewTitle =
+      tit.includes('new repair request') ||
+      tit.includes('new mechanic order') ||
+      tit.includes('new order nearby') ||
+      tit.includes('new booking');
+
+    if (!isExplicitNewType && !hasNewTitle) {
+      return false;
+    }
+
+    const isUpdateText =
+      t.includes('update') ||
+      t.includes('accepted') ||
+      t.includes('transit') ||
+      t.includes('arrived') ||
+      t.includes('progress') ||
+      t.includes('complete') ||
+      t.includes('verified') ||
+      t.includes('cancel') ||
+      tit.includes('update') ||
+      tit.includes('accepted') ||
+      tit.includes('transit') ||
+      tit.includes('on the way') ||
+      tit.includes('arrived') ||
+      tit.includes('progress') ||
+      tit.includes('complete') ||
+      tit.includes('verified') ||
+      tit.includes('cancel') ||
+      msg.includes('accepted') ||
+      msg.includes('transit') ||
+      msg.includes('on the way') ||
+      msg.includes('arrived') ||
+      msg.includes('progress') ||
+      msg.includes('complete') ||
+      msg.includes('verified') ||
+      msg.includes('cancel');
+
+    return !isUpdateText;
+  }, []);
+
+  /**
    * Shared cache invalidation for any repair request status change.
    * Covers both list views and the specific order detail (tracking screen).
    */
   const invalidateRepairCaches = useCallback((data?: any) => {
-    // 1. Optimistic status mutation if status is present or inferred from message
-    const rawStatus = (data as any)?.status || data?.data?.status || data?.notification?.status;
-    const title = String((data as any)?.title || data?.data?.title || data?.notification?.title || '').toLowerCase();
-    const msg = String((data as any)?.message || data?.data?.message || data?.notification?.message || data?.body || '').toLowerCase();
-
-    const inferredStatus = rawStatus || (
-      title.includes('transit') || msg.includes('transit') ? 'in_transit' :
-      title.includes('arrived') || msg.includes('arrived') ? 'arrived' :
-      title.includes('accepted') || msg.includes('accepted') ? 'accepted' :
-      title.includes('progress') || msg.includes('progress') ? 'in_progress' :
-      title.includes('completed') || msg.includes('completed') ? 'completed' :
-      null
-    );
-
+    const inferredStatus = resolveStatusString(data);
     const orderId = extractOrderId(data);
 
-    if (inferredStatus) {
+    const VALID_STATUSES = ['pending', 'accepted', 'in_transit', 'arrived', 'in_progress', 'completed', 'verified', 'verify_completed', 'cancelled', 'declined'];
+
+    if (inferredStatus && VALID_STATUSES.includes(inferredStatus)) {
       console.log(`⚡ [invalidateRepairCaches] Optimistically updating repair cache with status '${inferredStatus}'`);
       queryClient.setQueriesData({ queryKey: ['repair-request'] }, (oldData: any) => {
         if (!oldData) return oldData;
-        if (oldData.data) {
+        if (oldData.data && typeof oldData.data === 'object') {
           return { ...oldData, data: { ...oldData.data, status: inferredStatus } };
         }
         return { ...oldData, status: inferredStatus };
       });
     }
 
-    // 2. Invalidate list queries selectively based on active role (only active queries refetched, with throttling)
+    // Invalidate list queries for active queries across both customer and mechanic
+    queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'], refetchType: 'active' });
+    queryClient.invalidateQueries({ queryKey: ['mechanic', 'repair-requests'], refetchType: 'active' });
     if (isMechanic) {
-      if (!shouldThrottleInvalidation('mechanic-repair-requests', 1500)) {
-        queryClient.invalidateQueries({ queryKey: ['mechanic', 'repair-requests'], refetchType: 'active' });
-      }
-      if (!shouldThrottleInvalidation('mechanic-analytics', 2000)) {
-        queryClient.invalidateQueries({ queryKey: ['mechanic', 'analytics'], refetchType: 'active' });
-      }
-    } else {
-      if (!shouldThrottleInvalidation('user-repair-requests', 1500)) {
-        queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'], refetchType: 'active' });
-      }
+      queryClient.invalidateQueries({ queryKey: ['mechanic', 'analytics'], refetchType: 'active' });
     }
 
-    // 3. Invalidate detail queries cleanly (only active query refetched, avoiding prefix duplicates)
+    // Invalidate detail queries cleanly
     if (orderId) {
-      if (!shouldThrottleInvalidation(`repair-request-${orderId}`, 1500)) {
-        queryClient.invalidateQueries({ queryKey: ['repair-request', String(orderId)], refetchType: 'active' });
-      }
+      queryClient.invalidateQueries({ queryKey: ['repair-request', String(orderId)], refetchType: 'active' });
     } else {
-      if (!shouldThrottleInvalidation('repair-request-generic', 1500)) {
-        queryClient.invalidateQueries({ queryKey: ['repair-request'], refetchType: 'active' });
-      }
+      queryClient.invalidateQueries({ queryKey: ['repair-request'], refetchType: 'active' });
     }
 
-    // 4. Trigger onRepairUpdate callback
+    // Trigger onRepairUpdate callback
     if (onRepairUpdate) {
       onRepairUpdate(orderId, inferredStatus || '', data);
     }
-  }, [queryClient, extractOrderId, onRepairUpdate, isMechanic]);
+  }, [queryClient, extractOrderId, onRepairUpdate, isMechanic, resolveStatusString]);
 
   /**
    * Invalidate order caches for Sellers, Vehicle Rentals, and Customers.
@@ -335,9 +421,9 @@ export const useNotificationWebSocket = ({
     // 1. Play notification sound & haptics (debounced)
     playDebouncedMechanicSound();
 
-    // 2. Extract status and order info
+    // 2. Extract status and order info safely (rejecting boolean status flags)
     const rawData = (data as any)?.data || data;
-    const status: string = (data as any)?.status || rawData?.status || '';
+    const status: string = resolveStatusString(data) || '';
     const orderId = extractOrderId(data);
 
     // 3. Cache management (removeOrderFromPendingCache already invalidates caches)
@@ -441,6 +527,11 @@ export const useNotificationWebSocket = ({
         (status === 'verify_completed' || status === 'verified') ? 'success' : 'order',
         bannerPayload
       );
+      Toast.show({
+        type: (status === 'verify_completed' || status === 'verified') ? 'success' : 'info',
+        text1: title,
+        text2: message,
+      });
     }
 
     // 5. Trigger Arrival Code Modal for Customer when mechanic arrives
@@ -484,7 +575,7 @@ export const useNotificationWebSocket = ({
         scheduleGenericNotification(title, message, bannerPayload);
       }
     }
-  }, [extractOrderId, removeOrderFromPendingCache, invalidateRepairCaches, triggerPush, isMechanic]);
+  }, [extractOrderId, removeOrderFromPendingCache, invalidateRepairCaches, triggerPush, isMechanic, resolveStatusString]);
 
   const eventHandlers = useMemo(() => ({
 
@@ -984,6 +1075,8 @@ export const useNotificationWebSocket = ({
         const rawTitle = notifData.title || 'Notification';
         const rawMessage = notifData.message || notifData.body || notifData.description || 'You have a new update';
         const type: string = notifData.notification_type || notifData.type || '';
+        const orderId = extractOrderId(notifData) || extractOrderId(data);
+        const resolvedStatus = resolveStatusString(notifData) || resolveStatusString(data);
 
         const branded = formatBrandedNotificationCopy(rawTitle, rawMessage, isMechanic);
         const title = branded.title;
@@ -1001,28 +1094,13 @@ export const useNotificationWebSocket = ({
           type.includes('accepted') ||
           type.includes('mechanic') ||
           type.includes('order') ||
-          title.toLowerCase().includes('repair') ||
-          title.toLowerCase().includes('transit') ||
-          title.toLowerCase().includes('mechanic') ||
-          title.toLowerCase().includes('order') ||
-          message.toLowerCase().includes('repair') ||
-          message.toLowerCase().includes('transit') ||
-          message.toLowerCase().includes('mechanic') ||
-          message.toLowerCase().includes('order') ||
-          message.toLowerCase().includes('status has been updated');
+          Boolean(resolvedStatus);
 
-        let isNewOrderOrRequest = false;
+        const isNewDispatch = isGenuineNewDispatch(type, rawTitle, rawMessage);
+
         if (isRepair) {
           invalidateRepairCaches(notifData);
-          isNewOrderOrRequest =
-            type.includes('new') ||
-            type.includes('request') ||
-            title.toLowerCase().includes('new') ||
-            title.toLowerCase().includes('request') ||
-            message.toLowerCase().includes('new') ||
-            message.toLowerCase().includes('request');
-
-          if (isNewOrderOrRequest) {
+          if (isNewDispatch && isMechanic) {
             playDebouncedMechanicSound();
             if (onNewOrder) {
               onNewOrder(resolveOrderPayload(notifData));
@@ -1069,13 +1147,19 @@ export const useNotificationWebSocket = ({
             rawMessage.toLowerCase().includes('verify_completed') ||
             title.toLowerCase().includes('verified'));
 
-        if (!(isRepair && isNewOrderOrRequest) && !isCustomerVerifying) {
+        // Show banner notification & Toast for all updates (suppressing ONLY new incoming request modals for mechanics)
+        if (!(isRepair && isNewDispatch && isMechanic) && !isCustomerVerifying) {
           useNotificationStore.getState().showNotification(
             title,
             message,
             isChat ? 'chat' : (type === 'success' || isProfileUpdate || isMechanic) ? 'success' : 'order',
-            notifData
+            { ...notifData, related_object_id: orderId, status: resolvedStatus }
           );
+          Toast.show({
+            type: (type === 'success' || isProfileUpdate || resolvedStatus === 'verify_completed') ? 'success' : 'info',
+            text1: title,
+            text2: message,
+          });
         }
       }
     },
@@ -1086,6 +1170,8 @@ export const useNotificationWebSocket = ({
         const rawTitle = notifData.title || 'Notification';
         const rawMessage = notifData.message || notifData.body || notifData.description || 'You have a new update';
         const type: string = notifData.notification_type || notifData.type || '';
+        const orderId = extractOrderId(notifData) || extractOrderId(data);
+        const resolvedStatus = resolveStatusString(notifData) || resolveStatusString(data);
 
         const branded = formatBrandedNotificationCopy(rawTitle, rawMessage, isMechanic);
         const title = branded.title;
@@ -1103,28 +1189,13 @@ export const useNotificationWebSocket = ({
           type.includes('accepted') ||
           type.includes('mechanic') ||
           type.includes('order') ||
-          title.toLowerCase().includes('repair') ||
-          title.toLowerCase().includes('transit') ||
-          title.toLowerCase().includes('mechanic') ||
-          title.toLowerCase().includes('order') ||
-          message.toLowerCase().includes('repair') ||
-          message.toLowerCase().includes('transit') ||
-          message.toLowerCase().includes('mechanic') ||
-          message.toLowerCase().includes('order') ||
-          message.toLowerCase().includes('status has been updated');
+          Boolean(resolvedStatus);
 
-        let isNewOrderOrRequest = false;
+        const isNewDispatch = isGenuineNewDispatch(type, rawTitle, rawMessage);
+
         if (isRepair) {
           invalidateRepairCaches(notifData);
-          isNewOrderOrRequest =
-            type.includes('new') ||
-            type.includes('request') ||
-            title.toLowerCase().includes('new') ||
-            title.toLowerCase().includes('request') ||
-            message.toLowerCase().includes('new') ||
-            message.toLowerCase().includes('request');
-
-          if (isNewOrderOrRequest) {
+          if (isNewDispatch && isMechanic) {
             playDebouncedMechanicSound();
             if (onNewOrder) {
               onNewOrder(resolveOrderPayload(notifData));
@@ -1171,13 +1242,19 @@ export const useNotificationWebSocket = ({
             rawMessage.toLowerCase().includes('verify_completed') ||
             title.toLowerCase().includes('verified'));
 
-        if (!(isRepair && isNewOrderOrRequest) && !isCustomerVerifying) {
+        // Show banner notification & Toast for all updates (suppressing ONLY new incoming request modals for mechanics)
+        if (!(isRepair && isNewDispatch && isMechanic) && !isCustomerVerifying) {
           useNotificationStore.getState().showNotification(
             title,
             message,
             isChat ? 'chat' : (type === 'success' || isProfileUpdate || isMechanic) ? 'success' : 'order',
-            notifData
+            { ...notifData, related_object_id: orderId, status: resolvedStatus }
           );
+          Toast.show({
+            type: (type === 'success' || isProfileUpdate || resolvedStatus === 'verify_completed') ? 'success' : 'info',
+            text1: title,
+            text2: message,
+          });
         }
       }
     },
@@ -1198,6 +1275,8 @@ export const useNotificationWebSocket = ({
     removeOrderFromPendingCache,
     handleRepairStatusChange,
     isMechanic,
+    isGenuineNewDispatch,
+    resolveStatusString,
   ]);
 
   const { isConnected, reconnect } = useWebSocket({
