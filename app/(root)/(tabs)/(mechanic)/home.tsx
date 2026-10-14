@@ -33,6 +33,7 @@ import ProfileCompletionModal from "@/components/modals/ProfileCompletionModal";
 import KYCBanner from "@/components/KYCBanner";
 import AnimatedPageContainer from "@/components/AnimatedPageContainer";
 import BiddingCarousel from "@/components/bidding/BiddingCarousel";
+import { usePrefetchShop } from "@/hooks/useProducts";
 
 import SpecialistIconBtn from "@/components/SpecialistIconBtn";
 import { useMechanicOrderNotifications } from "@/hooks/useMechanicOrderNotifications";
@@ -193,6 +194,7 @@ import { useDoubleBackToExit } from "@/hooks/useDoubleBackToExit";
 
 const MechanicHome = () => {
   useDoubleBackToExit();
+  usePrefetchShop();
 
   const primaryProfile = usePrimaryUserProfile();
   const mechanicProfile = useMechanicProfile(true); // Always enabled on mechanic home

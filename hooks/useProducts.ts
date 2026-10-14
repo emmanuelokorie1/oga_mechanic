@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient, InfiniteData, keepPreviousData } from '@tanstack/react-query';
 import { productsAPI, HomeProductsResponse, ProductDetailResponse, ProductListResponse, CategoryResponse, ProductListAPIResponse, FavoriteProductAPIResponse } from '../lib/api/products';
 
@@ -76,9 +77,9 @@ export const useProductsInfinite = (
     },
     initialPageParam: 0,
     enabled: enabled,
-    staleTime: 0, // Always refetch on mount for fresh data
-    gcTime: 10 * 60 * 1000, // 10 minutes cache
-    refetchOnMount: true, // Silently refetch when component mounts
+    staleTime: 5 * 60 * 1000, // 5 minutes - keeps prefetched products fresh
+    gcTime: 30 * 60 * 1000, // 30 minutes cache
+    refetchOnMount: false, // Don't refetch on mount if data is already fresh
     placeholderData: keepPreviousData,
     retry: 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
@@ -90,10 +91,62 @@ export const useCategories = () => {
     queryKey: productKeys.categories(),
     queryFn: () => productsAPI.getCategories(),
     staleTime: 10 * 60 * 1000, // 10 minutes (categories change less frequently)
-    gcTime: 20 * 60 * 1000, // 20 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
     retry: 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
+};
+
+/**
+ * Prefetches the first page of shop products and all categories into the React Query cache.
+ * Call this upon login, tab mounting, or home screen display so the Shop tab renders instantly without a loader.
+ */
+export const prefetchShopData = async (queryClient: any) => {
+  if (!queryClient) return;
+  try {
+    const productsPromise = queryClient.prefetchInfiniteQuery({
+      queryKey: productKeys.list(undefined, '', '', 'infinite'),
+      queryFn: ({ pageParam = 0 }: { pageParam?: unknown }) =>
+        productsAPI.getProducts(undefined, '', '', (pageParam as number) || 0, 20),
+      initialPageParam: 0,
+      getNextPageParam: (lastPage: any) => {
+        if (lastPage?.data && !Array.isArray(lastPage.data) && lastPage.data.next) {
+          try {
+            const url = new URL(lastPage.data.next);
+            const offset = url.searchParams.get('offset');
+            return offset ? parseInt(offset, 10) : undefined;
+          } catch {
+            return undefined;
+          }
+        }
+        return undefined;
+      },
+      pages: 1,
+      staleTime: 5 * 60 * 1000,
+    });
+
+    const categoriesPromise = queryClient.prefetchQuery({
+      queryKey: productKeys.categories(),
+      queryFn: () => productsAPI.getCategories(),
+      staleTime: 10 * 60 * 1000,
+    });
+
+    await Promise.allSettled([productsPromise, categoriesPromise]);
+  } catch (error) {
+    // Non-blocking prefetch failure
+    console.warn('Background shop prefetch encountered an issue:', error);
+  }
+};
+
+/**
+ * Hook to trigger background prefetching of shop products and categories.
+ */
+export const usePrefetchShop = () => {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    prefetchShopData(queryClient);
+  }, [queryClient]);
 };
 
 export const useProductSearch = (

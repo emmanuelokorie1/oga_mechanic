@@ -20,7 +20,7 @@ import { routes } from "@/constants/routes";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Navbar from "@/components/Navbar";
 import { LAYOUT } from "@/constants/units";
-import { useHomeProducts, useActiveBiddingProducts } from "@/hooks/useProducts";
+import { useHomeProducts, useActiveBiddingProducts, usePrefetchShop } from "@/hooks/useProducts";
 import BiddingCarousel from "@/components/bidding/BiddingCarousel";
 import SpecialistIconBtn from "@/components/SpecialistIconBtn";
 import SwitchUserModal from "@/components/modals/SwitchUserModal";
@@ -235,6 +235,7 @@ const ServiceCard = ({ item, onPress }: { item: any; onPress: () => void }) => {
 // ─── Home Screen ─────────────────────────────────────────────────────────────
 const Home = () => {
   useDoubleBackToExit();
+  usePrefetchShop();
   const queryClient = useQueryClient();
 
   const [refreshing, setRefreshing] = useState(false);
