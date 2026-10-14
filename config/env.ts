@@ -3,21 +3,15 @@
 
 export const ENV_CONFIG = {
   // API Configuration
-  API_URL: process.env.EXPO_PUBLIC_API_URL || (() => {
-    console.error('❌ EXPO_PUBLIC_API_URL is missing! Requests will fail.');
-    return 'https://api-missing-error.ogamechanic.org';
-  })(),
-  API_KEY: process.env.EXPO_PUBLIC_API_KEY || (() => {
-    console.error('❌ EXPO_PUBLIC_API_KEY is missing! API access may be restricted.');
-    return 'MISSING_API_KEY';
-  })(),
+  API_URL: process.env.EXPO_PUBLIC_API_URL || 'https://api.ogamechanic.org/api/v1',
+  API_KEY: process.env.EXPO_PUBLIC_API_KEY || 'DNTc5u8uGCibny1U5LSz6Su7qYnWHfRFTX1yTSBSU3NwJ8w8iYwBZP0pdg46zqoq',
   
   // Environment
-  ENV: process.env.EXPO_PUBLIC_ENV || 'development',
+  ENV: process.env.EXPO_PUBLIC_ENV || 'production',
   
   // App Configuration
   APP_NAME: process.env.EXPO_PUBLIC_APP_NAME || 'Oga Mechanic',
-  APP_VERSION: process.env.EXPO_PUBLIC_APP_VERSION || '1.0.0',
+  APP_VERSION: process.env.EXPO_PUBLIC_APP_VERSION || '1.0.1',
   
   // Feature Flags
   ENABLE_ANALYTICS: process.env.EXPO_PUBLIC_ENABLE_ANALYTICS === 'true',

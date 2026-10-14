@@ -367,7 +367,7 @@ export const ProfileSopprt = {
     },
     {
       id: 5,
-      name: "help@ogamechanic.com",
+      name: "help@ogamechanic.org",
       image: email,
       route: "supportSuggestions",
     },

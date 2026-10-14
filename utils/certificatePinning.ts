@@ -11,7 +11,7 @@ interface CertificatePin {
 // Production certificate pins (replace with your actual certificates)
 const CERTIFICATE_PINS: CertificatePin[] = [
   {
-    hostname: 'api.ogamechanic.com',
+    hostname: 'api.ogamechanic.org',
     publicKeyHashes: [
       // Replace with actual SHA-256 public key hashes of your certificates
       'sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', // Example

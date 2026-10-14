@@ -68,7 +68,7 @@ const SellerSubscription = () => {
       const payload = {
         requestType: 'inbound',
         data: {
-          callback_url: 'https://ogamechanic.com/subscription/callback',
+          callback_url: 'https://ogamechanic.org/subscription/callback',
           plan: 'monthly',
         },
       };

@@ -6,7 +6,28 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.ogamechanic.org/api/v1",
+        "EXPO_PUBLIC_API_KEY": "DNTc5u8uGCibny1U5LSz6Su7qYnWHfRFTX1yTSBSU3NwJ8w8iYwBZP0pdg46zqoq",
+        "EXPO_PUBLIC_ENV": "development",
+        "EXPO_PUBLIC_APP_NAME": "Oga Mechanic",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.1",
+        "EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN": "pk.eyJ1IjoiZmF2b3VyZWwiLCJhIjoiY2x6bmZ6OWM4MG85bTJscXU1MzZ3Y2YweSJ9.sC9rThXyItn8NKWtwO6JxQ",
+        "MAPBOX_DOWNLOAD_TOKEN": "sk.eyJ1IjoiZW1tenp5IiwiYSI6ImNtbXVnMWFxZzF5YmcycXF0M3BxenlybnEifQ.42A3Ji5w-VaHNKtvOIJ1Dg",
+        "EXPO_PUBLIC_GOOGLE_MAPS_AUTOCOMPLETE_API_KEY": "AIzaSyCY2wxCiyA8elykXO7IPxDXj3em4k1DQTs",
+        "NEXT_PUBLIC_GOOGLE_MAPS_AUTOCOMPLETE_API_KEY": "AIzaSyCY2wxCiyA8elykXO7IPxDXj3em4k1DQTs",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyDGQK3DCCu8bbbvJXd2JGBPAy5jMce0PPQ",
+        "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyDGQK3DCCu8bbbvJXd2JGBPAy5jMce0PPQ",
+        "EXPO_PUBLIC_ENABLE_BIOMETRIC_AUTH": "true",
+        "DIDIT_API_KEY": "NaIGMXdQj0x9EPDlGu2hhN1eFh-qVCTtloNhWs_iHHY",
+        "DIDIT_WORKFLOW_ID": "4e6432de-061c-4f95-9e8d-b13e3eaef0a4",
+        "EXPO_PUBLIC_DIDIT_SESSION_ENDPOINT": "/mechanics/kyc/didit-session/",
+        "EXPO_PUBLIC_GOOGLE_SIGN_UP_API_KEY": "113954419006-ngbls808fq260861rc0inh74hu9v8g0l.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "113954419006-ngbls808fq260861rc0inh74hu9v8g0l.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "113954419006-6a0imrer5lb7t626culnfluj0t45mni7.apps.googleusercontent.com",
+        "EXPO_PUBLIC_WEBSOCKET_URL": "wss://api.ogamechanic.org/ws"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -22,7 +43,7 @@
         "EXPO_PUBLIC_API_KEY": "DNTc5u8uGCibny1U5LSz6Su7qYnWHfRFTX1yTSBSU3NwJ8w8iYwBZP0pdg46zqoq",
         "EXPO_PUBLIC_ENV": "production",
         "EXPO_PUBLIC_APP_NAME": "Oga Mechanic",
-        "EXPO_PUBLIC_APP_VERSION": "1.0.0",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.1",
         "EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN": "pk.eyJ1IjoiZmF2b3VyZWwiLCJhIjoiY2x6bmZ6OWM4MG85bTJscXU1MzZ3Y2YweSJ9.sC9rThXyItn8NKWtwO6JxQ",
         "MAPBOX_DOWNLOAD_TOKEN": "sk.eyJ1IjoiZW1tenp5IiwiYSI6ImNtbXVnMWFxZzF5YmcycXF0M3BxenlybnEifQ.42A3Ji5w-VaHNKtvOIJ1Dg",
         "EXPO_PUBLIC_GOOGLE_MAPS_AUTOCOMPLETE_API_KEY": "AIzaSyCY2wxCiyA8elykXO7IPxDXj3em4k1DQTs",
@@ -52,7 +73,7 @@
         "EXPO_PUBLIC_API_KEY": "DNTc5u8uGCibny1U5LSz6Su7qYnWHfRFTX1yTSBSU3NwJ8w8iYwBZP0pdg46zqoq",
         "EXPO_PUBLIC_ENV": "production",
         "EXPO_PUBLIC_APP_NAME": "Oga Mechanic",
-        "EXPO_PUBLIC_APP_VERSION": "1.0.0",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.1",
         "EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN": "pk.eyJ1IjoiZmF2b3VyZWwiLCJhIjoiY2x6bmZ6OWM4MG85bTJscXU1MzZ3Y2YweSJ9.sC9rThXyItn8NKWtwO6JxQ",
         "MAPBOX_DOWNLOAD_TOKEN": "sk.eyJ1IjoiZW1tenp5IiwiYSI6ImNtbXVnMWFxZzF5YmcycXF0M3BxenlybnEifQ.42A3Ji5w-VaHNKtvOIJ1Dg",
         "EXPO_PUBLIC_GOOGLE_MAPS_AUTOCOMPLETE_API_KEY": "AIzaSyCY2wxCiyA8elykXO7IPxDXj3em4k1DQTs",
@@ -76,7 +97,7 @@
         "EXPO_PUBLIC_API_KEY": "DNTc5u8uGCibny1U5LSz6Su7qYnWHfRFTX1yTSBSU3NwJ8w8iYwBZP0pdg46zqoq",
         "EXPO_PUBLIC_ENV": "production",
         "EXPO_PUBLIC_APP_NAME": "Oga Mechanic",
-        "EXPO_PUBLIC_APP_VERSION": "1.0.0",
+        "EXPO_PUBLIC_APP_VERSION": "1.0.1",
         "EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN": "pk.eyJ1IjoiZmF2b3VyZWwiLCJhIjoiY2x6bmZ6OWM4MG85bTJscXU1MzZ3Y2YweSJ9.sC9rThXyItn8NKWtwO6JxQ",
         "MAPBOX_DOWNLOAD_TOKEN": "sk.eyJ1IjoiZW1tenp5IiwiYSI6ImNtbXVnMWFxZzF5YmcycXF0M3BxenlybnEifQ.42A3Ji5w-VaHNKtvOIJ1Dg",
         "EXPO_PUBLIC_GOOGLE_MAPS_AUTOCOMPLETE_API_KEY": "AIzaSyCY2wxCiyA8elykXO7IPxDXj3em4k1DQTs",
