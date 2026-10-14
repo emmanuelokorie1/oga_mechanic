@@ -487,7 +487,7 @@ const MechanicProfile = () => {
               </View>
             ) : (
               <View className="space-y-4">
-                {reviews.slice(0, 3).map((review) => (
+                {(showReviews ? reviews : reviews.slice(0, 3)).map((review) => (
                   <View key={review.id} className="bg-white rounded-2xl p-5 border border-gray-50 shadow-sm">
                     <View className="flex-row items-center justify-between mb-3">
                       <View className="flex-row items-center">
@@ -508,6 +508,17 @@ const MechanicProfile = () => {
                     </Text>
                   </View>
                 ))}
+
+                {reviews.length > 3 && (
+                  <TouchableOpacity
+                    onPress={() => setShowReviews(!showReviews)}
+                    className="mt-3 py-3 bg-gray-50 rounded-2xl items-center border border-gray-100"
+                  >
+                    <Text className="text-xs font-NunitoBold text-primary-600">
+                      {showReviews ? 'Show Fewer Reviews' : `View All ${reviews.length} Reviews`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>

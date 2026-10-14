@@ -4,6 +4,7 @@ import { userAPI, PrimaryUserProfileResponse, UserRolesResponse, UserProfile, Me
 import { mechanicAPI } from '@/lib/api/mechanic';
 import { communicationsAPI, extractChatRooms } from '@/lib/api/communications';
 import { useMechanicStore } from '@/stores/mechanicStore';
+import { useUserStore } from '@/stores/userStore';
 
 // Query key factory
 export const userProfileKeys = {
@@ -26,13 +27,14 @@ export const userProfileKeys = {
 
 // Hook to get primary user profile
 export const usePrimaryUserProfile = (enabled: boolean = true) => {
+  const token = useUserStore((state) => state.accessToken);
   return useQuery<PrimaryUserProfileResponse>({
     queryKey: userProfileKeys.primary(),
     queryFn: userAPI.getPrimaryProfile,
     staleTime: 30 * 1000, // 30 seconds
     gcTime: 10 * 60 * 1000, // 10 minutes
     retry: 1, // Reduce retries
-    enabled: enabled, // Only fetch when enabled
+    enabled: enabled && !!token, // Only fetch when enabled and authenticated
     refetchOnMount: "always", // Force refetch on mount to override global defaults
     refetchOnWindowFocus: true, // Refetch on focus for critical profile data
   });
@@ -310,23 +312,27 @@ export const useSwitchRole = () => {
 };
 
 // Hook to get unread notification count efficiently
-export const useUnreadNotificationCount = () => {
+export const useUnreadNotificationCount = (options?: { enabled?: boolean }) => {
+  const token = useUserStore((state) => state.accessToken);
   return useQuery({
     queryKey: [...userProfileKeys.notifications(), 'unread-count', 'general'],
     queryFn: () => userAPI.getNotifications(0, 1, { is_read: false, category: 'general' }),
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    enabled: (options?.enabled ?? true) && !!token,
     select: (data) => data?.data?.count ?? data?.count ?? 0,
   });
 };
 
 // Hook to get total unread chat messages count across all chat rooms
-export const useUnreadChatCount = () => {
+export const useUnreadChatCount = (options?: { enabled?: boolean }) => {
+  const token = useUserStore((state) => state.accessToken);
   return useQuery({
     queryKey: ['chatRooms'],
     queryFn: () => communicationsAPI.getChatRooms(),
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
+    enabled: (options?.enabled ?? true) && !!token,
     refetchOnMount: true,
     select: (data) => {
       const rooms = extractChatRooms(data);

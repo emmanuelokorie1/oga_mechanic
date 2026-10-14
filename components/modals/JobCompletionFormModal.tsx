@@ -280,7 +280,7 @@ const JobCompletionFormModal: React.FC<JobCompletionFormModalProps> = ({
                   loading={isLoading}
                   disabled={isLoading || resolutions.every(r => r.description.trim() === '')}
                   bgVariant="primary"
-                  className="rounded-3xl shadow-xl shadow-primary-200 h-16"
+                  // className="rounded-3xl shadow-xl shadow-primary-200 h-1"
                 />
                 <TouchableOpacity 
                   onPress={onClose}

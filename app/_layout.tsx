@@ -3,9 +3,10 @@ import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import Toast from 'react-native-toast-message';
+import customToastConfig from "@/components/toasts/CustomToastConfig";
 import Constants from 'expo-constants';
 import { setupNotificationListeners } from "@/lib/notifications";
-import { useRouter } from "expo-router";
+import { useRouter, usePathname } from "expo-router";
 
 // Import your global CSS file
 import "../global.css";
@@ -20,8 +21,12 @@ import AnimatedSplash from "../components/AnimatedSplash";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNotificationWebSocket } from "@/hooks/useNotificationWebSocket";
 import GlobalNotificationBanner from "@/components/GlobalNotificationBanner";
+import CustomerArrivalCodeModal from "@/components/modals/CustomerArrivalCodeModal";
+import { useArrivalCodeWatcher } from "@/hooks/useArrivalCodeWatcher";
 import RootErrorBoundary from "@/components/RootErrorBoundary";
 import { routes } from "@/constants/routes";
+import { registerPushNotificationsAndSyncDevice } from "@/services/notificationService";
+import { useUserStore } from "@/stores/userStore";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -31,9 +36,35 @@ function AppContent() {
   const auth = useAuthContext();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const pathname = usePathname();
+  const userStoreToken = useUserStore((state) => state.accessToken);
+  const isUserAuthenticated = auth.isAuthenticated || !!userStoreToken;
+
+  // Screen background & navigation bar theme detection
+  const isWelcome = pathname?.includes("welcome");
+  const isDarkScreen = isWelcome || pathname?.includes("video-call") || pathname?.includes("voice-call");
+
+  const getBottomSpacerColor = () => {
+    if (showSplash) return "#DC2626";
+    if (isWelcome) return "#0F1014";
+    if (pathname?.includes("video-call") || pathname?.includes("voice-call")) return "#000000";
+    return "white";
+  };
 
   // Initialize Global Notification WebSocket
   useNotificationWebSocket({ enabled: auth.isAuthenticated, triggerPush: true });
+
+  // Watch for mechanic arrival events across the customer interface
+  useArrivalCodeWatcher();
+
+  // ── Global Push Device Registration ───────────────────────────────────────
+  // Registers device token with /users/notifications/devices/ across all roles (Users, Mechanics, Sellers)
+  useEffect(() => {
+    if (isUserAuthenticated) {
+      registerPushNotificationsAndSyncDevice();
+    }
+  }, [isUserAuthenticated]);
+  // ──────────────────────────────────────────────────────────────────────────
 
   // ── Global Notification Listener ──────────────────────────────────────────
   useEffect(() => {
@@ -118,15 +149,16 @@ function AppContent() {
   return (
     <CartProvider>
       <LocationProvider>
-        <View className="flex-1 bg-white">
-          <StatusBar style={showSplash ? "light" : "dark"} />
-          <Stack screenOptions={{ headerShown: false }}>
+        <View className={`flex-1 ${isWelcome ? "bg-[#0F1014]" : "bg-white"}`}>
+          <StatusBar style={showSplash || isDarkScreen ? "light" : "dark"} />
+          <Stack screenOptions={{ headerShown: false }} initialRouteName="index">
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="(root)" options={{ headerShown: false, gestureEnabled: false }} />
           </Stack>
-          <Toast />
+          <Toast config={customToastConfig} />
           <GlobalNotificationBanner />
+          <CustomerArrivalCodeModal />
 
           {/* Dynamic Android Navigation Bar Spacer */}
           {Platform.OS === "android" && insets.bottom > 0 && (
@@ -137,9 +169,9 @@ function AppContent() {
                 right: 0,
                 bottom: 0,
                 height: insets.bottom,
-                backgroundColor: "white", // Match app background
-                borderTopWidth: 1,
-                borderTopColor: "#F3F4F6", // Subtle separator
+                backgroundColor: getBottomSpacerColor(),
+                borderTopWidth: isDarkScreen || showSplash ? 0 : 1,
+                borderTopColor: isDarkScreen || showSplash ? "transparent" : "#F3F4F6",
                 zIndex: 1000,
               }}
             />

@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl, Animated, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { LAYOUT } from "@/constants/units";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { routes } from "@/constants/routes";
 import { mechanicRoutes } from "@/constants/routes";
 import OrderCard, { Order } from "@/components/OrderCard";
@@ -13,6 +13,7 @@ import { useRepairRequests, useAcceptRepairRequest, useDeclineRepairRequest } fr
 import { useVehicleMakes } from "@/hooks/useVehicleMakes";
 import AnimatedErrorCard from "@/components/AnimatedErrorCard";
 import AnimatedPageContainer from "@/components/AnimatedPageContainer";
+import { getApiErrorMessage } from "@/utils/errorMessages";
 
 // Order Card Skeleton Loader
 const OrderCardSkeleton = () => {
@@ -83,6 +84,16 @@ const MechanicOrder = () => {
     refetch: refetchRequests
   } = useRepairRequests(statusParam);
 
+  const refetchRequestsRef = useRef(refetchRequests);
+  refetchRequestsRef.current = refetchRequests;
+
+  // Auto-refresh once when tab comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      refetchRequestsRef.current();
+    }, [])
+  );
+
   // Fetch vehicle makes to resolve make/model names
   const { data: vehicleMakes } = useVehicleMakes();
 
@@ -108,12 +119,16 @@ const MechanicOrder = () => {
   // Transform API data to match OrderCard interface
   const allOrders: Order[] = (() => {
     try {
-      if (!repairRequestsData?.data) {
+      if (!repairRequestsData) {
         return [];
       }
 
-      const ordersArray = Array.isArray(repairRequestsData.data)
+      const ordersArray = Array.isArray(repairRequestsData)
+        ? repairRequestsData
+        : Array.isArray(repairRequestsData.data)
         ? repairRequestsData.data
+        : Array.isArray(repairRequestsData.results)
+        ? repairRequestsData.results
         : [];
 
       return ordersArray.map((request: any) => {
@@ -199,23 +214,43 @@ const MechanicOrder = () => {
       setActionType(null);
       setSelectedOrderId("");
       refetchRequests();
-      const rawMsg = error?.response?.data?.message || error?.message || '';
-      const isAlreadyTaken =
-        rawMsg.toLowerCase().includes('accept') ||
-        rawMsg.toLowerCase().includes('taken') ||
-        rawMsg.toLowerCase().includes('assigned') ||
-        rawMsg.toLowerCase().includes('status') ||
-        rawMsg.toLowerCase().includes('pending') ||
-        error?.response?.status === 400 ||
-        error?.response?.status === 404 ||
-        error?.response?.status === 409;
 
-      Alert.alert(
-        "Request Unavailable",
-        isAlreadyTaken
-          ? "This repair request has already been accepted by another specialist or cancelled."
-          : (rawMsg || "This request is no longer available.")
-      );
+      // Extract raw API error message safely
+      const apiData = error?.response?.data;
+      const rawApiMsg =
+        (typeof apiData?.message === 'string' ? apiData.message : null) ||
+        (typeof apiData?.detail === 'string' ? apiData.detail : null) ||
+        (typeof apiData?.error === 'string' ? apiData.error : null) ||
+        (Array.isArray(apiData?.non_field_errors) ? String(apiData.non_field_errors[0]) : null) ||
+        (typeof error?.message === 'string' ? error.message : '');
+
+      const lowerMsg = (rawApiMsg || '').toLowerCase();
+      const status = error?.response?.status;
+
+      // Truly taken or cancelled orders
+      const isAlreadyTaken =
+        lowerMsg.includes('already accepted') ||
+        lowerMsg.includes('already taken') ||
+        lowerMsg.includes('accepted by another') ||
+        lowerMsg.includes('assigned to another') ||
+        lowerMsg.includes('already assigned') ||
+        lowerMsg.includes('no longer available') ||
+        (lowerMsg.includes('cancelled') && !lowerMsg.includes('cancellation')) ||
+        status === 404 ||
+        status === 410;
+
+      if (isAlreadyTaken) {
+        Alert.alert(
+          "Request Unavailable",
+          "This repair request has already been accepted by another specialist or cancelled."
+        );
+      } else {
+        const friendlyMsg = getApiErrorMessage(error, 'general');
+        Alert.alert(
+          actionType === 'accept' ? "Cannot Accept Request" : "Action Failed",
+          rawApiMsg || friendlyMsg || "This request could not be processed. Please refresh."
+        );
+      }
     }
   };
 

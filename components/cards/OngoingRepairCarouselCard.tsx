@@ -6,6 +6,8 @@ import { router } from 'expo-router';
 import { routes } from '@/constants/routes';
 import { images } from '@/constants';
 import { useVehicleMakes } from '@/hooks/useVehicleMakes';
+import { useArrivalCodeStore } from '@/stores/arrivalCodeStore';
+import { mechanicAPI } from '@/lib/api/mechanic';
 
 export interface OngoingRepairCarouselCardProps {
   orders?: any[];
@@ -167,7 +169,57 @@ const OngoingRepairCarouselCard: React.FC<OngoingRepairCarouselCardProps> = ({ o
         pathname: routes.myMechanicOrders as any,
         params: { status: 'in_progress' },
       });
-    } else if (primaryOrder?.id) {
+      return;
+    }
+
+    const s = (primaryOrder?.status || '').toLowerCase();
+    if (s === 'arrived' && primaryOrder?.id) {
+      if (primaryOrder.otp_code) {
+        useArrivalCodeStore.getState().showArrivalModal({
+          orderId: String(primaryOrder.id),
+          otpCode: String(primaryOrder.otp_code),
+          mechanicName,
+          mechanicPhone: primaryOrder.mechanic?.phone_number,
+          vehicleSummary: singleVehicleTitle,
+          serviceAddress: primaryOrder.service_address,
+        });
+        return;
+      } else {
+        mechanicAPI
+          .getRepairRequestDetail(String(primaryOrder.id))
+          .then((res: any) => {
+            const detail = res?.data || res;
+            if (detail?.otp_code) {
+              useArrivalCodeStore.getState().showArrivalModal({
+                orderId: String(primaryOrder.id),
+                otpCode: String(detail.otp_code),
+                mechanicName:
+                  mechanicName ||
+                  (detail?.mechanic
+                    ? `${detail.mechanic.first_name || ''} ${detail.mechanic.last_name || ''}`.trim()
+                    : undefined),
+                mechanicPhone: detail?.mechanic?.phone_number || primaryOrder.mechanic?.phone_number,
+                vehicleSummary: singleVehicleTitle,
+                serviceAddress: detail?.service_address || primaryOrder.service_address,
+              });
+            } else {
+              router.push({
+                pathname: routes.trackMechanicOrder as any,
+                params: { orderId: primaryOrder.id.toString() },
+              });
+            }
+          })
+          .catch(() => {
+            router.push({
+              pathname: routes.trackMechanicOrder as any,
+              params: { orderId: primaryOrder.id.toString() },
+            });
+          });
+        return;
+      }
+    }
+
+    if (primaryOrder?.id) {
       router.push({
         pathname: routes.trackMechanicOrder as any,
         params: { orderId: primaryOrder.id.toString() },

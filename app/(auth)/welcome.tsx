@@ -4,6 +4,9 @@ import {
   Dimensions,
   Image,
   Animated,
+  StatusBar as RNStatusBar,
+  Platform,
+  StyleSheet,
   type ImageSourcePropType,
   type ImageResizeMode,
 } from "react-native";
@@ -43,7 +46,7 @@ const RenderImage = ({
     />
   );
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+const { width: screenWidth, height: screenHeight } = Dimensions.get("screen");
 
 // Slides for overlays and text
 const slides = [
@@ -134,6 +137,13 @@ const Welcome = () => {
         useNativeDriver: true,
       }),
     ]).start();
+
+    // Ensure status bar is translucent edge-to-edge
+    RNStatusBar.setBarStyle("light-content", true);
+    if (Platform.OS === "android") {
+      RNStatusBar.setTranslucent(true);
+      RNStatusBar.setBackgroundColor("transparent", true);
+    }
   }, []);
 
   useEffect(() => {
@@ -154,11 +164,21 @@ const Welcome = () => {
   }, []);
 
   return (
-    <View className="flex-1 bg-[#0F1014]">
+    <View style={{ flex: 1, backgroundColor: "#0F1014" }}>
+      <RNStatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
       <StatusBar style="light" />
 
       {/* FULL SCREEN BACKGROUND SLIDER */}
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: "#0F1014", overflow: "hidden" },
+        ]}
+      >
         <Animated.FlatList
           ref={flatListRef}
           data={slides}
@@ -189,12 +209,24 @@ const Welcome = () => {
             });
             const scale = scrollX.interpolate({
               inputRange,
-              outputRange: [1.3, 1.45, 1.3],
+              outputRange: [1.36, 1.45, 1.36],
             });
 
             return (
-              <View style={{ width: screenWidth, height: screenHeight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                <Animated.View style={{ transform: [{ translateX }, { scale }, { translateY: -70 }] }}>
+              <View
+                style={{
+                  width: screenWidth,
+                  height: screenHeight,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                }}
+              >
+                <Animated.View
+                  style={{
+                    transform: [{ translateX }, { scale }, { translateY: -100 }],
+                  }}
+                >
                   <RenderImage
                     source={item.source}
                     width={screenWidth}
@@ -208,10 +240,16 @@ const Welcome = () => {
         />
         {/* Cinematic Vignette/Gradient Overlay */}
         <LinearGradient
-          colors={['transparent', 'rgba(15, 16, 20, 0.2)', 'rgba(15, 16, 20, 0.9)', '#0F1014', '#0F1014']}
+          colors={[
+            "transparent",
+            "rgba(15, 16, 20, 0.2)",
+            "rgba(15, 16, 20, 0.9)",
+            "#0F1014",
+            "#0F1014",
+          ]}
           locations={[0, 0.4, 0.65, 0.85, 1]}
           style={{
-            position: 'absolute',
+            position: "absolute",
             top: 0,
             bottom: 0,
             left: 0,
@@ -269,10 +307,12 @@ const Welcome = () => {
               const opacity = scrollX.interpolate({
                 inputRange,
                 outputRange: [0, 1, 0],
+                extrapolate: 'clamp',
               });
               const translateY = scrollX.interpolate({
                 inputRange,
                 outputRange: [20, 0, -20],
+                extrapolate: 'clamp',
               });
 
               return (
@@ -374,7 +414,7 @@ const Welcome = () => {
               title={isSigningUp ? "Loading..." : "Get Started"}
               bgVariant="primary"
               textVariant="default"
-              className="py-4 mb-3 shadow-lg"
+              className="py-4 mb-3 shadow-sm"
               onPress={handleSignUp}
               disabled={isSigningUp || isSigningIn}
             />

@@ -114,7 +114,11 @@ const SellerProfile = () => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchProfile(), refetchAnalytics(), activeProfileQuery.refetch()]);
+    const promises: Promise<any>[] = [refetchProfile(), activeProfileQuery.refetch()];
+    if (isMerchant && !isVehicleRental) {
+      promises.push(refetchAnalytics());
+    }
+    await Promise.all(promises);
     setRefreshing(false);
   };
 
@@ -292,7 +296,10 @@ const SellerProfile = () => {
                 {/* Role Badge */}
                 <View className="bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-100">
                   <Text className="text-primary-600 text-xs font-NunitoBold">
-                    {activeRole.split('_').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    {(typeof activeRole === 'string' ? activeRole : 'seller')
+                      .split('_')
+                      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+                      .join(' ')}
                   </Text>
                 </View>
               </View>

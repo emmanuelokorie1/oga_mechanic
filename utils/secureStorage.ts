@@ -145,8 +145,13 @@ class SecureStorageManager implements SecureStorageInterface {
 
   async clearStorage(): Promise<void> {
     try {
-      const keys = Object.values(NON_SENSITIVE_KEYS);
-      await Promise.all(keys.map(key => this.removeItem(key)));
+      // Only clear user session-related keys; preserve persistent device state like HAS_SEEN_WELCOME
+      const sessionKeys = [
+        NON_SENSITIVE_KEYS.IS_LOGGED_IN,
+        NON_SENSITIVE_KEYS.USER_ROLES_DATA,
+        NON_SENSITIVE_KEYS.CURRENT_ACTIVE_ROLE,
+      ];
+      await Promise.all(sessionKeys.map(key => this.removeItem(key)));
     } catch (error) {
       console.error('Failed to clear storage:', error);
     }

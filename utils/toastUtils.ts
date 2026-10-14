@@ -1,48 +1,60 @@
 import Toast from 'react-native-toast-message';
 
-// Custom toast utility with proper mobile styling
+/**
+ * Enhanced Toast utility with rich mobile styling and optional subtitle support.
+ */
 export const showToast = {
-  success: (message: string) => {
+  success: (title: string, message?: string) => {
     Toast.show({
       type: 'success',
-      text1: message,
+      text1: title,
+      text2: message,
       position: 'top',
-      visibilityTime: 3000,
+      visibilityTime: 3500,
       autoHide: true,
-      topOffset: 60,
+      topOffset: 56,
     });
   },
 
-  error: (message: string) => {
+  error: (title: string, message?: string) => {
     Toast.show({
       type: 'error',
-      text1: message,
+      text1: title,
+      text2: message,
       position: 'top',
-      visibilityTime: 3000,
+      visibilityTime: 4500,
       autoHide: true,
-      topOffset: 60,
+      topOffset: 56,
     });
   },
 
-  info: (message: string) => {
+  info: (title: string, message?: string) => {
     Toast.show({
       type: 'info',
-      text1: message,
+      text1: title,
+      text2: message,
       position: 'top',
-      visibilityTime: 3000,
+      visibilityTime: 3500,
       autoHide: true,
-      topOffset: 60,
+      topOffset: 56,
     });
   },
 
-  warn: (message: string) => {
+  warn: (title: string, message?: string) => {
     Toast.show({
-      type: 'info',
-      text1: message,
+      type: 'warn',
+      text1: title,
+      text2: message,
       position: 'top',
-      visibilityTime: 3000,
+      visibilityTime: 4000,
       autoHide: true,
-      topOffset: 60,
+      topOffset: 56,
     });
+  },
+
+  hide: () => {
+    Toast.hide();
   },
 };
+
+export default showToast;

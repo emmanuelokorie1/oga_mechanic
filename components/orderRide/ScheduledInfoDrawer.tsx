@@ -155,7 +155,7 @@ const ScheduledInfoDrawer: React.FC<ScheduledInfoDrawerProps> = ({
 
            <CustomButton 
               title="Schedule a ride"
-              className="w-full bg-primary-600 rounded-xl h-[56px] mb-4"
+              className="w-full mb-4"
               onPress={handlePress}
            />
 

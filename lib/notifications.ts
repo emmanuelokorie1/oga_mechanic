@@ -44,7 +44,8 @@ export const setupNotificationListeners = (
     // Basic configuration
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowBanner: false,
+        shouldShowAlert: true,
+        shouldShowBanner: true,
         shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge: true,

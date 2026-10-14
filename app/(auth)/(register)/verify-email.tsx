@@ -17,6 +17,7 @@ import { useCustomAlert } from "@/hooks/useCustomAlert";
 import CustomAlert from "@/components/CustomAlert";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUserStore } from "@/stores/userStore";
+import { registerPushNotificationsAndSyncDevice } from "@/services/notificationService";
 
 const VerifyEmail = () => {
   const router = useRouter();
@@ -86,6 +87,11 @@ const VerifyEmail = () => {
             
             setTokens(access, refresh);
             setUser(parsedUser);
+
+            // Register device for push notifications globally across all roles
+            registerPushNotificationsAndSyncDevice(true).catch((pushErr) => {
+              console.warn('Push device registration on verify-email warning:', pushErr);
+            });
           } catch (e) {
             console.error("Error processing auto-login data", e);
           }

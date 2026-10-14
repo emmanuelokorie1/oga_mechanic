@@ -5,70 +5,47 @@ import { router } from 'expo-router';
 import { routes } from '@/constants/routes';
 import { useMechanicStore } from '@/stores/mechanicStore';
 import { useRegistrationStore } from '@/stores/registrationStore';
+import { useUserStore } from '@/stores/userStore';
+import { secureStorage } from '@/utils/secureStorage';
 
 export const useLogout = () => {
   const queryClient = useQueryClient();
 
+  const handleLocalCleanup = async () => {
+    // 1. Cancel running queries first to prevent 401 refetch storms
+    await queryClient.cancelQueries();
+    queryClient.clear();
+
+    // 2. Clear global stores
+    useMechanicStore.getState().reset();
+    useRegistrationStore.getState().clearStepByStepData();
+    useUserStore.getState().logout();
+
+    // 3. Clear storage (secure + non-sensitive)
+    try {
+      await secureStorage.clearAllData();
+    } catch (_) {}
+
+    await AsyncStorage.multiRemove([
+      'auth_token',
+      'refresh_token',
+      'user_data',
+      'is_logged_in',
+      'user_roles_data',
+      'current_active_role'
+    ]).catch(() => {});
+
+    // 4. Navigate to sign-in page
+    router.replace(routes?.signIn);
+  };
+
   return useMutation({
     mutationFn: userAPI.logout,
-    onSuccess: async (response) => {
-      // Clear TanStack Query cache
-      queryClient.clear();
-      
-      try {
-        // Clear global stores
-        useMechanicStore.getState().reset();
-        useRegistrationStore.getState().clearStepByStepData();
-
-        // Clear all stored auth data
-        await AsyncStorage.multiRemove([
-          'auth_token',
-          'refresh_token',
-          'user_data',
-          'is_logged_in',
-          'user_roles_data',
-          'current_active_role'
-        ]);
-        
-        // Navigate to login page
-        router.replace(routes?.signIn);
-        
-      } catch (storageError) {
-        // Still clear auth data and navigate even if storage fails
-        try {
-          await AsyncStorage.multiRemove([
-            'auth_token',
-            'refresh_token',
-            'user_data',
-            'is_logged_in'
-          ]);
-        } catch (clearError) {
-        }
-        router.replace(routes?.signIn);
-      }
+    onSuccess: async () => {
+      await handleLocalCleanup();
     },
-    onError: async (error: any) => {
-      // Clear TanStack Query cache even on error
-      queryClient.clear();
-      
-      try {
-        // Clear global stores
-        useMechanicStore.getState().reset();
-        useRegistrationStore.getState().clearStepByStepData();
-
-        // Clear auth data and navigate
-        await AsyncStorage.multiRemove([
-          'auth_token',
-          'refresh_token',
-          'user_data',
-          'is_logged_in',
-          'user_roles_data',
-          'current_active_role'
-        ]);
-        router.replace(routes?.signIn);
-      } catch (storageError) {
-        router.replace(routes?.signIn);
-      }
+    onError: async () => {
+      await handleLocalCleanup();
     },
   });
 };

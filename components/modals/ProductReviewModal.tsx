@@ -141,7 +141,7 @@ const ProductReviewModal: React.FC<ProductReviewModalProps> = ({
                   title="Submit Review"
                   onPress={handleSubmit}
                   bgVariant="primary"
-                  className="py-4"
+                  className=""
                   disabled={isLoading || rating === 0 || !comment.trim()}
                   loading={isLoading}
                 />

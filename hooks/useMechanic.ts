@@ -109,3 +109,6 @@ export const useSpecializations = () => {
     staleTime: 24 * 60 * 60 * 1000, // Specializations don't change often
   });
 };
+
+export { useCreateMechanicReview, useUpdateMechanicReview, useDeleteMechanicReview } from './useMechanics';
+

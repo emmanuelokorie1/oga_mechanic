@@ -168,6 +168,8 @@ const SignIn = () => {
     }
   };
 
+  const hasAutoPromptedRef = useRef(false);
+
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
@@ -200,8 +202,8 @@ const SignIn = () => {
         setBiometricType(type);
 
         // Auto-prompt biometrics if supported, enabled, enrolled, and credentials exist
-        if (availability === 'available' && isEnabled && hasCreds && !hasAutoPromptedBiometrics && !isSwitched) {
-          hasAutoPromptedBiometrics = true;
+        if (availability === 'available' && isEnabled && hasCreds && !hasAutoPromptedRef.current && !isSwitched) {
+          hasAutoPromptedRef.current = true;
           // Small delay so the page transitions are complete and layout is settled
           setTimeout(() => {
             handleBiometricLogin(creds);
@@ -262,16 +264,31 @@ const SignIn = () => {
         await AsyncStorage.removeItem('switched_account');
         // useLogin hook handles navigation on success
         loginMutation.mutate(loginCredentials, {
-          onError: (error: any) => {
+          onError: async (error: any) => {
             console.error("[Biometric] Login request error response:", error?.response?.data || error);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             let errorMessage = 'Login failed. Please check your credentials.';
             if (error.response?.data?.detail?.includes('throttled')) {
               errorMessage = error.response.data.detail;
+            } else if (error.response?.data?.non_field_errors) {
+              const nfe = error.response.data.non_field_errors;
+              errorMessage = Array.isArray(nfe) ? nfe[0] : String(nfe);
+            } else if (error.response?.data?.detail) {
+              errorMessage = error.response.data.detail;
             } else if (error.response?.data?.message) {
               errorMessage = error.response.data.message;
             }
-            showError('Biometric Login Failed', errorMessage);
+
+            // CRITICAL: Clear invalid / deleted credentials so the app does not remain stuck
+            // with a dormant user banner ("Continue as ...") or retry invalid credentials.
+            await biometricAuth.clearCredentials();
+            await biometricAuth.disableBiometric();
+            setHasBiometricCreds(false);
+            setDormantIdentifier("");
+            setPrefilledIdentifier("");
+            await AsyncStorage.removeItem('switched_account');
+
+            showError('Sign In Failed', errorMessage);
           }
         });
       } else {
@@ -410,13 +427,18 @@ const SignIn = () => {
       console.log("[SignIn] Calling loginMutation.mutate...");
       await AsyncStorage.removeItem('switched_account');
       loginMutation.mutate(credentials, {
-        onError: (error: any) => {
+        onError: async (error: any) => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
           // If login fails, remove the credentials we just saved
           if (values.rememberMe) {
-            biometricAuth.clearCredentials();
-            biometricAuth.disableBiometric();
+            await biometricAuth.clearCredentials();
+            await biometricAuth.disableBiometric();
+            setHasBiometricCreds(false);
           }
+
+          // Clear dormant identifier as well
+          setDormantIdentifier("");
+          await AsyncStorage.removeItem('switched_account');
 
           // Clear password on failure for security
           setFieldValue('password', '');
@@ -428,6 +450,11 @@ const SignIn = () => {
             setThrottleMessage(errorMessage);
             // Auto clear throttle message after 7 seconds
             setTimeout(() => setThrottleMessage(""), 7000);
+          } else if (error.response?.data?.non_field_errors) {
+            const nfe = error.response.data.non_field_errors;
+            errorMessage = Array.isArray(nfe) ? nfe[0] : String(nfe);
+          } else if (error.response?.data?.detail) {
+            errorMessage = error.response.data.detail;
           } else if (error.response?.data?.message) {
             errorMessage = error.response.data.message;
           } else if (error.response?.data?.errors) {
@@ -438,6 +465,8 @@ const SignIn = () => {
               errorMessage = errors.password[0];
             } else if (errors.phone_number) {
               errorMessage = errors.phone_number[0];
+            } else if (errors.non_field_errors) {
+              errorMessage = errors.non_field_errors[0];
             }
           }
 

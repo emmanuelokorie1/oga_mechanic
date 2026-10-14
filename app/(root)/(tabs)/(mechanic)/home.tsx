@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Animated,
   BackHandler,
   Alert,
+  AppState,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -25,6 +26,7 @@ import MechanicActionConfirmationModal, { MechanicActionType } from "@/component
 import { useRepairRequests, useAcceptRepairRequest, useDeclineRepairRequest, useMechanicAnalytics } from "@/hooks/useRepairRequests";
 import { useQuery } from "@tanstack/react-query";
 import { mechanicAPI } from "@/lib/api/mechanic";
+import { getApiErrorMessage } from "@/utils/errorMessages";
 import AnimatedErrorCard from "@/components/AnimatedErrorCard";
 import { useVehicleMakes } from "@/hooks/useVehicleMakes";
 import ProfileCompletionModal from "@/components/modals/ProfileCompletionModal";
@@ -35,8 +37,8 @@ import BiddingCarousel from "@/components/bidding/BiddingCarousel";
 import SpecialistIconBtn from "@/components/SpecialistIconBtn";
 import { useMechanicOrderNotifications } from "@/hooks/useMechanicOrderNotifications";
 import { useNotificationWebSocket } from "@/hooks/useNotificationWebSocket";
-import { registerForPushNotificationsAsync } from "@/services/notificationService";
-import { NewOrderBanner } from "@/components/NewOrderBanner";
+import { registerPushNotificationsAndSyncDevice } from "@/services/notificationService";
+import { NewOrderBanner, MechanicRequestItem } from "@/components/NewOrderBanner";
 import { 
   ExclamationCircleIcon, 
   ChevronRightIcon, 
@@ -200,54 +202,17 @@ const MechanicHome = () => {
   const isMechanic = true;
 
   // ── Notifications ──────────────────────────────────────────────────────────
-  // Request permission and get push token once on mount
+  // Sync push device token on mount (deduplicated globally)
   useEffect(() => {
-    registerForPushNotificationsAsync().then(async (token) => {
-      if (token) {
-        console.log("🚀 MECHANIC PUSH TOKEN:", token);
-        try {
-          await mechanicAPI.registerPushDevice(token);
-          console.log("✅ Device registered for push notifications");
-        } catch (error) {
-          console.error("❌ Failed to register push device:", error);
-        }
-      }
-    });
+    registerPushNotificationsAndSyncDevice();
   }, []);
-
-  // ── Real-time Notifications (WebSocket) ──────────────────────────────────
-  useNotificationWebSocket({
-    enabled: isMechanic,
-    onNewOrder: (order) => {
-      console.log("🚀 Real-time order received via WebSocket:", order);
-      setActiveNewOrder({
-        id: order.id ? String(order.id) : undefined,
-        customerName: order.customer_name || (order.customer ? `${order.customer.first_name} ${order.customer.last_name}` : 'New Customer'),
-        vehicleMake: order.vehicle_make || order.make,
-        vehicleModel: order.vehicle_model || order.model,
-        serviceType: order.service_type,
-      });
-    },
-    onOrderRemoved: (orderId) => {
-      setActiveNewOrder((prev: any) => {
-        if (!prev || !prev.id || prev.id === String(orderId)) {
-          return null;
-        }
-        return prev;
-      });
-    },
-  });
-
-  // Fallback Polling removed in favor of WebSocket
-  // useMechanicOrderNotifications(true); 
-  // ───────────────────────────────────────────────────────────────────────────
 
   const isProfileComplete = useProfileStore((state) => state.isProfileComplete);
   const setIsProfileComplete = useProfileStore((state) => state.setIsProfileComplete);
   const isNewSwitch = useProfileStore((state) => state.isNewSwitch);
   const setIsNewSwitch = useProfileStore((state) => state.setIsNewSwitch);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [activeNewOrder, setActiveNewOrder] = useState<any>(null);
+  const [activeOrders, setActiveOrders] = useState<MechanicRequestItem[]>([]);
 
   const hasShownModalRef = useRef(false);
   const timerIdRef = useRef<NodeJS.Timeout | null>(null);
@@ -297,15 +262,16 @@ const MechanicHome = () => {
   );
   const isPendingApproval = isComplete && !isApproved && !isRejected;
 
-  // Fetch repair requests from API with status="pending" filter
+  // ── Queries & State ────────────────────────────────────────────────────────
+  // Fetch repair requests from API (all requests; WebSocket delivers real-time updates)
   const {
-    data: pendingRequestsData,
-    isLoading: pendingLoading,
-    error: pendingError,
-    refetch: refetchPending
-  } = useRepairRequests('pending', isMechanic);
+    data: repairRequestsData,
+    isLoading: requestsLoading,
+    error: requestsError,
+    refetch: refetchRequests
+  } = useRepairRequests(undefined, isMechanic);
 
-  // New query for vehicle expertise
+  // Query for vehicle expertise
   const {
     data: expertiseData,
     isLoading: isExpertiseLoading,
@@ -314,45 +280,10 @@ const MechanicHome = () => {
     queryKey: ["vehicleExpertise"],
     queryFn: () => mechanicAPI.getVehicleExpertise(),
     enabled: !!isMechanic,
+    staleTime: 5 * 60 * 1000,
   });
 
   const expertise = expertiseData?.results || expertiseData?.data || (Array.isArray(expertiseData) ? expertiseData : []);
-
-  // Check if pending requests are empty (only check after loading is done)
-  const hasPendingRequests = !pendingLoading && pendingRequestsData?.data && Array.isArray(pendingRequestsData.data) && pendingRequestsData.data.length > 0;
-
-  // Fetch all repair requests if no pending requests available (conditionally enabled)
-  const {
-    data: allRequestsData,
-    isLoading: allLoading,
-    error: allError,
-    refetch: refetchAll
-  } = useQuery({
-    queryKey: ['mechanic', 'repair-requests', 'all-fallback'],
-    queryFn: () => mechanicAPI.getRepairRequests(undefined),
-    enabled: !pendingLoading && !hasPendingRequests, // Only fetch if pending is done and empty
-    staleTime: 2 * 60 * 1000,
-    gcTime: 5 * 60 * 1000,
-    retry: 1,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    refetchInterval: false,
-    networkMode: 'online',
-  });
-
-  // Determine which data to use
-  const repairRequestsData = hasPendingRequests ? pendingRequestsData : allRequestsData;
-  const requestsLoading = hasPendingRequests ? pendingLoading : (pendingLoading || allLoading);
-  const requestsError = hasPendingRequests ? pendingError : allError;
-
-  // Combined refetch function
-  const refetchRequests = () => {
-    refetchPending();
-    if (!hasPendingRequests) {
-      refetchAll();
-    }
-  };
 
   // Fetch mechanic analytics from API
   const {
@@ -361,8 +292,304 @@ const MechanicHome = () => {
     refetch: refetchAnalytics
   } = useMechanicAnalytics(isMechanic);
 
+  // ── Screen Focus & AppState Re-validation ──────────────────────────────────
+  const refetchRequestsRef = useRef(refetchRequests);
+  refetchRequestsRef.current = refetchRequests;
+
+  const refetchAnalyticsRef = useRef(refetchAnalytics);
+  refetchAnalyticsRef.current = refetchAnalytics;
+
+  const refetchExpertiseRef = useRef(refetchExpertise);
+  refetchExpertiseRef.current = refetchExpertise;
+
+  // Auto-refresh requests & analytics once when returning to this tab
+  useFocusEffect(
+    useCallback(() => {
+      refetchRequestsRef.current();
+      refetchAnalyticsRef.current();
+      refetchExpertiseRef.current();
+    }, [])
+  );
+
+  // Auto-refresh when bringing the app to foreground from background/sleep
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        refetchRequestsRef.current();
+        refetchAnalyticsRef.current();
+        refetchExpertiseRef.current();
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   // Fetch vehicle makes to resolve make/model names
   const { data: vehicleMakes } = useVehicleMakes();
+
+  // Helper function to get make name from ID
+  const getMakeName = (makeId: string | number) => {
+    if (!vehicleMakes || !makeId) return '';
+    const make = vehicleMakes.find((m) => m.id.toString() === makeId.toString());
+    return make?.name || `Make ID: ${makeId}`;
+  };
+
+  // Helper function to get model name from ID
+  const getModelName = (makeId: string | number, modelId: string | number) => {
+    if (!vehicleMakes || !makeId || !modelId) return '';
+    const make = vehicleMakes.find((m) => m.id.toString() === makeId.toString());
+    const model = make?.models?.find((m) => m.id.toString() === modelId.toString());
+    return model?.name || `Model ID: ${modelId}`;
+  };
+
+  // Helper to test if a string is a raw UUID
+  const isUuidLike = (val?: string | null): boolean => {
+    if (!val) return false;
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val.trim()) || val.length >= 26;
+  };
+
+  // ── Real-time Notifications (WebSocket) ──────────────────────────────────
+  useNotificationWebSocket({
+    enabled: isMechanic,
+    triggerPush: true,
+    onNewOrder: (order) => {
+      console.log("🚀 Real-time order received via WebSocket:", order);
+      // Resolve the true Repair Request UUID:
+      // Note: Backend notification records often pass the Notification DB row ID (e.g. 329) as `id`,
+      // while the actual Repair Request UUID is in `related_object_id`, `repair_request_id`, etc.
+      const candidateIds = [
+        order?.repair_request_id,
+        order?.related_object_id,
+        order?.repair_request,
+        order?.data?.repair_request_id,
+        order?.data?.related_object_id,
+        order?.data?.repair_request,
+        order?.data?.id,
+        order?.notification?.related_object_id,
+        order?.notification?.repair_request_id,
+        order?.notification?.related_id,
+        order?.order_id,
+        order?.request_id,
+        order?.id,
+      ].filter(Boolean);
+
+      // 1. Check if any candidate is a genuine UUID
+      const uuidCandidate = candidateIds.find((id) => isUuidLike(String(id)));
+
+      // 2. Check if the order matches any item in repairRequestsData cache
+      const cachedOrdersList = Array.isArray(repairRequestsData)
+        ? repairRequestsData
+        : Array.isArray(repairRequestsData?.data)
+        ? repairRequestsData.data
+        : Array.isArray(repairRequestsData?.results)
+        ? repairRequestsData.results
+        : [];
+
+      const cachedMatch = cachedOrdersList.find((item: any) => {
+        if (!item?.id) return false;
+        if (uuidCandidate && String(item.id) === String(uuidCandidate)) return true;
+        return candidateIds.some(
+          (cand) => String(cand) === String(item.id) || String(cand) === String(item.order_number)
+        );
+      });
+
+      // If we found a cached match with a UUID id, use that UUID!
+      const resolvedUuid = uuidCandidate
+        ? String(uuidCandidate)
+        : cachedMatch?.id && isUuidLike(String(cachedMatch.id))
+        ? String(cachedMatch.id)
+        : String(candidateIds[0] || Date.now());
+
+      const orderId = resolvedUuid;
+
+      // Resolve make & model names if IDs are passed
+      const rawMake = order?.vehicle_make || order?.make || cachedMatch?.vehicle_make;
+      const rawModel = order?.vehicle_model || order?.model || cachedMatch?.vehicle_model;
+      const makeName = rawMake ? (isNaN(Number(rawMake)) ? String(rawMake) : getMakeName(rawMake)) : '';
+      const modelName = rawModel ? (isNaN(Number(rawModel)) ? String(rawModel) : getModelName(rawMake, rawModel)) : '';
+
+      const matchedCustName = cachedMatch?.customer
+        ? `${cachedMatch.customer.first_name || ''} ${cachedMatch.customer.last_name || ''}`.trim()
+        : cachedMatch?.customer_name;
+
+      const customerName =
+        matchedCustName ||
+        order?.customer_name ||
+        (order?.customer
+          ? `${order.customer.first_name || ''} ${order.customer.last_name || ''}`.trim()
+          : '');
+
+      // Sanitize raw UUID service type names (e.g. "Service: e1131629-...")
+      const rawServiceType = order?.service_type || order?.service_name || cachedMatch?.service_name || '';
+      const sanitizedServiceType = isUuidLike(rawServiceType) ? 'Express Repair' : (rawServiceType || 'Express Repair');
+
+      const rawProblem =
+        order?.problem_description ||
+        order?.issue_description ||
+        order?.description ||
+        cachedMatch?.problem_description ||
+        cachedMatch?.issue_description ||
+        '';
+      const cleanProblem = isUuidLike(rawProblem) ? '' : rawProblem;
+
+      const formattedOrder: MechanicRequestItem = {
+        id: orderId,
+        orderNumber:
+          order?.order_number ||
+          cachedMatch?.order_number ||
+          (order?.id && !isUuidLike(String(order.id)) ? String(order.id) : (orderId.length > 5 ? orderId.slice(-5) : orderId)),
+        customerName: customerName || 'Customer Breakdown Request',
+        customerPhone: order?.customer?.phone_number || order?.phone_number || cachedMatch?.customer?.phone_number || '',
+        vehicleMake: makeName,
+        vehicleModel: modelName,
+        vehicleYear: order?.vehicle_year || order?.year || cachedMatch?.vehicle_year || '',
+        serviceType: sanitizedServiceType,
+        serviceAddress:
+          order?.service_address ||
+          order?.address ||
+          order?.location ||
+          cachedMatch?.service_address ||
+          'Customer Breakdown Location',
+        problemDescription: cleanProblem,
+        estimatedCost: order?.estimated_cost ?? order?.cost ?? cachedMatch?.estimated_cost ?? null,
+        eta: order?.eta || 'Immediate • ~12 mins',
+        urgency: order?.urgency || 'Express delivery',
+        createdAt: order?.created_at || new Date().toISOString(),
+        raw: {
+          ...order,
+          resolvedUuid: orderId,
+        },
+      };
+
+      setActiveOrders((prev) => {
+        const exists = prev.some((o) => o.id === orderId);
+        if (exists) {
+          return prev.map((o) => (o.id === orderId ? formattedOrder : o));
+        }
+        return [formattedOrder, ...prev];
+      });
+
+      // 2. Asynchronously fetch full repair request detail to hydrate all missing vehicle & customer fields
+      if (orderId && orderId !== 'undefined') {
+        mechanicAPI.getRepairRequestDetail(orderId).then((res: any) => {
+          const detail = res?.data || res;
+          if (detail && detail.id) {
+            const resolvedCust = detail.customer
+              ? `${detail.customer.first_name || ''} ${detail.customer.last_name || ''}`.trim()
+              : detail.customer_name;
+            const detailMake = detail.vehicle_make ? (isNaN(Number(detail.vehicle_make)) ? String(detail.vehicle_make) : getMakeName(detail.vehicle_make)) : '';
+            const detailModel = detail.vehicle_model ? (isNaN(Number(detail.vehicle_model)) ? String(detail.vehicle_model) : getModelName(detail.vehicle_make, detail.vehicle_model)) : '';
+            
+            setActiveOrders((prev) =>
+              prev.map((o) => {
+                if (o.id !== orderId) return o;
+                return {
+                  ...o,
+                  customerName: (resolvedCust && resolvedCust !== 'Customer Breakdown Request' ? resolvedCust : o.customerName),
+                  customerPhone: detail.customer?.phone_number || detail.phone_number || o.customerPhone,
+                  vehicleMake: detailMake || o.vehicleMake,
+                  vehicleModel: detailModel || o.vehicleModel,
+                  vehicleYear: detail.vehicle_year || detail.year || o.vehicleYear,
+                  serviceAddress: detail.service_address || detail.address || detail.location || o.serviceAddress,
+                  problemDescription: detail.problem_description || detail.issue_description || o.problemDescription,
+                  estimatedCost: detail.estimated_cost ?? o.estimatedCost,
+                  serviceType: (detail.service_name || (!isUuidLike(detail.service_type) ? detail.service_type : null)) || o.serviceType,
+                  orderNumber: detail.order_number || o.orderNumber,
+                };
+              })
+            );
+          }
+        }).catch(() => {});
+      }
+
+      // Immediately refresh the requests list & analytics in real time
+      refetchRequests();
+      refetchAnalytics();
+    },
+    onOrderRemoved: (orderId) => {
+      setActiveOrders((prev) => prev.filter((o) => o.id !== String(orderId)));
+      refetchRequests();
+      refetchAnalytics();
+    },
+    onRepairUpdate: (orderId, _status, _data) => {
+      refetchRequests();
+      refetchAnalytics();
+
+      const targetId = orderId ? String(orderId) : null;
+      if (targetId) {
+        mechanicAPI.getRepairRequestDetail(targetId).then((res: any) => {
+          const detail = res?.data || res;
+          if (detail && detail.id) {
+            const resolvedCust = detail.customer
+              ? `${detail.customer.first_name || ''} ${detail.customer.last_name || ''}`.trim()
+              : detail.customer_name;
+            const detailMake = detail.vehicle_make ? (isNaN(Number(detail.vehicle_make)) ? String(detail.vehicle_make) : getMakeName(detail.vehicle_make)) : '';
+            const detailModel = detail.vehicle_model ? (isNaN(Number(detail.vehicle_model)) ? String(detail.vehicle_model) : getModelName(detail.vehicle_make, detail.vehicle_model)) : '';
+
+            setActiveOrders((prev) =>
+              prev.map((o) => {
+                if (o.id !== targetId) return o;
+                return {
+                  ...o,
+                  customerName: (resolvedCust && resolvedCust !== 'Customer Breakdown Request' ? resolvedCust : o.customerName),
+                  customerPhone: detail.customer?.phone_number || detail.phone_number || o.customerPhone,
+                  vehicleMake: detailMake || o.vehicleMake,
+                  vehicleModel: detailModel || o.vehicleModel,
+                  vehicleYear: detail.vehicle_year || detail.year || o.vehicleYear,
+                  serviceAddress: detail.service_address || detail.address || detail.location || o.serviceAddress,
+                  problemDescription: detail.problem_description || detail.issue_description || o.problemDescription,
+                  estimatedCost: detail.estimated_cost ?? o.estimatedCost,
+                  serviceType: (detail.service_name || (!isUuidLike(detail.service_type) ? detail.service_type : null)) || o.serviceType,
+                  orderNumber: detail.order_number || o.orderNumber,
+                };
+              })
+            );
+          }
+        }).catch(() => {});
+      }
+    },
+  });
+
+  // ── Auto-sync active order banner with freshly fetched repairRequestsData ──
+  useEffect(() => {
+    if (!repairRequestsData || activeOrders.length === 0) return;
+    const ordersArray = Array.isArray(repairRequestsData)
+      ? repairRequestsData
+      : Array.isArray(repairRequestsData?.data)
+      ? repairRequestsData.data
+      : Array.isArray(repairRequestsData?.results)
+      ? repairRequestsData.results
+      : [];
+
+    if (ordersArray.length === 0) return;
+
+    setActiveOrders((prevOrders) =>
+      prevOrders.map((active) => {
+        const match = ordersArray.find((item: any) => String(item.id) === String(active.id));
+        if (!match) return active;
+
+        const custName = match.customer
+          ? `${match.customer.first_name || ''} ${match.customer.last_name || ''}`.trim()
+          : match.customer_name;
+        const make = match.vehicle_make ? (isNaN(Number(match.vehicle_make)) ? String(match.vehicle_make) : getMakeName(match.vehicle_make)) : '';
+        const model = match.vehicle_model ? (isNaN(Number(match.vehicle_model)) ? String(match.vehicle_model) : getModelName(match.vehicle_make, match.vehicle_model)) : '';
+
+        return {
+          ...active,
+          customerName: custName || active.customerName,
+          customerPhone: match.customer?.phone_number || active.customerPhone,
+          vehicleMake: make || active.vehicleMake,
+          vehicleModel: model || active.vehicleModel,
+          vehicleYear: match.vehicle_year || active.vehicleYear,
+          serviceAddress: match.service_address || match.address || active.serviceAddress,
+          problemDescription: match.problem_description || match.issue_description || active.problemDescription,
+          estimatedCost: match.estimated_cost ?? active.estimatedCost,
+          serviceType: (match.service_name || (!isUuidLike(match.service_type) ? match.service_type : null)) || active.serviceType,
+        };
+      })
+    );
+  }, [repairRequestsData]);
 
   // Mutations for accepting/declining requests
   const acceptRequestMutation = useAcceptRepairRequest();
@@ -373,31 +600,29 @@ const MechanicHome = () => {
   const [actionType, setActionType] = useState<MechanicActionType | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  // Helper function to get make name from ID
-  const getMakeName = (makeId: string | number) => {
-    if (!vehicleMakes || !makeId) return 'N/A';
-    const make = vehicleMakes.find((m) => m.id.toString() === makeId.toString());
-    return make?.name || `Make ID: ${makeId}`;
-  };
-
-  // Helper function to get model name from ID
-  const getModelName = (makeId: string | number, modelId: string | number) => {
-    if (!vehicleMakes || !makeId || !modelId) return 'N/A';
-    const make = vehicleMakes.find((m) => m.id.toString() === makeId.toString());
-    const model = make?.models?.find((m) => m.id.toString() === modelId.toString());
-    return model?.name || `Model ID: ${modelId}`;
-  };
-
   // Transform API data to match OrderCard interface
   const currentOrders: Order[] = (() => {
     try {
-      if (!repairRequestsData?.data) {
+      if (!repairRequestsData) {
         return [];
       }
 
-      const ordersArray = Array.isArray(repairRequestsData.data) 
-        ? repairRequestsData.data 
+      const rawOrdersArray = Array.isArray(repairRequestsData)
+        ? repairRequestsData
+        : Array.isArray(repairRequestsData.data)
+        ? repairRequestsData.data
+        : Array.isArray(repairRequestsData.results)
+        ? repairRequestsData.results
         : [];
+
+      // Prioritize pending orders at the top, then newest by date
+      const ordersArray = [...rawOrdersArray].sort((a: any, b: any) => {
+        const isAPending = a.status === 'pending';
+        const isBPending = b.status === 'pending';
+        if (isAPending && !isBPending) return -1;
+        if (!isAPending && isBPending) return 1;
+        return new Date(b.created_at || b.requested_at || 0).getTime() - new Date(a.created_at || a.requested_at || 0).getTime();
+      });
 
       return ordersArray.map((request: any) => {
         // Get customer name
@@ -452,22 +677,81 @@ const MechanicHome = () => {
     }
   })();
 
+  // Helper to ensure an order ID is always converted to its true Repair Request UUID
+  const resolveRepairRequestUuid = (rawId: string | null | undefined): string => {
+    if (!rawId) return '';
+    const strId = String(rawId);
+    if (isUuidLike(strId)) return strId;
+
+    // 1. Look in activeOrders
+    const activeOrder = activeOrders.find((o) => o.id === strId || o.orderNumber === strId);
+    if (activeOrder) {
+      if (activeOrder.raw?.resolvedUuid && isUuidLike(activeOrder.raw.resolvedUuid)) {
+        return String(activeOrder.raw.resolvedUuid);
+      }
+      const rawCandidates = [
+        activeOrder.raw?.repair_request_id,
+        activeOrder.raw?.related_object_id,
+        activeOrder.raw?.repair_request,
+        activeOrder.raw?.data?.repair_request_id,
+        activeOrder.raw?.data?.related_object_id,
+        activeOrder.raw?.notification?.related_object_id,
+        activeOrder.raw?.order_id,
+        activeOrder.raw?.request_id,
+        activeOrder.raw?.data?.id,
+      ].filter(Boolean);
+      const found = rawCandidates.find((c) => isUuidLike(String(c)));
+      if (found) return String(found);
+    }
+
+    // 2. Look in repairRequestsData cache
+    const rawOrdersArray = Array.isArray(repairRequestsData)
+      ? repairRequestsData
+      : Array.isArray(repairRequestsData?.data)
+      ? repairRequestsData.data
+      : Array.isArray(repairRequestsData?.results)
+      ? repairRequestsData.results
+      : [];
+
+    const foundInCache = rawOrdersArray.find((item: any) => {
+      return (
+        String(item.id) === strId ||
+        String(item.order_number) === strId ||
+        String(item.notification_id) === strId ||
+        String(item.repair_request_id) === strId
+      );
+    });
+    if (foundInCache?.id && isUuidLike(String(foundInCache.id))) {
+      return String(foundInCache.id);
+    }
+
+    // 3. Fallback to top pending repair request in cache
+    const pendingOrders = rawOrdersArray.filter((o: any) => o.status === 'pending' && isUuidLike(String(o.id)));
+    if (pendingOrders.length > 0) {
+      return String(pendingOrders[0].id);
+    }
+
+    return strId;
+  };
+
   const openActionConfirmation = (action: MechanicActionType, orderId: string) => {
+    const targetId = resolveRepairRequestUuid(orderId);
     setActionType(action);
-    setSelectedOrderId(orderId);
+    setSelectedOrderId(targetId);
     setActionModalVisible(true);
   };
 
   const handleConfirmAction = async () => {
     if (!selectedOrderId || !actionType) return;
+    const targetOrderId = resolveRepairRequestUuid(selectedOrderId);
 
     try {
       if (actionType === 'accept') {
-        await acceptRequestMutation.mutateAsync(selectedOrderId);
-        console.log("Request accepted:", selectedOrderId);
+        await acceptRequestMutation.mutateAsync(targetOrderId);
+        console.log("Request accepted:", targetOrderId);
       } else if (actionType === 'decline') {
-        await declineRequestMutation.mutateAsync(selectedOrderId);
-        console.log("Request declined:", selectedOrderId);
+        await declineRequestMutation.mutateAsync(targetOrderId);
+        console.log("Request declined:", targetOrderId);
       }
 
       setActionModalVisible(false);
@@ -479,23 +763,43 @@ const MechanicHome = () => {
       setActionType(null);
       setSelectedOrderId(null);
       refetchRequests();
-      const rawMsg = error?.response?.data?.message || error?.message || '';
-      const isAlreadyTaken =
-        rawMsg.toLowerCase().includes('accept') ||
-        rawMsg.toLowerCase().includes('taken') ||
-        rawMsg.toLowerCase().includes('assigned') ||
-        rawMsg.toLowerCase().includes('status') ||
-        rawMsg.toLowerCase().includes('pending') ||
-        error?.response?.status === 400 ||
-        error?.response?.status === 404 ||
-        error?.response?.status === 409;
 
-      Alert.alert(
-        "Request Unavailable",
-        isAlreadyTaken
-          ? "This repair request has already been accepted by another specialist or cancelled."
-          : (rawMsg || "This request could not be processed. Please refresh.")
-      );
+      // Extract raw API error message safely
+      const apiData = error?.response?.data;
+      const rawApiMsg =
+        (typeof apiData?.message === 'string' ? apiData.message : null) ||
+        (typeof apiData?.detail === 'string' ? apiData.detail : null) ||
+        (typeof apiData?.error === 'string' ? apiData.error : null) ||
+        (Array.isArray(apiData?.non_field_errors) ? String(apiData.non_field_errors[0]) : null) ||
+        (typeof error?.message === 'string' ? error.message : '');
+
+      const lowerMsg = (rawApiMsg || '').toLowerCase();
+      const status = error?.response?.status;
+
+      // Truly taken or cancelled orders
+      const isAlreadyTaken =
+        lowerMsg.includes('already accepted') ||
+        lowerMsg.includes('already taken') ||
+        lowerMsg.includes('accepted by another') ||
+        lowerMsg.includes('assigned to another') ||
+        lowerMsg.includes('already assigned') ||
+        lowerMsg.includes('no longer available') ||
+        (lowerMsg.includes('cancelled') && !lowerMsg.includes('cancellation')) ||
+        status === 404 ||
+        status === 410;
+
+      if (isAlreadyTaken) {
+        Alert.alert(
+          "Request Unavailable",
+          "This repair request has already been accepted by another specialist or cancelled."
+        );
+      } else {
+        const friendlyMsg = getApiErrorMessage(error, 'general');
+        Alert.alert(
+          actionType === 'accept' ? "Cannot Accept Request" : "Action Failed",
+          rawApiMsg || friendlyMsg || "This request could not be processed. Please refresh."
+        );
+      }
     }
   };
 
@@ -510,7 +814,8 @@ const MechanicHome = () => {
       setShowProfileModal(true);
       return;
     }
-    openActionConfirmation('accept', orderId);
+    const resolvedId = resolveRepairRequestUuid(orderId);
+    openActionConfirmation('accept', resolvedId);
   };
 
   const handleDecline = (orderId: string) => {
@@ -518,7 +823,8 @@ const MechanicHome = () => {
       setShowProfileModal(true);
       return;
     }
-    openActionConfirmation('decline', orderId);
+    const resolvedId = resolveRepairRequestUuid(orderId);
+    openActionConfirmation('decline', resolvedId);
   };
 
   const handleView = (orderId: string) => {
@@ -526,31 +832,115 @@ const MechanicHome = () => {
       setShowProfileModal(true);
       return;
     }
+    const resolvedId = resolveRepairRequestUuid(orderId);
     router.push({
       pathname: mechanicRoutes.orderDetails,
       params: {
-        orderId: orderId,
+        orderId: resolvedId,
       },
     });
   };
 
 
-  // Get average rating from API, default to 0
-  const averageRating = analyticsData?.data?.ratings?.avg_rating ?? 0;
+  // ── Analytics Computation ──────────────────────────────────────────────────
+  const analytics = useMemo(() => {
+    const rawData = analyticsData?.data || analyticsData || {};
+    const summary = rawData.summary || {};
+    const ratings = rawData.ratings || {};
+    const timeWindow = rawData.time_window || {};
+    const breakdown = rawData.breakdown || {};
+    const statusCounts = breakdown.requests_by_status || {};
 
-  // Get total reviews count from API
-  const totalReviews = String(analyticsData?.data?.ratings?.total_reviews || 0);
+    const totalRequests = Number(summary.total_repair_requests || 0);
+
+    // Completed: include verified jobs which count as completed in the workflow
+    const completedRequests =
+      Number(summary.completed_repair_requests || 0) +
+      Number(statusCounts.verify_completed || 0) +
+      Number(statusCounts.completed || 0);
+
+    // In-progress / Active: accepted + in_transit + arrived + in_progress
+    const inProgressRequests =
+      Number(summary.in_progress_repair_requests || 0) +
+      Number(statusCounts.in_progress || 0) +
+      Number(statusCounts.accepted || 0) +
+      Number(statusCounts.in_transit || 0) +
+      Number(statusCounts.arrived || 0);
+
+    // Cancelled / Declined
+    const cancelledRequests =
+      Number(summary.cancelled_repair_requests || 0) +
+      Number(statusCounts.cancelled || 0) +
+      Number(statusCounts.declined || 0);
+
+    // Completion Rate
+    const completionRate = totalRequests > 0
+      ? Math.round((completedRequests / totalRequests) * 100)
+      : Number(summary.completion_rate || 0);
+
+    // Distinct metrics
+    const distinctCustomers = Number(summary.distinct_customers || 0);
+    const distinctMakes = Number(summary.distinct_vehicle_makes || 0);
+    const distinctModels = Number(summary.distinct_vehicle_models || 0);
+
+    // Time window
+    const last7Days = Number(timeWindow.last_7_days_requests || 0);
+    const last30Days = Number(timeWindow.last_30_days_requests || 0);
+
+    // Ratings
+    const avgRating = Number(ratings.avg_rating || 0);
+    const totalReviews = Number(ratings.total_reviews || 0);
+    const ratingDist = ratings.rating_distribution || {};
+
+    // Top Vehicle Makes & Models
+    const topMakes = Array.isArray(breakdown.top_vehicle_makes) ? breakdown.top_vehicle_makes : [];
+    const topModels = Array.isArray(breakdown.top_vehicle_models) ? breakdown.top_vehicle_models : [];
+
+    return {
+      totalRequests,
+      completedRequests,
+      inProgressRequests,
+      cancelledRequests,
+      completionRate,
+      distinctCustomers,
+      distinctMakes,
+      distinctModels,
+      last7Days,
+      last30Days,
+      avgRating,
+      totalReviews,
+      ratingDist,
+      topMakes,
+      topModels,
+    };
+  }, [analyticsData]);
+
+  const averageRating = analytics.avgRating;
+  const totalReviews = String(analytics.totalReviews);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
       <StatusBar style="dark" />
       
       <NewOrderBanner 
-        order={activeNewOrder} 
-        onClose={() => setActiveNewOrder(null)}
-        onView={() => {
-          setActiveNewOrder(null);
-          // Optional: automatically navigate to orders or specific order
+        orders={activeOrders} 
+        onClose={() => setActiveOrders([])}
+        onDismissOrder={(orderId) => {
+          setActiveOrders((prev) => prev.filter((o) => o.id !== orderId));
+        }}
+        onView={(order) => {
+          setActiveOrders((prev) => prev.filter((o) => o.id !== order.id));
+          if (order.id) {
+            handleView(order.id);
+          }
+        }}
+        onAccept={(orderId) => {
+          setActiveOrders((prev) => prev.filter((o) => o.id !== orderId));
+          handleAccept(orderId);
+        }}
+        onDecline={(orderId) => {
+          setActiveOrders((prev) => prev.filter((o) => o.id !== orderId));
+          handleDecline(orderId);
         }}
       />
 
@@ -572,7 +962,7 @@ const MechanicHome = () => {
         }}
         refreshControl={
           <RefreshControl
-            refreshing={pendingLoading || analyticsLoading || isExpertiseLoading}
+            refreshing={requestsLoading || analyticsLoading || isExpertiseLoading}
             onRefresh={() => {
               refetchRequests();
               refetchAnalytics();
@@ -592,8 +982,7 @@ const MechanicHome = () => {
           <BiddingCarousel containerPadding={20} fallbackVariant="mechanic" />
 
           {/* Metrics */}
-          <View style={{ flexDirection: "row", gap: 8 }}
-          className="py-4">
+          <View style={{ flexDirection: "row", gap: 8 }} className="py-4">
             {analyticsLoading ? (
               <>
                 <MetricCardSkeleton />
@@ -604,40 +993,40 @@ const MechanicHome = () => {
               <>
                 <MetricCard
                   label="Total Requests"
-                  value={analyticsData?.data?.summary?.total_repair_requests || 0}
-                  sublabel="received"
+                  value={analytics.totalRequests}
+                  sublabel={analytics.last7Days > 0 ? `${analytics.last7Days} this week` : "received"}
                   accentColor="#0F172A"
                 />
                 <MetricCard
                   label="Completed"
-                  value={analyticsData?.data?.summary?.completed_repair_requests || 0}
-                  sublabel="tasks finished"
+                  value={analytics.completedRequests}
+                  sublabel={analytics.completionRate > 0 ? `${analytics.completionRate}% rate` : "tasks finished"}
                   accentColor="#16A34A"
                 />
                 <MetricCard
                   label="In Progress"
-                  value={analyticsData?.data?.summary?.in_progress_repair_requests || 0}
-                  sublabel="active work"
+                  value={analytics.inProgressRequests}
+                  sublabel={analytics.inProgressRequests > 0 ? "active tasks" : "ready for jobs"}
                   accentColor="#D30309"
                 />
               </>
             )}
           </View>
 
-          {/* Compact Rating Strip */}
+          {/* Compact Rating Strip with Customer Reach */}
           {!analyticsLoading && (
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => router.push(mechanicRoutes.reviews as any)}
               className="flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-4 py-3 mb-4"
             >
-              <View className="flex-row items-center gap-2">
+              <View className="flex-row items-center gap-3">
                 <Text style={{ fontSize: 28, fontFamily: 'NunitoExtraBold', color: '#0F172A' }}>
                   {averageRating > 0 ? averageRating.toFixed(1) : '0'}
                 </Text>
                 <View>
                   <View className="flex-row gap-0.5 mb-0.5">
-                    {[1,2,3,4,5].map(s => (
+                    {[1, 2, 3, 4, 5].map((s) => (
                       <MaterialCommunityIcons
                         key={s}
                         name={s <= Math.round(averageRating) ? 'star' : 'star-outline'}
@@ -646,9 +1035,16 @@ const MechanicHome = () => {
                       />
                     ))}
                   </View>
-                  <Text className="text-[11px] font-NunitoMedium text-slate-400">
-                    {totalReviews} review{Number(totalReviews) !== 1 ? 's' : ''}
-                  </Text>
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-[11px] font-NunitoMedium text-slate-400">
+                      {totalReviews} review{Number(totalReviews) !== 1 ? 's' : ''}
+                    </Text>
+                    {analytics.distinctCustomers > 0 && (
+                      <Text className="text-[11px] font-NunitoBold text-emerald-600">
+                        • {analytics.distinctCustomers} customer{analytics.distinctCustomers !== 1 ? 's' : ''} served
+                      </Text>
+                    )}
+                  </View>
                 </View>
               </View>
               <View className="flex-row items-center gap-1">
@@ -658,12 +1054,87 @@ const MechanicHome = () => {
             </TouchableOpacity>
           )}
 
+          {/* Top Vehicle Makes Serviced */}
+          {!analyticsLoading && analytics.topMakes.length > 0 && (
+            <View className="bg-white border border-gray-200 rounded-2xl p-4 mb-4">
+              <View className="flex-row items-center justify-between mb-2.5">
+                <View className="flex-row items-center">
+                  <MaterialCommunityIcons name="car-wrench" size={16} color="#D30309" />
+                  <Text className="text-xs font-NunitoExtraBold text-gray-900 ml-1.5 uppercase tracking-wider">
+                    Vehicle Specialization
+                  </Text>
+                </View>
+                <Text className="text-[10px] font-NunitoBold text-gray-400">
+                  {analytics.distinctMakes} {analytics.distinctMakes === 1 ? 'brand' : 'brands'} handled
+                </Text>
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row">
+                {analytics.topMakes.map((item: any, idx: number) => {
+                  const makeName = getMakeName(item.make) || `Make #${item.make}`;
+                  return (
+                    <View
+                      key={idx}
+                      className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 mr-2.5 flex-row items-center"
+                    >
+                      <Text className="text-xs font-NunitoBold text-gray-800">
+                        {makeName}
+                      </Text>
+                      <View className="ml-2 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md">
+                        <Text className="text-[10px] font-NunitoExtraBold text-[#D30309]">
+                          {item.count} {item.count === 1 ? 'job' : 'jobs'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
           {/* Repair Requests Section */}
           <View>
             <View className="flex-row items-center justify-between my-4">
-              <Text className="text-lg font-NunitoBold text-gray-900">
-                Recent Repair Requests
-              </Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onLongPress={() => {
+                  if (__DEV__) {
+                    // Quick test trigger to preview multiple requests modal in dev
+                    setActiveOrders([
+                      {
+                        id: '17899',
+                        orderNumber: '17899',
+                        customerName: 'Preston Mechanics Hub',
+                        vehicleMake: 'Toyota',
+                        vehicleModel: 'Camry LE',
+                        vehicleYear: '2019',
+                        serviceAddress: '8502 Preston Rd. Inglewood, Maine 98380',
+                        problemDescription: 'Alternator fault, vehicle stalling in traffic',
+                        estimatedCost: 25000,
+                        eta: '10.50am',
+                        urgency: 'Express delivery',
+                      },
+                      {
+                        id: '21184',
+                        orderNumber: '21184',
+                        customerName: 'Sarah Jenkins',
+                        vehicleMake: 'Mercedes-Benz',
+                        vehicleModel: 'C300',
+                        vehicleYear: '2022',
+                        serviceAddress: '2118 Thornridge Cir. Syracuse, Connecticut 35624',
+                        problemDescription: 'Coolant hose burst, roadside breakdown assistance',
+                        estimatedCost: 35000,
+                        eta: 'Immediate • ~8 mins',
+                        urgency: 'Express delivery',
+                      },
+                    ]);
+                  }
+                }}
+              >
+                <Text className="text-lg font-NunitoBold text-gray-900">
+                  Recent Repair Requests
+                </Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => router?.push("./order")}>
                 <Text className="text-red-600 font-NunitoBold">View All</Text>
               </TouchableOpacity>

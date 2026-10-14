@@ -314,17 +314,7 @@ const MechanicOrderDetails = () => {
       setIsVerifyingOtp(false);
       setOtpModalVisible(false);
       showSuccess('Verified', 'Arrival code verified successfully. Starting repair...');
-      
-      // Auto-trigger status update to in_progress
-      try {
-        await updateStatusMutation.mutateAsync({ 
-          requestId: orderId, 
-          status: 'in_progress' 
-        });
-      } catch (statusError) {
-        console.error('Failed to auto-update status:', statusError);
-      }
-      
+      await refetch();
     } catch (error: any) {
       setIsVerifyingOtp(false);
       const errorMessage = getApiErrorMessage(error);
@@ -336,32 +326,9 @@ const MechanicOrderDetails = () => {
     if (!orderId) return;
 
     Alert.alert(
-      'Bypass OTP Verification?',
-      "Use this only if the customer's phone is dead, offline, or unavailable. Ensure you have established contact with the client before proceeding.",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Proceed',
-          onPress: async () => {
-            setIsVerifyingOtp(true);
-            setOtpError(null);
-            try {
-              // Try to directly transition status to in_progress
-              await updateStatusMutation.mutateAsync({ 
-                requestId: orderId, 
-                status: 'in_progress' 
-              });
-              setOtpModalVisible(false);
-              showSuccess('Started Work', 'Bypassed verification successfully. Repair job started.');
-            } catch (err: any) {
-              const errorMessage = getApiErrorMessage(err);
-              showError('Bypass Failed', errorMessage || 'Direct status update failed. Please call support.');
-            } finally {
-              setIsVerifyingOtp(false);
-            }
-          }
-        }
-      ]
+      'Arrival Verification Required',
+      'The backend requires the 6-digit arrival code provided by the client to transition the repair to in progress. Please ask the customer to display their arrival code.',
+      [{ text: 'OK' }]
     );
   };
 
@@ -483,7 +450,16 @@ const MechanicOrderDetails = () => {
         await declineRequestMutation.mutateAsync(orderId);
         setActionModalVisible(false);
         setActionType(null);
-        showSuccess('Success', 'Repair request declined successfully.');
+      } else if (actionType === 'in_progress') {
+        setActionModalVisible(false);
+        setActionType(null);
+        if (!request?.is_otp_verified) {
+          setOtpModalVisible(true);
+        } else {
+          await refetch();
+          showSuccess('Success', 'Repair job is in progress.');
+        }
+        return;
       } else {
         // Show job completion form instead of immediate update for completed status
         if (actionType === 'completed') {
@@ -493,7 +469,7 @@ const MechanicOrderDetails = () => {
           return;
         }
 
-        // Status updates: in_transit, in_progress, completed
+        // Status updates: in_transit, arrived
         await updateStatusMutation.mutateAsync({ requestId: orderId, status: actionType });
         setActionModalVisible(false);
         setActionType(null);
@@ -501,23 +477,36 @@ const MechanicOrderDetails = () => {
       }
     } catch (error: any) {
       refetch();
-      const rawMsg = error?.response?.data?.message || error?.message || '';
+
+      const apiData = error?.response?.data;
+      const rawApiMsg =
+        (typeof apiData?.message === 'string' ? apiData.message : null) ||
+        (typeof apiData?.detail === 'string' ? apiData.detail : null) ||
+        (typeof apiData?.error === 'string' ? apiData.error : null) ||
+        (Array.isArray(apiData?.non_field_errors) ? String(apiData.non_field_errors[0]) : null) ||
+        (typeof error?.message === 'string' ? error.message : '');
+
+      const lowerMsg = (rawApiMsg || '').toLowerCase();
+      const status = error?.response?.status;
+
+      // Truly taken or cancelled orders
       const isAlreadyTaken =
-        rawMsg.toLowerCase().includes('accept') ||
-        rawMsg.toLowerCase().includes('taken') ||
-        rawMsg.toLowerCase().includes('assigned') ||
-        rawMsg.toLowerCase().includes('status') ||
-        rawMsg.toLowerCase().includes('pending') ||
-        error?.response?.status === 400 ||
-        error?.response?.status === 404 ||
-        error?.response?.status === 409;
+        lowerMsg.includes('already accepted') ||
+        lowerMsg.includes('already taken') ||
+        lowerMsg.includes('accepted by another') ||
+        lowerMsg.includes('assigned to another') ||
+        lowerMsg.includes('already assigned') ||
+        lowerMsg.includes('no longer available') ||
+        (lowerMsg.includes('cancelled') && !lowerMsg.includes('cancellation')) ||
+        status === 404 ||
+        status === 410;
 
       if (actionType === 'accept' && isAlreadyTaken) {
         showError('Request Unavailable', 'This repair request was already accepted by another specialist or cancelled.');
       } else {
         try {
           const errorMessage = getApiErrorMessage(error);
-          showError('Action failed', errorMessage);
+          showError(actionType === 'accept' ? 'Cannot Accept Request' : 'Action Failed', rawApiMsg || errorMessage);
         } catch (alertError) {
           console.error('Error displaying error message:', alertError);
           showError('Action failed', 'An error occurred. Please try again.');

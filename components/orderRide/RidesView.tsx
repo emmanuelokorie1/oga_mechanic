@@ -202,7 +202,7 @@ const RidesView: React.FC<RidesViewProps> = ({ handleScheduleRide }) => {
 
           <CustomButton
             title="Schedule a ride"
-            className="w-full bg-primary-600 rounded-xl h-[52px]"
+            className="w-full"
             onPress={handleScheduleRide}
           />
         </Animated.View>

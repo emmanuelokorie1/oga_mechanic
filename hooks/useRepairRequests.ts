@@ -1,35 +1,44 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mechanicAPI } from '@/lib/api/mechanic';
+import { useUserStore } from '@/stores/userStore';
 
 // Hook to fetch repair requests
-export const useRepairRequests = (status?: string, enabled: boolean = true) => {
+export const useRepairRequests = (
+  status?: string, 
+  enabled: boolean = true,
+  options?: { refetchInterval?: number | false }
+) => {
+  const token = useUserStore((state) => state.accessToken);
+
   return useQuery({
     queryKey: ['mechanic', 'repair-requests', status || 'all'],
     queryFn: () => mechanicAPI.getRepairRequests(status),
-    enabled: enabled,
-    staleTime: 2 * 60 * 1000,
+    enabled: enabled && !!token,
+    staleTime: 60 * 1000, // 60s cache freshness prevents repeated spam
     gcTime: 5 * 60 * 1000,
     retry: 1,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    refetchInterval: false,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false, // Prevent focus storm
+    refetchOnReconnect: true,
+    refetchInterval: options?.refetchInterval ?? false,
     networkMode: 'online',
   });
 };
 
 // Hook to fetch mechanic analytics
 export const useMechanicAnalytics = (enabled: boolean = true) => {
+  const token = useUserStore((state) => state.accessToken);
+
   return useQuery({
     queryKey: ['mechanic', 'analytics'],
     queryFn: () => mechanicAPI.getMechanicAnalytics(),
-    enabled: enabled,
-    staleTime: 5 * 60 * 1000,
+    enabled: enabled && !!token,
+    staleTime: 60 * 1000, // 60s cache freshness
     gcTime: 10 * 60 * 1000,
     retry: 1,
-    refetchOnMount: false,
+    refetchOnMount: true,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    refetchOnReconnect: true,
     networkMode: 'online',
   });
 };
@@ -67,35 +76,57 @@ export const useDeclineRepairRequest = () => {
 };
 
 // Hook to fetch user's repair requests
-export const useUserRepairRequests = (status?: string, enabled: boolean = true) => {
+export const useUserRepairRequests = (
+  status?: string, 
+  enabled: boolean = true,
+  options?: { refetchInterval?: number | false }
+) => {
+  const token = useUserStore((state) => state.accessToken);
+
   return useQuery({
     queryKey: ['user', 'repair-requests', status || 'all'],
     queryFn: () => mechanicAPI.getUserRepairRequests(status),
-    enabled: enabled,
-    staleTime: 60 * 1000, // 1 minute
+    enabled: enabled && !!token,
+    staleTime: options?.refetchInterval ? 0 : 60 * 1000,
     gcTime: 5 * 60 * 1000, // 5 minutes
     retry: 1,
+    placeholderData: (previousData) => previousData,
     refetchOnMount: true,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    refetchInterval: false,
+    refetchInterval: options?.refetchInterval ?? false,
     networkMode: 'online',
   });
 };
 
-// Hook to fetch repair request detail by ID
-export const useRepairRequestDetail = (requestId: string | undefined, pollInterval: number = 0) => {
+// Hook to fetch repair request detail by ID with smart status-aware polling
+export const useRepairRequestDetail = (requestId: string | undefined, pollInterval?: number) => {
+  const token = useUserStore((state) => state.accessToken);
+
   return useQuery({
     queryKey: ['repair-request', requestId],
     queryFn: () => mechanicAPI.getRepairRequestDetail(requestId!),
-    enabled: !!requestId,
-    staleTime: pollInterval > 0 ? 0 : 5 * 1000, // 0ms when actively tracking/polling so refetches are never blocked
+    enabled: !!requestId && !!token,
+    staleTime: 5 * 1000,
     gcTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    refetchInterval: pollInterval,
+    refetchInterval: (query) => {
+      if (!token) return false;
+      // If caller explicitly passed a poll interval (e.g. 0 to disable, or a custom number)
+      if (pollInterval !== undefined) {
+        return pollInterval > 0 ? pollInterval : false;
+      }
+      // Smart status-based polling:
+      const data = query.state.data as any;
+      const status = (data?.data?.status || data?.status || '').toLowerCase();
+      // Only poll when mechanic is actively in transit towards the customer (GPS coordinate updates)
+      if (status === 'in_transit') return 8000;
+      // For all other statuses (pending, accepted, arrived, in_progress, completed, verified, cancelled) — NO polling!
+      return false;
+    },
     networkMode: 'online',
   });
 };
@@ -108,11 +139,11 @@ export const useUpdateRepairRequest = () => {
     mutationFn: ({ requestId, payload }: { requestId: string; payload: any }) =>
       mechanicAPI.updateRepairRequest(requestId, payload),
     onSuccess: (_, variables) => {
-      // Invalidate and refetch repair request detail
-      queryClient.invalidateQueries({ queryKey: ['repair-request', variables.requestId] });
-      // Invalidate both user and mechanic repair requests list
-      queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'] });
-      queryClient.invalidateQueries({ queryKey: ['mechanic', 'repair-requests'] });
+      // Invalidate active repair request detail
+      queryClient.invalidateQueries({ queryKey: ['repair-request', variables.requestId], refetchType: 'active' });
+      // Invalidate active repair requests lists
+      queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'], refetchType: 'active' });
+      queryClient.invalidateQueries({ queryKey: ['mechanic', 'repair-requests'], refetchType: 'active' });
     },
   });
 };

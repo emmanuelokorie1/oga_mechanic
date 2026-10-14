@@ -1235,6 +1235,18 @@ export const userAPI = {
     }
   },
 
+  // Register device token for push notifications
+  registerPushDevice: async (fcmToken: string): Promise<any> => {
+    try {
+      const response = await api.post('/users/notifications/devices/', {
+        fcm_token: fcmToken,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error;
+    }
+  },
+
   submitMechanicKYC: async (formData: FormData) => {
     try {
       const response = await api.put('/users/profile/mechanic/', formData, {

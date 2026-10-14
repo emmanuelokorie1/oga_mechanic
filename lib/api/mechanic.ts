@@ -137,9 +137,31 @@ export const mechanicAPI = {
     return response.data;
   },
 
-  // Create mechanic review
-  createMechanicReview: async (mechanicId: string, payload: { data: { mechanic_id: string | number; rating: number; comment: string }; requestType: string }): Promise<any> => {
+  // Create mechanic review (POST /users/mechanics/{user_id}/reviews/)
+  createMechanicReview: async (
+    mechanicId: string,
+    payload: { data: { mechanic_id: string | number; rating: number; comment: string }; requestType?: string } | { rating: number; comment: string; [key: string]: any }
+  ): Promise<any> => {
     const response = await api.post(`/users/mechanics/${mechanicId}/reviews/`, payload);
+    return response.data;
+  },
+
+  // Update mechanic review (PUT /users/mechanics/{user_id}/reviews/{id}/)
+  updateMechanicReview: async (
+    mechanicId: string,
+    reviewId: string | number,
+    payload: { rating: number; comment: string; [key: string]: any } | { data: { rating: number; comment: string }; requestType?: string }
+  ): Promise<any> => {
+    const response = await api.put(`/users/mechanics/${mechanicId}/reviews/${reviewId}/`, payload);
+    return response.data;
+  },
+
+  // Delete mechanic review (DELETE /users/mechanics/{user_id}/reviews/{id}/)
+  deleteMechanicReview: async (
+    mechanicId: string,
+    reviewId: string | number
+  ): Promise<any> => {
+    const response = await api.delete(`/users/mechanics/${mechanicId}/reviews/${reviewId}/`);
     return response.data;
   },
 

@@ -10,8 +10,9 @@ import CustomButton from '@/components/CustomButton';
 import { routes } from '@/constants/routes';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import AnimatedErrorCard from '@/components/AnimatedErrorCard';
+import { useArrivalCodeStore } from '@/stores/arrivalCodeStore';
 import { getApiErrorMessage } from '@/utils/errorMessages';
-import { CheckCircleIcon as CheckCircleIconSolid, MapPinIcon as MapPinIconSolid } from 'react-native-heroicons/solid';
+import { CheckCircleIcon as CheckCircleIconSolid, MapPinIcon as MapPinIconSolid, StarIcon, TrashIcon } from 'react-native-heroicons/solid';
 import {
   UserIcon,
   WrenchScrewdriverIcon,
@@ -25,6 +26,7 @@ import {
   PhoneIcon,
   ChatBubbleLeftRightIcon,
   ChevronRightIcon,
+  SparklesIcon,
 } from 'react-native-heroicons/outline';
 import { useRepairRequestDetail, useCancelRepairRequest, useVerifyRepairCompletion } from '@/hooks/useRepairRequests';
 import { useVehicleMakes } from '@/hooks/useVehicleMakes';
@@ -32,12 +34,11 @@ import { useServiceTypes } from '@/hooks/useServiceTypes';
 import { resolveServiceDisplayName, isIdLike } from '@/utils/serviceUtils';
 import MechanicReviewModal from '@/components/modals/MechanicReviewModal';
 import CancelRequestModal from '@/components/modals/CancelRequestModal';
-import { useCreateMechanicReview } from '@/hooks/useMechanics';
+import { useCreateMechanicReview, useUpdateMechanicReview, useDeleteMechanicReview, useGetMechanicReviews } from '@/hooks/useMechanics';
+import { usePrimaryUserProfile } from '@/hooks/useUserProfile';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
 import CustomAlert from '@/components/CustomAlert';
 import OgaMapView, { Marker } from '@/components/OgaMapView';
-import { useNotificationStore } from '@/stores/notificationStore';
-import { useNotificationWebSocket } from '@/hooks/useNotificationWebSocket';
 
 interface OrderStatus {
   id: string;
@@ -89,6 +90,7 @@ const TrackMechanicOrder = () => {
   // Modal states
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedInitialRating, setSelectedInitialRating] = useState<number>(5);
   const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [selectedCancelReason, setSelectedCancelReason] = useState<string>('');
@@ -98,8 +100,15 @@ const TrackMechanicOrder = () => {
   const [isCopied, setIsCopied] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Review mutation
+  // Review mutations
   const createReviewMutation = useCreateMechanicReview();
+  const updateReviewMutation = useUpdateMechanicReview();
+  const deleteReviewMutation = useDeleteMechanicReview();
+
+  // User profile for matching reviews
+  const { data: primaryProfileData } = usePrimaryUserProfile();
+  const currentUserId = primaryProfileData?.data?.user_id;
+  const currentUserEmail = primaryProfileData?.data?.email;
 
   // Cancel request mutation
   const cancelRequestMutation = useCancelRepairRequest();
@@ -114,63 +123,24 @@ const TrackMechanicOrder = () => {
   // Mechanic Location State — sourced from API (mechanic broadcasts real GPS)
   const [mechanicLocation, setMechanicLocation] = useState<{ latitude: number, longitude: number } | null>(null);
 
-  // Fetch repair request detail from API with active polling (4s fallback for live tracking)
+  // Fetch repair request detail from API with smart, status-aware polling
+  // (polls only during in_transit for GPS updates; stops completely when accepted, arrived, in_progress, completed, verified, cancelled)
   const {
     data: orderData,
     isLoading: isLoadingData,
     error: errorData,
     refetch
-  } = useRepairRequestDetail(orderId, 4000);
+  } = useRepairRequestDetail(orderId);
 
-  // Real-time WebSocket connection to receive live order updates immediately
-  useNotificationWebSocket({
-    enabled: !!orderId,
-    onRepairUpdate: (updatedOrderId, newStatus) => {
-      console.log('⚡ [TrackMechanicOrder] Real-time WS repair update received:', { updatedOrderId, newStatus, currentOrderId: orderId });
-      if (!updatedOrderId || String(updatedOrderId) === String(orderId)) {
-        refetch();
-      }
-    },
-  });
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
 
-  // Auto-refetch when screen gains focus
+  // Auto-refetch once when screen gains focus
   useFocusEffect(
     useCallback(() => {
-      refetch();
-    }, [refetch])
+      refetchRef.current();
+    }, [])
   );
-
-  // Listen for live repair notifications from the store
-  const lastNotification = useNotificationStore((state) => state.recentNotifications[0]);
-  useEffect(() => {
-    if (!lastNotification) return;
-    const notifType = (lastNotification.type || lastNotification.data?.notification_type || '').toLowerCase();
-    const notifTitle = (lastNotification.title || '').toLowerCase();
-    const notifMsg = (lastNotification.message || '').toLowerCase();
-    const notifOrderId =
-      lastNotification.data?.related_object_id ||
-      lastNotification.data?.repair_request_id ||
-      lastNotification.data?.order_id ||
-      lastNotification.data?.id;
-
-    const isRepairRelated =
-      notifType.includes('order') ||
-      notifType.includes('repair') ||
-      notifTitle.includes('repair') ||
-      notifTitle.includes('transit') ||
-      notifTitle.includes('mechanic') ||
-      notifMsg.includes('repair') ||
-      notifMsg.includes('transit') ||
-      notifMsg.includes('status');
-
-    if (
-      isRepairRelated &&
-      (!notifOrderId || String(notifOrderId) === String(orderId))
-    ) {
-      console.log('🔄 [TrackMechanicOrder] Notification arrived, refetching order detail:', orderId);
-      refetch();
-    }
-  }, [lastNotification?.timestamp, orderId, refetch]);
 
   // Pending response timer: track seconds elapsed since request was submitted
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -422,6 +392,7 @@ const TrackMechanicOrder = () => {
       mechanic_name: mechanicName,
       mechanic_id: mechanicId,
       mechanic_phone: mechanicPhone,
+      mechanic_image: request.mechanic?.selfie || request.mechanic?.avatar || request.mechanic?.profile_picture || undefined,
       service_type: resolveServiceDisplayName(request, serviceTypes) || (request.problem_description ? 'Vehicle Repair' : 'Repair Service'),
       vehicle_make: makeName,
       vehicle_model: modelName,
@@ -530,31 +501,94 @@ const TrackMechanicOrder = () => {
     });
   };
 
-  const handleReviewSubmit = async (rating: number, comment: string) => {
-    // Get mechanic ID directly from API response (UUID string)
-    const mechanicIdFromResponse = orderData?.data?.mechanic?.id?.toString() || '';
+  // Resolved target mechanic UUID for reviews
+  const mechanicTargetId = useMemo(() => {
+    const m = orderData?.data?.mechanic;
+    return (m?.user?.id || m?.user_id || m?.id || orderData?.data?.mechanic_id || order?.mechanic_id || '')?.toString();
+  }, [orderData?.data?.mechanic, orderData?.data?.mechanic_id, order?.mechanic_id]);
 
-    if (!mechanicIdFromResponse) {
+  // Fetch reviews for this mechanic to check if current user has already reviewed
+  const {
+    data: reviewsResponse,
+    isLoading: isLoadingReviews,
+    refetch: refetchReviews,
+  } = useGetMechanicReviews(mechanicTargetId);
+
+  // Parse review list and find current user's review if it exists
+  const reviewsList = useMemo(() => {
+    if (!reviewsResponse) return [];
+    const arr = reviewsResponse?.data || (Array.isArray(reviewsResponse) ? reviewsResponse : []);
+    return Array.isArray(arr) ? arr : [];
+  }, [reviewsResponse]);
+
+  const userReview = useMemo(() => {
+    if (!reviewsList.length) return null;
+    return reviewsList.find((r: any) => {
+      const rUserId = r.user?.id || r.user_id || (typeof r.user === 'string' && !r.user.includes('@') ? r.user : null);
+      const rEmail = r.user?.email || (typeof r.user === 'string' && r.user.includes('@') ? r.user : null);
+      const matchesId = currentUserId && rUserId && String(rUserId).toLowerCase() === String(currentUserId).toLowerCase();
+      const matchesEmail = currentUserEmail && rEmail && rEmail.toLowerCase() === currentUserEmail.toLowerCase();
+      return matchesId || matchesEmail;
+    });
+  }, [reviewsList, currentUserId, currentUserEmail]);
+
+  const handleReviewSubmit = async (rating: number, comment: string) => {
+    const targetMechanicId = mechanicTargetId || order.mechanic_id;
+
+    if (!targetMechanicId) {
       showError('Error', 'Mechanic information not available.');
       return;
     }
 
     try {
-      await createReviewMutation.mutateAsync({
-        mechanicId: mechanicIdFromResponse,
-        payload: {
-          data: {
-            mechanic_id: mechanicIdFromResponse, // Use UUID string directly
+      if (userReview) {
+        // Update existing review (PUT /users/mechanics/{user_id}/reviews/{id}/)
+        await updateReviewMutation.mutateAsync({
+          mechanicId: targetMechanicId,
+          reviewId: userReview.id,
+          payload: {
             rating: rating,
             comment: comment,
           },
-          requestType: 'inbound',
-        },
-      });
-      showSuccess('Review Submitted', 'Thank you for your review!');
+        });
+        showSuccess('Review Updated', 'Your review has been updated successfully!');
+      } else {
+        // Create new review (POST /users/mechanics/{user_id}/reviews/)
+        await createReviewMutation.mutateAsync({
+          mechanicId: targetMechanicId,
+          payload: {
+            data: {
+              mechanic_id: targetMechanicId,
+              rating: rating,
+              comment: comment,
+            },
+            requestType: 'inbound',
+          },
+        });
+        showSuccess('Review Submitted', 'Thank you for your review!');
+      }
       setShowReviewModal(false);
-    } catch (error) {
-      showError('Error', 'Failed to submit review. Please try again.');
+      refetchReviews();
+    } catch (error: any) {
+      showError('Error', getApiErrorMessage(error) || 'Failed to submit review. Please try again.');
+      throw error;
+    }
+  };
+
+  const handleDeleteReview = async () => {
+    const targetMechanicId = mechanicTargetId || order.mechanic_id;
+    if (!targetMechanicId || !userReview) return;
+
+    try {
+      await deleteReviewMutation.mutateAsync({
+        mechanicId: targetMechanicId,
+        reviewId: userReview.id,
+      });
+      showSuccess('Review Deleted', 'Your review has been removed.');
+      setShowReviewModal(false);
+      refetchReviews();
+    } catch (error: any) {
+      showError('Error', getApiErrorMessage(error) || 'Failed to delete review. Please try again.');
       throw error;
     }
   };
@@ -941,13 +975,38 @@ const TrackMechanicOrder = () => {
                 </View>
               )}
 
-              <View className="flex-row space-x-2 gap-2">
-                {getOtpDisplayValue(orderData?.data?.otp_code).split('').map((digit, i) => (
-                  <View key={i} className={`w-10 h-12 ${orderData?.data?.is_otp_verified ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'} border rounded-lg items-center justify-center shadow-sm`}>
-                    <Text className={`text-xl font-NunitoExtraBold ${orderData?.data?.is_otp_verified ? 'text-green-700' : 'text-gray-900'}`}>{digit}</Text>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (orderData?.data?.otp_code) {
+                    useArrivalCodeStore.getState().showArrivalModal({
+                      orderId: String(orderId),
+                      otpCode: String(orderData.data.otp_code),
+                      mechanicName: order.mechanic_name || 'Specialist Mechanic',
+                      mechanicPhone: order.mechanic_phone,
+                      vehicleSummary: [order.vehicle_year, order.vehicle_make, order.vehicle_model].filter(Boolean).join(' '),
+                      serviceAddress: order.service_address,
+                    });
+                  }
+                }}
+                className="items-center"
+              >
+                <View className="flex-row space-x-2 gap-2">
+                  {getOtpDisplayValue(orderData?.data?.otp_code).split('').map((digit, i) => (
+                    <View key={i} className={`w-10 h-12 ${orderData?.data?.is_otp_verified ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'} border rounded-lg items-center justify-center shadow-sm`}>
+                      <Text className={`text-xl font-NunitoExtraBold ${orderData?.data?.is_otp_verified ? 'text-green-700' : 'text-gray-900'}`}>{digit}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {!orderData?.data?.is_otp_verified && (
+                  <View className="mt-2.5 bg-slate-100 px-3 py-1 rounded-full border border-slate-200 flex-row items-center">
+                    <Text className="text-[10px] font-NunitoBold text-slate-600">
+                      Tap to enlarge for mechanic
+                    </Text>
                   </View>
-                ))}
-              </View>
+                )}
+              </TouchableOpacity>
               <Text className="text-[10px] font-NunitoMedium text-gray-400 mt-2 text-center px-4">
                 {orderData?.data?.is_otp_verified 
                   ? "This code has been verified. The repair is now in progress."
@@ -1237,14 +1296,183 @@ const TrackMechanicOrder = () => {
           />
         )}
 
-        {/* Review Button - Only show for completed orders */}
-        {(currentStatus === 'verified' || currentStatus === 'verify_completed') && order.mechanic_id && (
-          <CustomButton
-            title="Give Review"
-            onPress={() => setShowReviewModal(true)}
-            bgVariant="primary"
-            className="py-3"
-          />
+        {/* Review Section - Only show for completed orders */}
+        {(currentStatus === 'verified' || currentStatus === 'verify_completed' || !!order.verify_completed_at || !!orderData?.data?.verify_completed_at) && (order.mechanic_id || mechanicTargetId) && (
+          userReview ? (
+            <View className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm mb-4">
+              {/* Header with Verified Tag and Edit/Delete */}
+              <View className="flex-row items-center justify-between pb-3.5 border-b border-gray-100 mb-3.5">
+                <View className="flex-row items-center flex-1 pr-2">
+                  <View className="w-10 h-10 rounded-2xl bg-emerald-50 items-center justify-center mr-3 border border-emerald-100">
+                    <CheckCircleIconSolid size={20} color="#059669" />
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center">
+                      <Text className="text-base font-NunitoExtraBold text-gray-900 mr-2">Your Review</Text>
+                      <View className="px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-200">
+                        <Text className="text-[10px] font-NunitoBold text-emerald-700">Verified</Text>
+                      </View>
+                    </View>
+                    <Text className="text-xs font-NunitoMedium text-gray-400 mt-0.5">
+                      {userReview.created_at
+                        ? new Date(userReview.created_at).toLocaleDateString(undefined, {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        : 'Submitted'}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Quick Actions */}
+                <View className="flex-row items-center">
+                  <TouchableOpacity
+                    onPress={() => setShowReviewModal(true)}
+                    className="px-3 py-2 bg-gray-50 rounded-xl border border-gray-200/80 flex-row items-center active:scale-95"
+                    activeOpacity={0.7}
+                  >
+                    <PencilSquareIcon size={15} color="#374151" />
+                    <Text className="text-xs font-NunitoBold text-gray-700 ml-1.5">Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        'Delete Review',
+                        'Are you sure you want to delete your review? This action cannot be undone.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Delete', style: 'destructive', onPress: handleDeleteReview },
+                        ]
+                      );
+                    }}
+                    disabled={deleteReviewMutation.isPending}
+                    className="p-2 bg-red-50 rounded-xl border border-red-100 ml-2 active:scale-95"
+                    activeOpacity={0.7}
+                  >
+                    {deleteReviewMutation.isPending ? (
+                      <ActivityIndicator size="small" color="#DC2626" />
+                    ) : (
+                      <TrashIcon size={16} color="#DC2626" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Rating Stars and Score Bar */}
+              <View className="flex-row items-center justify-between mb-3 bg-amber-50/60 p-3 rounded-2xl border border-amber-200/60">
+                <View className="flex-row items-center">
+                  <View className="flex-row items-center mr-2.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <StarIcon
+                        key={star}
+                        size={18}
+                        color={star <= Number(userReview.rating || 0) ? '#F59E0B' : '#E2E8F0'}
+                      />
+                    ))}
+                  </View>
+                  <Text className="text-base font-NunitoExtraBold text-gray-900">
+                    {Number(userReview.rating || 0).toFixed(1)}
+                  </Text>
+                </View>
+
+                <View className="px-2.5 py-1 bg-white rounded-full border border-amber-200/80">
+                  <Text className="text-[11px] font-NunitoBold text-amber-800">
+                    {Number(userReview.rating) >= 5
+                      ? 'Exceptional ⭐️'
+                      : Number(userReview.rating) >= 4
+                      ? 'Very Good 👍'
+                      : Number(userReview.rating) >= 3
+                      ? 'Good 🙂'
+                      : Number(userReview.rating) >= 2
+                      ? 'Fair 😐'
+                      : 'Needs Improvement ⚠️'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Comment */}
+              {userReview.comment ? (
+                <View className="bg-gray-50/80 p-3.5 rounded-2xl border border-gray-100 mb-2">
+                  <Text className="text-sm font-NunitoMedium text-gray-700 leading-5 italic">
+                    "{userReview.comment}"
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Mechanic recipient footer */}
+              {order.mechanic_name && order.mechanic_name !== 'Unknown Mechanic' && (
+                <View className="flex-row items-center justify-between mt-1 pt-2 border-t border-gray-50">
+                  <Text className="text-[11px] font-NunitoMedium text-gray-400">
+                    Reviewed for: <Text className="font-NunitoBold text-gray-700">{order.mechanic_name}</Text>
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View className="bg-gradient-to-br from-amber-50/80 via-white to-red-50/30 rounded-3xl p-5 border border-amber-200/80 shadow-sm mb-4">
+              {/* Header banner */}
+              <View className="flex-row items-center justify-between mb-3.5">
+                <View className="flex-row items-center flex-1 pr-2">
+                  <View className="w-11 h-11 rounded-2xl bg-amber-500/10 items-center justify-center mr-3 border border-amber-300/40">
+                    <SparklesIcon size={22} color="#D97706" />
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center">
+                      <Text className="text-[10px] font-NunitoExtraBold text-amber-700 uppercase tracking-widest mr-2">
+                        Service Complete
+                      </Text>
+                      <View className="px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-200">
+                        <Text className="text-[9px] font-NunitoBold text-emerald-700">Verified</Text>
+                      </View>
+                    </View>
+                    <Text className="text-base font-NunitoExtraBold text-gray-900 leading-5 mt-0.5">
+                      Rate Your Experience
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <Text className="text-xs font-NunitoMedium text-gray-600 mb-3.5 leading-4">
+                {order.mechanic_name && order.mechanic_name !== 'Unknown Mechanic'
+                  ? `How did ${order.mechanic_name} do? Your review helps other car owners on OgaMechanic.`
+                  : 'How was your repair service? Share your feedback to help maintain top quality.'}
+              </Text>
+
+              {/* Interactive 5-Star Tap Row */}
+              <View className="bg-white rounded-2xl p-3 border border-gray-100 flex-row items-center justify-around mb-3.5 shadow-2xs">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity
+                    key={star}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setSelectedInitialRating(star);
+                      setShowReviewModal(true);
+                    }}
+                    className="p-1 items-center active:scale-95"
+                  >
+                    <StarIcon size={32} color="#E2E8F0" />
+                    <Text className="text-[10px] font-NunitoBold text-gray-400 mt-1">{star}★</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* CTA Button */}
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedInitialRating(5);
+                  setShowReviewModal(true);
+                }}
+                activeOpacity={0.85}
+                className="bg-[#D30309] py-3.5 px-5 rounded-2xl flex-row items-center justify-center shadow-md shadow-red-200"
+              >
+                <StarIcon size={18} color="#FFFFFF" />
+                <Text className="text-white font-NunitoBold text-sm ml-2">
+                  Write a Review
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )
         )}
       </View>
 
@@ -1252,10 +1480,16 @@ const TrackMechanicOrder = () => {
       <MechanicReviewModal
         visible={showReviewModal}
         onClose={() => setShowReviewModal(false)}
-        mechanicId={order.mechanic_id || ''}
+        mechanicId={mechanicTargetId || order.mechanic_id || ''}
         mechanicName={order.mechanic_name}
+        mechanicImage={(order as any).mechanic_image || orderData?.data?.mechanic?.selfie}
         onSubmit={handleReviewSubmit}
-        isLoading={createReviewMutation.isPending}
+        isLoading={createReviewMutation.isPending || updateReviewMutation.isPending}
+        initialRating={userReview?.rating ? Number(userReview.rating) : selectedInitialRating}
+        initialComment={userReview?.comment || ''}
+        isEdit={!!userReview}
+        onDelete={userReview ? handleDeleteReview : undefined}
+        isDeleting={deleteReviewMutation.isPending}
       />
 
       {/* Custom Alert */}

@@ -1,11 +1,13 @@
 import { useMemo, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import useWebSocket, { WebSocketMessage } from './useWebSocket';
-import { scheduleGenericNotification, scheduleSuccessNotification } from '../services/notificationService';
+import { scheduleGenericNotification, scheduleSuccessNotification, formatBrandedNotificationCopy } from '../services/notificationService';
 import { useNotificationStore } from '@/stores/notificationStore';
-import { userProfileKeys } from './useUserProfile';
+import { useArrivalCodeStore } from '@/stores/arrivalCodeStore';
+import { mechanicAPI } from '@/lib/api/mechanic';
+import { userProfileKeys, useActiveRoleProfile } from './useUserProfile';
 import { useProfileStore } from './useProfileStore';
-import { playMechanicNotificationSound } from '../utils/sound';
+import { playMechanicNotificationSound, playGeneralNotificationSound } from '../utils/sound';
 
 interface UseNotificationWebSocketOptions {
   onNewOrder?: (order: any) => void;
@@ -31,30 +33,63 @@ export const useNotificationWebSocket = ({
   triggerPush = false,
 }: UseNotificationWebSocketOptions) => {
   const queryClient = useQueryClient();
+  const { isMechanic } = useActiveRoleProfile();
+
+  const isUuidLike = (val?: string | null): boolean => {
+    if (!val) return false;
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(val).trim()) || String(val).length >= 26;
+  };
 
   const extractOrderId = useCallback((data?: any): string | null => {
-    // Prioritize specific repair request / order ID fields before generic row IDs
-    const rawId =
-      data?.related_object_id ||
-      data?.related_id ||
-      data?.repair_request_id ||
-      data?.repair_id ||
-      data?.order_id ||
-      data?.data?.related_object_id ||
-      data?.data?.repair_request_id ||
-      data?.data?.repair_id ||
-      data?.data?.order_id ||
-      data?.notification?.related_object_id ||
-      data?.notification?.related_id ||
-      data?.notification?.repair_request_id ||
-      data?.notification?.repair_id ||
-      data?.notification?.order_id ||
-      data?.order?.id ||
-      (data?.object_type === 'repair_request' ? data?.object_id : null) ||
-      data?.id ||
-      data?.data?.id;
-    return rawId ? String(rawId) : null;
+    if (!data) return null;
+    const candidates = [
+      data?.related_object_id,
+      data?.repair_request_id,
+      data?.repair_request,
+      data?.related_id,
+      data?.order_id,
+      data?.request_id,
+      data?.data?.related_object_id,
+      data?.data?.repair_request_id,
+      data?.data?.repair_request,
+      data?.data?.related_id,
+      data?.data?.order_id,
+      data?.data?.request_id,
+      data?.notification?.related_object_id,
+      data?.notification?.repair_request_id,
+      data?.notification?.repair_request,
+      data?.notification?.related_id,
+      data?.notification?.order_id,
+      data?.order?.repair_request_id,
+      data?.order?.id,
+      data?.data?.id,
+      data?.id,
+    ].filter(Boolean);
+
+    // Prioritize candidate matching a valid UUID string
+    const uuidCandidate = candidates.find((c) => isUuidLike(String(c)));
+    if (uuidCandidate) return String(uuidCandidate);
+
+    return candidates[0] ? String(candidates[0]) : null;
   }, []);
+
+  const resolveOrderPayload = useCallback((data: any) => {
+    if (!data) return data;
+    const rawPayload = data.order || data.data?.order || data.data || data;
+    const resolvedId = extractOrderId(data) || extractOrderId(rawPayload);
+    if (rawPayload && typeof rawPayload === 'object') {
+      const bestId = (resolvedId && isUuidLike(resolvedId))
+        ? resolvedId
+        : (isUuidLike(rawPayload.id) ? rawPayload.id : (resolvedId || rawPayload.id));
+      return {
+        ...rawPayload,
+        repair_request_id: bestId,
+        id: bestId,
+        related_object_id: resolvedId,
+      };
+    }
+    return rawPayload;
+  }, [extractOrderId]);
 
   const extractRoomId = useCallback((data?: any): string | null => {
     const rawId =
@@ -118,26 +153,26 @@ export const useNotificationWebSocket = ({
       });
     }
 
-    // 2. Invalidate and actively refetch list queries
-    queryClient.invalidateQueries({ queryKey: ['mechanic', 'repair-requests'] });
-    queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'] });
-    queryClient.refetchQueries({ queryKey: ['mechanic', 'repair-requests'], type: 'active' });
-    queryClient.refetchQueries({ queryKey: ['user', 'repair-requests'], type: 'active' });
+    // 2. Invalidate list queries selectively based on active role (only active queries refetched)
+    if (isMechanic) {
+      queryClient.invalidateQueries({ queryKey: ['mechanic', 'repair-requests'], refetchType: 'active' });
+      queryClient.invalidateQueries({ queryKey: ['mechanic', 'analytics'], refetchType: 'active' });
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'], refetchType: 'active' });
+    }
 
-    // 3. Invalidate and immediately refetch detail queries over network
-    queryClient.invalidateQueries({ queryKey: ['repair-request'] });
-    queryClient.refetchQueries({ queryKey: ['repair-request'], type: 'active' });
-
+    // 3. Invalidate detail queries cleanly (only active query refetched, avoiding prefix duplicates)
     if (orderId) {
-      queryClient.invalidateQueries({ queryKey: ['repair-request', String(orderId)] });
-      queryClient.refetchQueries({ queryKey: ['repair-request', String(orderId)], type: 'active' });
+      queryClient.invalidateQueries({ queryKey: ['repair-request', String(orderId)], refetchType: 'active' });
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['repair-request'], refetchType: 'active' });
     }
 
     // 4. Trigger onRepairUpdate callback
     if (onRepairUpdate) {
       onRepairUpdate(orderId, inferredStatus || '', data);
     }
-  }, [queryClient, extractOrderId, onRepairUpdate]);
+  }, [queryClient, extractOrderId, onRepairUpdate, isMechanic]);
 
   /**
    * Invalidate order caches for Sellers, Vehicle Rentals, and Customers.
@@ -171,11 +206,9 @@ export const useNotificationWebSocket = ({
    * Invalidate profile caches whenever an account, KYC, or profile status changes.
    */
   const invalidateProfileCaches = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: userProfileKeys.all });
-    queryClient.refetchQueries({ queryKey: userProfileKeys.all });
-    queryClient.invalidateQueries({ queryKey: ['primary-profile'] });
-    queryClient.refetchQueries({ queryKey: ['primary-profile'] });
-    queryClient.invalidateQueries({ queryKey: ['merchant-analytics'] });
+    queryClient.invalidateQueries({ queryKey: userProfileKeys.all, refetchType: 'active' });
+    queryClient.invalidateQueries({ queryKey: ['primary-profile'], refetchType: 'active' });
+    queryClient.invalidateQueries({ queryKey: ['merchant-analytics'], refetchType: 'active' });
     useProfileStore.getState().setIsProfileComplete(true);
   }, [queryClient]);
 
@@ -251,7 +284,17 @@ export const useNotificationWebSocket = ({
     type === 'repair_status' ||
     type === 'repair-status' ||
     type === 'repair_update' ||
-    type === 'repair-update';
+    type === 'repair-update' ||
+    type === 'repair_updated' ||
+    type === 'repair-updated' ||
+    type === 'repair_request_updated' ||
+    type === 'repair-request-updated' ||
+    type === 'request_updated' ||
+    type === 'request-updated' ||
+    type === 'repair_edited' ||
+    type === 'repair-edited' ||
+    type === 'order_updated' ||
+    type === 'order-updated';
 
   const handleRepairStatusChange = useCallback((data: WebSocketMessage) => {
     // 1. Play notification sound & haptics
@@ -262,38 +305,61 @@ export const useNotificationWebSocket = ({
     const status: string = (data as any)?.status || rawData?.status || '';
     const orderId = extractOrderId(data);
 
-    // 3. Cache management
+    // 3. Cache management (removeOrderFromPendingCache already invalidates caches)
     if (status && status !== 'pending') {
       removeOrderFromPendingCache(data);
+    } else {
+      invalidateRepairCaches(data);
     }
-    invalidateRepairCaches(data);
 
-    // 4. Construct user-friendly title & message
-    let title = rawData?.title || (data as any)?.title;
-    let message = rawData?.message || (data as any)?.message || rawData?.body;
+    // 4. Construct user-friendly, branded title & message
+    const rawTitle = rawData?.title || (data as any)?.title;
+    const rawMessage = rawData?.message || (data as any)?.message || rawData?.body;
 
-    if (!title || !message) {
+    const isRawServerString =
+      !rawTitle ||
+      !rawMessage ||
+      (typeof rawTitle === 'string' && rawTitle.includes('_')) ||
+      (typeof rawMessage === 'string' && rawMessage.includes('_')) ||
+      (typeof rawTitle === 'string' && rawTitle.toLowerCase().includes('in_transit')) ||
+      (typeof rawMessage === 'string' && rawMessage.toLowerCase().includes('in_transit'));
+
+    let title = rawTitle;
+    let message = rawMessage;
+
+    if (isRawServerString || status) {
       switch (status) {
         case 'accepted':
-          title = 'Mechanic Accepted Request';
-          message = 'A mechanic has accepted your repair order!';
+          title = 'Mechanic Confirmed ✅';
+          message = 'A mechanic has accepted your repair order and is preparing to dispatch!';
           break;
         case 'in_transit':
         case 'on_the_way':
-          title = 'Mechanic On The Way';
-          message = 'The mechanic is currently heading to your location!';
+          title = 'Mechanic On The Way 🚗';
+          message = 'Your specialist is currently heading to your location. E.T.A ~10-15 mins.';
           break;
         case 'arrived':
-          title = 'Mechanic Arrived';
-          message = 'The mechanic has arrived at your location!';
+          title = 'Mechanic Arrived 📍';
+          message = 'The mechanic has arrived at your location! Check your arrival code.';
           break;
         case 'in_progress':
-          title = 'Repair In Progress';
-          message = 'The mechanic has started working on your vehicle.';
+          title = 'Repair In Progress 🔧';
+          message = isMechanic 
+            ? 'Repair is in progress. Complete work and mark finished when done.' 
+            : 'The mechanic has started working on your vehicle.';
           break;
         case 'completed':
-          title = 'Repair Completed';
-          message = 'Your vehicle repair has been successfully completed!';
+          title = isMechanic ? 'Repair Marked Complete 🏁' : 'Repair Completed 🎉';
+          message = isMechanic 
+            ? 'You marked the repair as completed. Waiting for customer to verify.' 
+            : 'Your mechanic has finished the repair. Please inspect and verify completion.';
+          break;
+        case 'verify_completed':
+        case 'verified':
+          title = isMechanic ? 'Job Verified by Customer! 🎉' : 'Job Verified ✅';
+          message = isMechanic 
+            ? 'The customer has confirmed and verified your repair. Your payment is being processed!' 
+            : 'You have confirmed the service completion. Tap to leave a review!';
           break;
         case 'cancelled':
           title = 'Order Cancelled';
@@ -304,8 +370,20 @@ export const useNotificationWebSocket = ({
           message = 'The repair request was declined.';
           break;
         default:
-          title = 'Repair Order Update';
-          message = status ? `Repair request status updated to ${status.replace(/_/g, ' ')}.` : 'Your repair request has been updated.';
+          if (isRawServerString) {
+            title = String(rawTitle || 'Repair Order Update')
+              .replace(/verify_completed/gi, 'Job Verified')
+              .replace(/in_transit/gi, 'On The Way')
+              .replace(/in_progress/gi, 'In Progress')
+              .replace(/_/g, ' ')
+              .replace(/\b\w/g, (l: string) => l.toUpperCase());
+            message = String(
+              rawMessage ||
+                (status
+                  ? `Repair request status updated to ${status.replace(/_/g, ' ')}.`
+                  : 'Your repair request has been updated.')
+            ).replace(/verify_completed/gi, 'verified').replace(/_/g, ' ');
+          }
           break;
       }
     }
@@ -317,29 +395,75 @@ export const useNotificationWebSocket = ({
       status,
     };
 
-    useNotificationStore.getState().showNotification(
-      title,
-      message,
-      'order',
-      bannerPayload
-    );
+    // For customers: suppress in-app banner for verify_completed (they already see in-page confirmation and button changes to Give Review)
+    // For mechanics: ALWAYS show the celebratory banner so they know the customer verified!
+    const isCustomerVerifying = !isMechanic && (status === 'verify_completed' || status === 'verified');
+
+    if (!isCustomerVerifying) {
+      useNotificationStore.getState().showNotification(
+        title,
+        message,
+        (status === 'verify_completed' || status === 'verified') ? 'success' : 'order',
+        bannerPayload
+      );
+    }
+
+    // 5. Trigger Arrival Code Modal for Customer when mechanic arrives
+    if ((status === 'arrived' || title?.toLowerCase().includes('arrived') || message?.toLowerCase().includes('arrived')) && orderId) {
+      const rawOtp = data?.otp_code || data?.data?.otp_code || data?.order?.otp_code;
+      if (rawOtp) {
+        useArrivalCodeStore.getState().showArrivalModal({
+          orderId: String(orderId),
+          otpCode: String(rawOtp),
+          mechanicName: data?.mechanic_name || (data?.mechanic?.first_name ? `${data.mechanic.first_name} ${data.mechanic.last_name || ''}`.trim() : undefined),
+          mechanicPhone: data?.mechanic_phone || data?.mechanic?.phone_number,
+        });
+      } else {
+        mechanicAPI.getRepairRequestDetail(String(orderId)).then((res: any) => {
+          const detail = res?.data || res;
+          if (detail?.otp_code) {
+            useArrivalCodeStore.getState().showArrivalModal({
+              orderId: String(orderId),
+              otpCode: String(detail.otp_code),
+              mechanicName: detail?.mechanic ? `${detail.mechanic.first_name || ''} ${detail.mechanic.last_name || ''}`.trim() : undefined,
+              mechanicPhone: detail?.mechanic?.phone_number,
+              serviceAddress: detail?.service_address,
+            });
+          }
+        }).catch(() => {});
+      }
+    } else if (
+      status === 'in_progress' || 
+      status === 'completed' || 
+      status === 'inspecting' ||
+      rawData?.is_otp_verified ||
+      (data as any)?.is_otp_verified
+    ) {
+      useArrivalCodeStore.getState().markVerified();
+    }
 
     if (triggerPush) {
-      scheduleGenericNotification(title, message, bannerPayload);
+      if (status === 'verify_completed' || status === 'verified') {
+        scheduleSuccessNotification(title, message, bannerPayload);
+      } else {
+        scheduleGenericNotification(title, message, bannerPayload);
+      }
     }
-  }, [extractOrderId, removeOrderFromPendingCache, invalidateRepairCaches, triggerPush]);
+  }, [extractOrderId, removeOrderFromPendingCache, invalidateRepairCaches, triggerPush, isMechanic]);
 
   const eventHandlers = useMemo(() => ({
 
-    // ── New Order Events ──────────────────────────────────────────────────────
+    // ── New Order Events (All backend naming conventions) ─────────────────────
     new_repair_request: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      if (onNewOrder) onNewOrder(data.order || data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
       playMechanicNotificationSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
-      useNotificationStore.getState().showNotification(title, message, 'order', notifData);
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
       if (triggerPush) {
         scheduleGenericNotification(title, message, notifData);
       }
@@ -347,12 +471,14 @@ export const useNotificationWebSocket = ({
 
     'new-repair-request': (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      if (onNewOrder) onNewOrder(data.order || data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
       playMechanicNotificationSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
-      useNotificationStore.getState().showNotification(title, message, 'order', notifData);
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
       if (triggerPush) {
         scheduleGenericNotification(title, message, notifData);
       }
@@ -360,12 +486,179 @@ export const useNotificationWebSocket = ({
 
     new_repair: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
-      if (onNewOrder) onNewOrder(data.order || data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
       playMechanicNotificationSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Repair Request';
       const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
-      useNotificationStore.getState().showNotification(title, message, 'order', notifData);
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    'new-repair': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    repair_request: (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    'repair-request': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    mechanic_request: (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    'mechanic-request': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    new_mechanic_request: (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    'new-mechanic-request': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    repair_created: (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    'repair-created': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    request_created: (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
+      if (triggerPush) {
+        scheduleGenericNotification(title, message, notifData);
+      }
+    },
+
+    'request-created': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      invalidateOrderCaches(data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
+      playMechanicNotificationSound();
+      const notifData = data.notification || data.data || data;
+      const title = notifData?.title || 'New Repair Request';
+      const message = notifData?.message || notifData?.body || 'You have a new mechanic order nearby!';
+      // Toast suppressed: NewOrderBanner modal presents incoming requests directly
       if (triggerPush) {
         scheduleGenericNotification(title, message, notifData);
       }
@@ -374,12 +667,16 @@ export const useNotificationWebSocket = ({
     new_order: (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
       invalidateOrderCaches(data);
-      if (onNewOrder) onNewOrder(data.order || data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
       playMechanicNotificationSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Order';
       const message = notifData?.message || notifData?.body || 'A new order has been placed.';
-      useNotificationStore.getState().showNotification(title, message, 'order', notifData);
+      // Toast suppressed when onNewOrder modal handler is active
+      if (!onNewOrder) {
+        useNotificationStore.getState().showNotification(title, message, 'order', notifData);
+      }
       if (triggerPush) {
         scheduleGenericNotification(title, message, notifData);
       }
@@ -388,12 +685,16 @@ export const useNotificationWebSocket = ({
     'new-order': (data: WebSocketMessage) => {
       invalidateRepairCaches(data);
       invalidateOrderCaches(data);
-      if (onNewOrder) onNewOrder(data.order || data);
+      const orderPayload = resolveOrderPayload(data);
+      if (onNewOrder) onNewOrder(orderPayload);
       playMechanicNotificationSound();
       const notifData = data.notification || data.data || data;
       const title = notifData?.title || 'New Order';
       const message = notifData?.message || notifData?.body || 'A new order has been placed.';
-      useNotificationStore.getState().showNotification(title, message, 'order', notifData);
+      // Toast suppressed when onNewOrder modal handler is active
+      if (!onNewOrder) {
+        useNotificationStore.getState().showNotification(title, message, 'order', notifData);
+      }
       if (triggerPush) {
         scheduleGenericNotification(title, message, notifData);
       }
@@ -481,10 +782,20 @@ export const useNotificationWebSocket = ({
       }
     },
 
-    // ── Repair Status Update Events (top-level, ALL naming variants) ──────────
+    // ── Repair Status & Edit Update Events (top-level, ALL naming variants) ───
     // Backend may use underscore OR hyphen — all variants are handled explicitly.
     repair_update: handleRepairStatusChange,
     'repair-update': handleRepairStatusChange,
+    repair_updated: handleRepairStatusChange,
+    'repair-updated': handleRepairStatusChange,
+    repair_request_updated: handleRepairStatusChange,
+    'repair-request-updated': handleRepairStatusChange,
+    request_updated: handleRepairStatusChange,
+    'request-updated': handleRepairStatusChange,
+    repair_edited: handleRepairStatusChange,
+    'repair-edited': handleRepairStatusChange,
+    order_updated: handleRepairStatusChange,
+    'order-updated': handleRepairStatusChange,
     repair_status: handleRepairStatusChange,
     'repair-status': handleRepairStatusChange,
     repair_accepted: handleRepairStatusChange,
@@ -497,8 +808,50 @@ export const useNotificationWebSocket = ({
     'repair-in-progress': handleRepairStatusChange,
     repair_completed: handleRepairStatusChange,
     'repair-completed': handleRepairStatusChange,
+    verify_completed: handleRepairStatusChange,
+    'verify-completed': handleRepairStatusChange,
+    repair_verify_completed: handleRepairStatusChange,
+    'repair-verify-completed': handleRepairStatusChange,
+    repair_verified: handleRepairStatusChange,
+    'repair-verified': handleRepairStatusChange,
+    job_verified: handleRepairStatusChange,
+    'job-verified': handleRepairStatusChange,
     order_accepted: handleRepairStatusChange,
     'order-accepted': handleRepairStatusChange,
+
+    // ── OTP & Arrival Verification Events ─────────────────────────────────────
+    otp_verified: (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      useArrivalCodeStore.getState().markVerified();
+    },
+    'otp-verified': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      useArrivalCodeStore.getState().markVerified();
+    },
+    repair_otp_verified: (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      useArrivalCodeStore.getState().markVerified();
+    },
+    'repair-otp-verified': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      useArrivalCodeStore.getState().markVerified();
+    },
+    arrival_verified: (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      useArrivalCodeStore.getState().markVerified();
+    },
+    'arrival-verified': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      useArrivalCodeStore.getState().markVerified();
+    },
+    code_verified: (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      useArrivalCodeStore.getState().markVerified();
+    },
+    'code-verified': (data: WebSocketMessage) => {
+      invalidateRepairCaches(data);
+      useArrivalCodeStore.getState().markVerified();
+    },
 
     // ── Real-time Job Taken / Removed by Another Mechanic ─────────────────────
     repair_taken: (data: WebSocketMessage) => {
@@ -564,10 +917,12 @@ export const useNotificationWebSocket = ({
       queryClient.refetchQueries({ queryKey: ['support-conversations'] });
       queryClient.refetchQueries({ queryKey: ['support-messages'] });
       invalidateChatCaches(data);
+      playGeneralNotificationSound();
     },
     new_message: (data: WebSocketMessage) => {
       queryClient.refetchQueries({ queryKey: ['support-conversations'] });
       invalidateChatCaches(data);
+      playGeneralNotificationSound();
     },
     support_update: () => queryClient.refetchQueries({ queryKey: ['support-conversations'] }),
 
@@ -603,13 +958,16 @@ export const useNotificationWebSocket = ({
     'notification.new': (data: WebSocketMessage) => {
       queryClient.refetchQueries({ queryKey: ['support-conversations'] });
       queryClient.refetchQueries({ queryKey: ['support-messages'] });
-      playMechanicNotificationSound();
 
       const notifData = data.notification || data.data || data;
       if (notifData) {
-        const title = notifData.title || 'Notification';
-        const message = notifData.message || notifData.body || notifData.description || 'You have a new update';
+        const rawTitle = notifData.title || 'Notification';
+        const rawMessage = notifData.message || notifData.body || notifData.description || 'You have a new update';
         const type: string = notifData.notification_type || notifData.type || '';
+
+        const branded = formatBrandedNotificationCopy(rawTitle, rawMessage, isMechanic);
+        const title = branded.title;
+        const message = branded.body;
 
         const isProfileUpdate = isProfileOrKycUpdate(type, title, message);
         if (isProfileUpdate) {
@@ -621,15 +979,39 @@ export const useNotificationWebSocket = ({
           type.includes('repair') ||
           type.includes('transit') ||
           type.includes('accepted') ||
+          type.includes('mechanic') ||
+          type.includes('order') ||
           title.toLowerCase().includes('repair') ||
           title.toLowerCase().includes('transit') ||
           title.toLowerCase().includes('mechanic') ||
+          title.toLowerCase().includes('order') ||
           message.toLowerCase().includes('repair') ||
           message.toLowerCase().includes('transit') ||
+          message.toLowerCase().includes('mechanic') ||
+          message.toLowerCase().includes('order') ||
           message.toLowerCase().includes('status has been updated');
 
+        let isNewOrderOrRequest = false;
         if (isRepair) {
           invalidateRepairCaches(notifData);
+          isNewOrderOrRequest =
+            type.includes('new') ||
+            type.includes('request') ||
+            title.toLowerCase().includes('new') ||
+            title.toLowerCase().includes('request') ||
+            message.toLowerCase().includes('new') ||
+            message.toLowerCase().includes('request');
+
+          if (isNewOrderOrRequest) {
+            playMechanicNotificationSound();
+            if (onNewOrder) {
+              onNewOrder(resolveOrderPayload(notifData));
+            }
+          } else {
+            playGeneralNotificationSound();
+          }
+        } else {
+          playGeneralNotificationSound();
         }
 
         const isChat = type === 'support_chat' || type === 'chat_message' || type === 'chat' || type === 'p2p';
@@ -637,32 +1019,57 @@ export const useNotificationWebSocket = ({
           invalidateChatCaches(notifData);
         }
 
+        const isOtpVerifiedEvent =
+          type.includes('otp') ||
+          type.includes('arrival_verified') ||
+          type.includes('code_verified') ||
+          title.toLowerCase().includes('verified') ||
+          message.toLowerCase().includes('code verified') ||
+          message.toLowerCase().includes('arrival confirmed') ||
+          notifData?.is_otp_verified;
+
+        if (isOtpVerifiedEvent) {
+          useArrivalCodeStore.getState().markVerified();
+        }
+
         if (triggerPush) {
-          if (type === 'success' || isProfileUpdate) {
+          if (type === 'success' || isProfileUpdate || isMechanic) {
             scheduleSuccessNotification(title, message, notifData);
           } else {
             scheduleGenericNotification(title, message, notifData);
           }
         }
 
-        useNotificationStore.getState().showNotification(
-          title,
-          message,
-          isChat ? 'chat' : (type === 'success' || isProfileUpdate) ? 'success' : 'order',
-          notifData
-        );
+        const isCustomerVerifying =
+          !isMechanic &&
+          (type.includes('verify_completed') ||
+            rawTitle.toLowerCase().includes('verify_completed') ||
+            rawMessage.toLowerCase().includes('verify_completed') ||
+            title.toLowerCase().includes('verified'));
+
+        if (!(isRepair && isNewOrderOrRequest) && !isCustomerVerifying) {
+          useNotificationStore.getState().showNotification(
+            title,
+            message,
+            isChat ? 'chat' : (type === 'success' || isProfileUpdate || isMechanic) ? 'success' : 'order',
+            notifData
+          );
+        }
       }
     },
 
     notification: (data: WebSocketMessage) => {
       queryClient.refetchQueries({ queryKey: ['support-conversations'] });
-      playMechanicNotificationSound();
 
       const notifData = data.notification || data.data || data;
       if (notifData) {
-        const title = notifData.title || 'Notification';
-        const message = notifData.message || notifData.body || notifData.description || 'You have a new update';
+        const rawTitle = notifData.title || 'Notification';
+        const rawMessage = notifData.message || notifData.body || notifData.description || 'You have a new update';
         const type: string = notifData.notification_type || notifData.type || '';
+
+        const branded = formatBrandedNotificationCopy(rawTitle, rawMessage, isMechanic);
+        const title = branded.title;
+        const message = branded.body;
 
         const isProfileUpdate = isProfileOrKycUpdate(type, title, message);
         if (isProfileUpdate) {
@@ -674,15 +1081,39 @@ export const useNotificationWebSocket = ({
           type.includes('repair') ||
           type.includes('transit') ||
           type.includes('accepted') ||
+          type.includes('mechanic') ||
+          type.includes('order') ||
           title.toLowerCase().includes('repair') ||
           title.toLowerCase().includes('transit') ||
           title.toLowerCase().includes('mechanic') ||
+          title.toLowerCase().includes('order') ||
           message.toLowerCase().includes('repair') ||
           message.toLowerCase().includes('transit') ||
+          message.toLowerCase().includes('mechanic') ||
+          message.toLowerCase().includes('order') ||
           message.toLowerCase().includes('status has been updated');
 
+        let isNewOrderOrRequest = false;
         if (isRepair) {
           invalidateRepairCaches(notifData);
+          isNewOrderOrRequest =
+            type.includes('new') ||
+            type.includes('request') ||
+            title.toLowerCase().includes('new') ||
+            title.toLowerCase().includes('request') ||
+            message.toLowerCase().includes('new') ||
+            message.toLowerCase().includes('request');
+
+          if (isNewOrderOrRequest) {
+            playMechanicNotificationSound();
+            if (onNewOrder) {
+              onNewOrder(resolveOrderPayload(notifData));
+            }
+          } else {
+            playGeneralNotificationSound();
+          }
+        } else {
+          playGeneralNotificationSound();
         }
 
         const isChat = type === 'support_chat' || type === 'chat_message' || type === 'chat' || type === 'p2p';
@@ -690,20 +1121,42 @@ export const useNotificationWebSocket = ({
           invalidateChatCaches(notifData);
         }
 
+        const isOtpVerifiedEvent =
+          type.includes('otp') ||
+          type.includes('arrival_verified') ||
+          type.includes('code_verified') ||
+          title.toLowerCase().includes('verified') ||
+          message.toLowerCase().includes('code verified') ||
+          message.toLowerCase().includes('arrival confirmed') ||
+          notifData?.is_otp_verified;
+
+        if (isOtpVerifiedEvent) {
+          useArrivalCodeStore.getState().markVerified();
+        }
+
         if (triggerPush) {
-          if (type === 'success' || isProfileUpdate) {
+          if (type === 'success' || isProfileUpdate || isMechanic) {
             scheduleSuccessNotification(title, message, notifData);
           } else {
             scheduleGenericNotification(title, message, notifData);
           }
         }
 
-        useNotificationStore.getState().showNotification(
-          title,
-          message,
-          isChat ? 'chat' : (type === 'success' || isProfileUpdate) ? 'success' : 'order',
-          notifData
-        );
+        const isCustomerVerifying =
+          !isMechanic &&
+          (type.includes('verify_completed') ||
+            rawTitle.toLowerCase().includes('verify_completed') ||
+            rawMessage.toLowerCase().includes('verify_completed') ||
+            title.toLowerCase().includes('verified'));
+
+        if (!(isRepair && isNewOrderOrRequest) && !isCustomerVerifying) {
+          useNotificationStore.getState().showNotification(
+            title,
+            message,
+            isChat ? 'chat' : (type === 'success' || isProfileUpdate || isMechanic) ? 'success' : 'order',
+            notifData
+          );
+        }
       }
     },
 
@@ -722,6 +1175,7 @@ export const useNotificationWebSocket = ({
     isProfileOrKycUpdate,
     removeOrderFromPendingCache,
     handleRepairStatusChange,
+    isMechanic,
   ]);
 
   const { isConnected, reconnect } = useWebSocket({

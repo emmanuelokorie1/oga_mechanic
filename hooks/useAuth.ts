@@ -131,13 +131,13 @@ export const useAuth = () => {
         setUserData(null);
         // Set navigation target for login/register flow
         setNavigationTarget(routes?.signIn as any || '/sign-in');
-        setShouldNavigate(true);
+        setShouldNavigate(false);
       }
     } catch (error) {
       setIsAuthenticated(false);
       setUserData(null);
       setNavigationTarget(routes?.signIn as any || '/sign-in');
-      setShouldNavigate(true);
+      setShouldNavigate(false);
     } finally {
       setIsLoading(false);
     }

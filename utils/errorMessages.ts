@@ -254,13 +254,39 @@ export const getApiErrorMessage = (error: any, context: string = 'general'): str
         rawMessage = Array.isArray(firstVal) ? String(firstVal[0]) : String(firstVal);
       }
     }
-  } else if (apiData?.non_field_errors) {
-    rawMessage = Array.isArray(apiData.non_field_errors) ? String(apiData.non_field_errors[0]) : String(apiData.non_field_errors);
+  } else if (apiData?.error) {
+    if (typeof apiData.error === 'string') {
+      rawMessage = apiData.error;
+    } else if (typeof apiData.error === 'object') {
+      const values = Object.values(apiData.error);
+      if (values.length > 0) {
+        const firstVal: any = values[0];
+        rawMessage = Array.isArray(firstVal) ? String(firstVal[0]) : String(firstVal);
+      }
+    }
   } else if (apiData?.detail && typeof apiData.detail === 'string') {
     rawMessage = apiData.detail;
+  } else if (apiData?.non_field_errors) {
+    rawMessage = Array.isArray(apiData.non_field_errors) ? String(apiData.non_field_errors[0]) : String(apiData.non_field_errors);
+  } else if (apiData?.data?.message || apiData?.data?.error) {
+    rawMessage = apiData.data.message || apiData.data.error;
+  } else if (apiData && typeof apiData === 'object' && !Array.isArray(apiData)) {
+    // Check for first field error object: { field: ["Error description"] }
+    const ignoredKeys = new Set(['status', 'requestType', 'requestTime', 'referenceId', 'code']);
+    const keys = Object.keys(apiData).filter((k) => !ignoredKeys.has(k));
+    if (keys.length > 0) {
+      const val = apiData[keys[0]];
+      if (Array.isArray(val) && val.length > 0) {
+        rawMessage = String(val[0]);
+      } else if (typeof val === 'string') {
+        rawMessage = val;
+      }
+    }
+  } else if (typeof apiData === 'string') {
+    rawMessage = apiData;
   }
 
-  // 2. Map technical technical strings to user-friendly ones
+  // 2. Map technical strings to user-friendly ones
   if (rawMessage) {
     const technicalToFriendly: Record<string, string> = {
       "Either 'service_categories' (IDs) or 'service_type' (name) must be provided.": "Please ensure all service details are completed before proceeding.",
@@ -279,9 +305,9 @@ export const getApiErrorMessage = (error: any, context: string = 'general'): str
       }
     }
 
-    // Generic cleanup for other technical-looking messages (underscores, single quotes with 'must')
-    if (rawMessage.includes('_') || (rawMessage.includes("'") && rawMessage.includes("must"))) {
-      return "An error occurred while processing your request. Please check your details and try again.";
+    // If message is technical snake_case token, clean it up cleanly
+    if (rawMessage.length < 100 && /^[a-z_]+$/i.test(rawMessage.trim())) {
+      return rawMessage.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
     }
 
     return rawMessage;

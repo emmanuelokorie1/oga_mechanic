@@ -6,6 +6,7 @@ import { routes } from '@/constants/routes';
 import { getErrorMessage } from '@/utils/errorMessages';
 import { secureStorage } from '@/utils/secureStorage';
 import { getRoleHomeRoute, normalizeRoleName } from '@/utils/authUtils';
+import { registerPushNotificationsAndSyncDevice } from '@/services/notificationService';
 
 export const useLogin = () => {
   const queryClient = useQueryClient();
@@ -62,6 +63,11 @@ export const useLogin = () => {
             } catch (e) {
               console.error('⚠️ Failed to sync login data to Zustand store:', e);
             }
+
+            // Register device for push notifications globally across all roles
+            registerPushNotificationsAndSyncDevice(true).catch((pushErr) => {
+              console.warn('Push device registration on login warning:', pushErr);
+            });
             
             // Call /users/roles/ endpoint after successful login to get server active role
             let activeRoleName = initialRole;
@@ -124,6 +130,11 @@ export const useLogin = () => {
               } catch (e) {
                 console.error('⚠️ Failed to sync login data to Zustand store (fallback):', e);
               }
+
+              // Register device for push notifications globally across all roles
+              registerPushNotificationsAndSyncDevice(true).catch((pushErr) => {
+                console.warn('Push device registration on login warning:', pushErr);
+              });
               
               let activeRoleName = initialRole;
               try {

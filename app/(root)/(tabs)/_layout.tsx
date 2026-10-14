@@ -1,8 +1,11 @@
 import { useEffect } from "react";
 import { Slot } from "expo-router";
 import { useUnreadNotificationCount, usePrimaryUserProfile } from "@/hooks/useUserProfile";
+import { useUserStore } from "@/stores/userStore";
 
 const Layout = () => {
+  const token = useUserStore((state) => state.accessToken);
+
   // Fetch notifications when any tabs layout loads (works for all roles)
   const { refetch: refetchNotifications } = useUnreadNotificationCount();
 
@@ -10,10 +13,12 @@ const Layout = () => {
   const { refetch: refetchProfile } = usePrimaryUserProfile();
 
   useEffect(() => {
-    // Refetch notifications and profile when the tabs layout mounts
-    refetchNotifications();
-    refetchProfile();
-  }, [refetchNotifications, refetchProfile]);
+    // Only refetch when authenticated
+    if (token) {
+      refetchNotifications();
+      refetchProfile();
+    }
+  }, [token, refetchNotifications, refetchProfile]);
 
   return <Slot />;
 };

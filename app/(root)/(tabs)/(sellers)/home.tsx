@@ -329,9 +329,9 @@ const SellerHome = () => {
       ? (profileData?.data as any)?.user?.id || (profileData?.data as any)?.user_id
       : (profileData?.data as any)?.user_id;
 
-  // Analytics query
+  // Analytics query (only for merchants, never for vehicle rental)
   const { data: analyticsData, isLoading: isLoadingAnalytics, refetch: refetchAnalytics } =
-    useMerchantAnalytics(isSeller || isVehicleRental);
+    useMerchantAnalytics(isSeller && !isVehicleRental);
 
   // Latest 3 listed items query
   const { data: latestItems = [], isLoading: isLoadingItems, refetch: refetchItems } = useQuery({
@@ -401,16 +401,19 @@ const SellerHome = () => {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([
-        refetchAnalytics(),
+      const promises: Promise<any>[] = [
         refetchProfile(),
         refetchItems(),
         activeProfileQuery.refetch(),
-      ]);
+      ];
+      if (isSeller && !isVehicleRental) {
+        promises.push(refetchAnalytics());
+      }
+      await Promise.all(promises);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchAnalytics, refetchProfile, refetchItems]);
+  }, [refetchAnalytics, refetchProfile, refetchItems, activeProfileQuery, isSeller, isVehicleRental]);
 
   const handleCta = (action?: 'uploadSpareParts' | 'uploadCars' | 'kyc') => {
     if (action === 'kyc' && isPendingApproval) {
@@ -460,12 +463,12 @@ const SellerHome = () => {
     );
   };
 
-  // derived metrics from analytics
+  // derived metrics from analytics or rental profile
   const totalListings = isVehicleRental
-    ? (analyticsData?.rental_analytics?.total_rentals ?? 0)
+    ? ((activeProfileQuery.data?.data as any)?.total_cars_for_rent ?? (Array.isArray(latestItems) ? latestItems.length : 0))
     : (analyticsData?.product_count ?? 0);
-  const avgRating = analyticsData?.product_performance?.avg_rating ?? 0.0;
-  const reviewedCount = analyticsData?.product_performance?.products_with_reviews ?? 0;
+  const avgRating = isVehicleRental ? 0 : (analyticsData?.product_performance?.avg_rating ?? 0.0);
+  const reviewedCount = isVehicleRental ? 0 : (analyticsData?.product_performance?.products_with_reviews ?? 0);
 
   return (
     <SafeAreaView
@@ -518,9 +521,9 @@ const SellerHome = () => {
               activeProfileQuery.isLoading
                 ? undefined
                 : isPendingApproval
-                  ? 'kyc_pending'
+                  ? (isVehicleRental ? 'rental_kyc_pending' : 'kyc_pending')
                   : !isProfileComplete
-                    ? 'kyc_incomplete'
+                    ? (isVehicleRental ? 'rental_kyc_incomplete' : 'kyc_incomplete')
                     : isVehicleRental
                       ? 'vehicle_rental'
                       : 'seller'
@@ -537,20 +540,20 @@ const SellerHome = () => {
           <MetricCard
             label={isVehicleRental ? "Total Rentals" : "Total Products"}
             value={totalListings}
-            sublabel="listed items"
+            sublabel={isVehicleRental ? "vehicles" : "listed items"}
             accentColor="#0F172A"
           />
           {/* Using a placeholder for sales/orders to balance the UI, since we only had rating stats before */}
           <MetricCard
-            label="Total Views"
-            value={"-"}
-            sublabel="store views"
+            label={isVehicleRental ? "Active Bookings" : "Total Views"}
+            value={isVehicleRental ? ((activeProfileQuery.data?.data as any)?.active_bookings_count ?? 0) : "-"}
+            sublabel={isVehicleRental ? "bookings" : "store views"}
             accentColor="#16A34A"
           />
         </View>
 
-        {/* ── COMPACT RATING STRIP ───────────────────────── */}
-        {!isLoadingAnalytics && (
+        {/* ── COMPACT RATING STRIP (only for merchants) ───────────────────────── */}
+        {!isVehicleRental && !isLoadingAnalytics && (
           <View style={{ paddingHorizontal: 14, marginBottom: 28 }}>
             <TouchableOpacity
               activeOpacity={0.85}

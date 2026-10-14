@@ -156,11 +156,11 @@ const OrderCard: React.FC<OrderCardProps> = ({
     >
       {/* Header with client name and status */}
       <View className="flex-row justify-between items-start mb-3">
-        <Text className="text-base font-NunitoSemiBold text-gray-800 flex-1">
+        <Text className="text-base font-NunitoSemiBold text-gray-800 flex-1 mr-2" numberOfLines={1}>
           Client name: <Text className="font-NunitoBold">{order.clientName}</Text>
         </Text>
         {getStatusText() && (
-          <Text className={`text-sm font-NunitoBold ${getStatusColor()}`}>
+          <Text className={`text-sm font-NunitoBold ${getStatusColor()} shrink-0`}>
             {getStatusText()}
           </Text>
         )}

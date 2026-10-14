@@ -70,11 +70,59 @@ export const useCreateMechanicReview = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ mechanicId, payload }: { mechanicId: string; payload: { data: { mechanic_id: string | number; rating: number; comment: string }; requestType: string } }) =>
+    mutationFn: ({ mechanicId, payload }: { mechanicId: string; payload: { data: { mechanic_id: string | number; rating: number; comment: string }; requestType?: string } | { rating: number; comment: string; [key: string]: any } }) =>
       mechanicAPI.createMechanicReview(mechanicId, payload),
     onSuccess: (_, variables) => {
       // Invalidate reviews query to refetch updated reviews
       queryClient.invalidateQueries({ queryKey: mechanicKeys.reviews(variables.mechanicId) });
+      queryClient.invalidateQueries({ queryKey: ['mechanic', 'analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['repair-request'] });
     },
   });
 };
+
+// Hook to update mechanic review (PUT /users/mechanics/{user_id}/reviews/{id}/)
+export const useUpdateMechanicReview = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({
+      mechanicId,
+      reviewId,
+      payload,
+    }: {
+      mechanicId: string;
+      reviewId: string | number;
+      payload: { rating: number; comment: string; [key: string]: any } | { data: { rating: number; comment: string }; requestType?: string };
+    }) => mechanicAPI.updateMechanicReview(mechanicId, reviewId, payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: mechanicKeys.reviews(variables.mechanicId) });
+      queryClient.invalidateQueries({ queryKey: ['mechanic', 'analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['repair-request'] });
+    },
+  });
+};
+
+// Hook to delete mechanic review (DELETE /users/mechanics/{user_id}/reviews/{id}/)
+export const useDeleteMechanicReview = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({
+      mechanicId,
+      reviewId,
+    }: {
+      mechanicId: string;
+      reviewId: string | number;
+    }) => mechanicAPI.deleteMechanicReview(mechanicId, reviewId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: mechanicKeys.reviews(variables.mechanicId) });
+      queryClient.invalidateQueries({ queryKey: ['mechanic', 'analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['user', 'repair-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['repair-request'] });
+    },
+  });
+};
+

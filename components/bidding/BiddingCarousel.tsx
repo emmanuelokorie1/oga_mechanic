@@ -14,7 +14,7 @@ interface BiddingCarouselProps {
   containerPadding?: number;
   onFallbackChange?: (isFallbackShowing: boolean) => void;
   /** 'user' shows "Find a mechanic" fallback (default). 'mechanic' shows "Spare Parts" & "Buy a Car" fallback. 'seller' shows "Upload Spare parts". 'vehicle_rental' shows "Upload Cars". 'kyc_incomplete' shows "Complete Profile". 'kyc_pending' shows "Verification Pending" */
-  fallbackVariant?: 'user' | 'mechanic' | 'seller' | 'vehicle_rental' | 'kyc_incomplete' | 'kyc_pending';
+  fallbackVariant?: 'user' | 'mechanic' | 'seller' | 'vehicle_rental' | 'kyc_incomplete' | 'kyc_pending' | 'rental_kyc_incomplete' | 'rental_kyc_pending';
   onSellerAction?: (action: 'uploadSpareParts' | 'uploadCars' | 'kyc') => void;
 }
 
@@ -215,7 +215,7 @@ const BiddingCarouselSkeleton: React.FC<{ containerPadding?: number; fallbackVar
       )}
 
       {/* KYC Incomplete or Pending shortcut pill skeleton */}
-      {(fallbackVariant === 'kyc_incomplete' || fallbackVariant === 'kyc_pending') && (
+      {(fallbackVariant === 'kyc_incomplete' || fallbackVariant === 'kyc_pending' || fallbackVariant === 'rental_kyc_incomplete' || fallbackVariant === 'rental_kyc_pending') && (
         <View className="mt-3" style={{ paddingHorizontal: containerPadding }}>
           <View className="flex-row items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
             <Animated.View
@@ -230,9 +230,9 @@ const BiddingCarouselSkeleton: React.FC<{ containerPadding?: number; fallbackVar
 };
 
 const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0, onFallbackChange, fallbackVariant = 'user', onSellerAction }) => {
-  const { data: activeBiddingRes, isLoading, error } = useActiveBiddingProducts();
+  const { data: activeBiddingRes, isLoading: isBiddingLoading } = useActiveBiddingProducts();
   const isUserVariant = fallbackVariant === 'user';
-  const { data: userRepairRequestsRes } = useUserRepairRequests(undefined, isUserVariant);
+  const { data: userRepairRequestsRes, isLoading: isRepairLoading } = useUserRepairRequests(undefined, isUserVariant);
 
   const [activeAdIndex, setActiveAdIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
@@ -298,7 +298,10 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
     return [...ongoingOrderAds, ...biddingAds];
   }, [biddingProducts, ongoingOrderAds]);
 
-  const isFallbackShowing = !isLoading && (displayAds.length === 0 || (!!error && ongoingOrderAds.length === 0));
+  const hasAds = displayAds.length > 0;
+  // If ads are present (from cache or previous query), never flash skeleton or fallback during background refetches
+  const isInitialLoading = !hasAds && (isBiddingLoading || (isUserVariant && isRepairLoading && !userRepairRequestsRes));
+  const isFallbackShowing = !isInitialLoading && !hasAds;
 
   useEffect(() => {
     if (onFallbackChange) {
@@ -376,7 +379,7 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
   }, []);
 
   // During initial fetch, display an ads skeleton so the design doesn't flash or jump
-  if (isLoading) {
+  if (isInitialLoading) {
     return (
       <BiddingCarouselSkeleton
         containerPadding={containerPadding}
@@ -520,32 +523,131 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
       );
     }
 
-    // ── Vehicle Rental variant: Upload Cars ─────────────────────────────
-    if (fallbackVariant === 'vehicle_rental') {
+    // ── Rental KYC Incomplete variant: Activate Your Rental Fleet ────────────
+    if (fallbackVariant === 'rental_kyc_incomplete') {
       return (
         <View className="mb-1 mt-1">
-          {/* Upload Cars */}
           <TouchableOpacity
-            activeOpacity={0.88}
-            onPress={() => onSellerAction ? onSellerAction('uploadCars') : router.push(sellerRoutes.uploadCarToRent as any)}
-            className="h-[140px] rounded-[18px] p-4 overflow-hidden justify-between bg-primary-500 w-full"
+            activeOpacity={0.9}
+            onPress={() => onSellerAction && onSellerAction('kyc')}
+            className="h-[152px] rounded-[20px] p-4 overflow-hidden justify-between w-full"
+            style={{
+              backgroundColor: '#F59E0B',
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.25)',
+              shadowColor: '#D97706',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.25,
+              shadowRadius: 10,
+              elevation: 4,
+            }}
           >
-            <MaterialCommunityIcons
-              name="car"
-              size={110}
-              color="rgba(255,255,255,0.12)"
-              style={{ position: 'absolute', right: -15, bottom: -15 }}
+            {/* Ambient luxury glow in top right */}
+            <View
+              style={{
+                position: 'absolute',
+                top: -30,
+                right: -20,
+                width: 140,
+                height: 140,
+                borderRadius: 70,
+                backgroundColor: 'rgba(255, 255, 255, 0.12)',
+              }}
             />
-            <View className="w-[38px] h-[38px] rounded-[12px] items-center justify-center bg-white/20">
-              <MaterialCommunityIcons name="cloud-upload" size={20} color="#FFFFFF" />
+
+            {/* Background luxury sports car silhouette */}
+            <MaterialCommunityIcons
+              name="car-sports"
+              size={135}
+              color="rgba(255, 255, 255, 0.15)"
+              style={{ position: 'absolute', right: -15, bottom: -18 }}
+            />
+
+            {/* Top row: Badge + Status tag */}
+            <View className="flex-row items-center justify-between z-10">
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(255, 255, 255, 0.22)',
+                  borderColor: 'rgba(255, 255, 255, 0.35)',
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  gap: 5,
+                }}
+              >
+                <MaterialCommunityIcons name="car-key" size={15} color="#FFFFFF" />
+                <Text style={{ fontSize: 11, color: '#FFFFFF', letterSpacing: 0.3 }} className="font-NunitoExtraBold">
+                  VEHICLE RENTALS
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.18)',
+                  borderColor: 'rgba(255, 255, 255, 0.25)',
+                  borderWidth: 1,
+                  borderRadius: 20,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF' }} />
+                <Text style={{ fontSize: 10, color: '#FFFFFF' }} className="font-NunitoBold">
+                  Action Required
+                </Text>
+              </View>
             </View>
-            <View>
-              <Text className="text-[15px] text-white font-NunitoExtraBold leading-[20px] tracking-tight">
-                {'Upload Cars for Rent'}
+
+            {/* Middle: Title & Subtitle */}
+            <View className="z-10">
+              <Text
+                style={{ fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}
+                className="font-NunitoExtraBold"
+              >
+                Activate Your Rental Fleet
               </Text>
-              <View className="mt-[8px] bg-white rounded-full py-1.5 px-[12px] flex-row items-center self-start gap-1">
-                <Text className="text-primary-500 text-[12px] font-NunitoBold">Add New</Text>
-                <MaterialCommunityIcons name="arrow-right" size={12} color="#D30309" />
+              <Text
+                style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.92)', marginTop: 2, lineHeight: 16 }}
+                className="font-NunitoMedium"
+              >
+                Complete profile verification to list vehicles and start earning.
+              </Text>
+            </View>
+
+            {/* Bottom: Pill CTA Button */}
+            <View className="z-10 flex-row items-center justify-start">
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 30,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: '#D97706', fontSize: 12 }} className="font-NunitoExtraBold">
+                  Verify Profile
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: '#FEF3C7',
+                    borderRadius: 9,
+                    width: 18,
+                    height: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <MaterialCommunityIcons name="arrow-right" size={11} color="#D97706" />
+                </View>
               </View>
             </View>
           </TouchableOpacity>
@@ -553,31 +655,381 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
       );
     }
 
-    // ── KYC Incomplete variant: Complete Profile ─────────────────────────────
+    // ── Rental KYC Pending variant: Verification Under Review ─────────────────
+    if (fallbackVariant === 'rental_kyc_pending') {
+      return (
+        <View className="mb-1 mt-1">
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => onSellerAction && onSellerAction('kyc')}
+            className="h-[152px] rounded-[20px] p-4 overflow-hidden justify-between w-full"
+            style={{
+              backgroundColor: '#D97706',
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.25)',
+              shadowColor: '#B45309',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.25,
+              shadowRadius: 10,
+              elevation: 4,
+            }}
+          >
+            {/* Ambient luxury glow in top right */}
+            <View
+              style={{
+                position: 'absolute',
+                top: -30,
+                right: -20,
+                width: 140,
+                height: 140,
+                borderRadius: 70,
+                backgroundColor: 'rgba(255, 255, 255, 0.12)',
+              }}
+            />
+
+            <MaterialCommunityIcons
+              name="car-clock"
+              size={135}
+              color="rgba(255, 255, 255, 0.15)"
+              style={{ position: 'absolute', right: -15, bottom: -18 }}
+            />
+
+            {/* Top row */}
+            <View className="flex-row items-center justify-between z-10">
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(255, 255, 255, 0.22)',
+                  borderColor: 'rgba(255, 255, 255, 0.35)',
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  gap: 5,
+                }}
+              >
+                <MaterialCommunityIcons name="shield-sync" size={15} color="#FFFFFF" />
+                <Text style={{ fontSize: 11, color: '#FFFFFF', letterSpacing: 0.3 }} className="font-NunitoExtraBold">
+                  FLEET VERIFICATION
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.20)',
+                  borderColor: 'rgba(255, 255, 255, 0.30)',
+                  borderWidth: 1,
+                  borderRadius: 20,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FEF08A' }} />
+                <Text style={{ fontSize: 10, color: '#FFFFFF' }} className="font-NunitoBold">
+                  Under Review
+                </Text>
+              </View>
+            </View>
+
+            {/* Middle */}
+            <View className="z-10">
+              <Text
+                style={{ fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}
+                className="font-NunitoExtraBold"
+              >
+                Verification in Progress
+              </Text>
+              <Text
+                style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.92)', marginTop: 2, lineHeight: 16 }}
+                className="font-NunitoMedium"
+              >
+                Your rental fleet profile is being verified. Usually approved in 24 hours.
+              </Text>
+            </View>
+
+            {/* Bottom */}
+            <View className="z-10 flex-row items-center justify-start">
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 30,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <Text style={{ color: '#B45309', fontSize: 12 }} className="font-NunitoExtraBold">
+                  Check Status
+                </Text>
+                <MaterialCommunityIcons name="chevron-right" size={14} color="#B45309" />
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // ── Vehicle Rental variant: List Cars for Rent ────────────────────────────
+    if (fallbackVariant === 'vehicle_rental') {
+      return (
+        <View className="mb-1 mt-1">
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => onSellerAction ? onSellerAction('uploadCars') : router.push(sellerRoutes.uploadCarToRent as any)}
+            className="h-[152px] rounded-[20px] p-4 overflow-hidden justify-between w-full"
+            style={{
+              backgroundColor: '#0F172A',
+              borderWidth: 1,
+              borderColor: 'rgba(211, 3, 9, 0.35)',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.18,
+              shadowRadius: 10,
+              elevation: 4,
+            }}
+          >
+            {/* Ambient luxury crimson glow in top right */}
+            <View
+              style={{
+                position: 'absolute',
+                top: -30,
+                right: -20,
+                width: 140,
+                height: 140,
+                borderRadius: 70,
+                backgroundColor: 'rgba(211, 3, 9, 0.16)',
+              }}
+            />
+
+            <MaterialCommunityIcons
+              name="car-sports"
+              size={135}
+              color="rgba(255, 255, 255, 0.08)"
+              style={{ position: 'absolute', right: -15, bottom: -18 }}
+            />
+
+            {/* Top row */}
+            <View className="flex-row items-center justify-between z-10">
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(211, 3, 9, 0.16)',
+                  borderColor: 'rgba(211, 3, 9, 0.35)',
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  gap: 5,
+                }}
+              >
+                <MaterialCommunityIcons name="car-key" size={15} color="#FF6B6B" />
+                <Text style={{ fontSize: 11, color: '#FFB4B4', letterSpacing: 0.3 }} className="font-NunitoExtraBold">
+                  FLEET MANAGEMENT
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                  borderColor: 'rgba(34, 197, 94, 0.35)',
+                  borderWidth: 1,
+                  borderRadius: 20,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E' }} />
+                <Text style={{ fontSize: 10, color: '#86EFAC' }} className="font-NunitoBold">
+                  Active Host
+                </Text>
+              </View>
+            </View>
+
+            {/* Middle */}
+            <View className="z-10">
+              <Text
+                style={{ fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}
+                className="font-NunitoExtraBold"
+              >
+                List Cars for Rent
+              </Text>
+              <Text
+                style={{ fontSize: 12, color: '#94A3B8', marginTop: 2, lineHeight: 16 }}
+                className="font-NunitoMedium"
+              >
+                Add new vehicles to your fleet and earn daily booking revenue.
+              </Text>
+            </View>
+
+            {/* Bottom */}
+            <View className="z-10 flex-row items-center justify-start">
+              <View
+                style={{
+                  backgroundColor: '#D30309',
+                  borderRadius: 30,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 12 }} className="font-NunitoExtraBold">
+                  Upload Vehicle
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+                    borderRadius: 9,
+                    width: 18,
+                    height: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <MaterialCommunityIcons name="arrow-right" size={11} color="#FFFFFF" />
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // ── KYC Incomplete variant: Complete Store Profile ────────────────────────
     if (fallbackVariant === 'kyc_incomplete') {
       return (
         <View className="mb-1 mt-1">
           <TouchableOpacity
-            activeOpacity={0.88}
+            activeOpacity={0.9}
             onPress={() => onSellerAction && onSellerAction('kyc')}
-            className="h-[140px] rounded-[18px] p-4 overflow-hidden justify-between bg-amber-500 w-full"
+            className="h-[152px] rounded-[20px] p-4 overflow-hidden justify-between w-full"
+            style={{
+              backgroundColor: '#F59E0B',
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.25)',
+              shadowColor: '#D97706',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.25,
+              shadowRadius: 10,
+              elevation: 4,
+            }}
           >
-            <MaterialCommunityIcons
-              name="shield-alert"
-              size={110}
-              color="rgba(255,255,255,0.12)"
-              style={{ position: 'absolute', right: -15, bottom: -15 }}
+            {/* Ambient luxury glow */}
+            <View
+              style={{
+                position: 'absolute',
+                top: -30,
+                right: -20,
+                width: 140,
+                height: 140,
+                borderRadius: 70,
+                backgroundColor: 'rgba(255, 255, 255, 0.12)',
+              }}
             />
-            <View className="w-[38px] h-[38px] rounded-[12px] items-center justify-center bg-white/20">
-              <MaterialCommunityIcons name="shield-account" size={20} color="#FFFFFF" />
+
+            <MaterialCommunityIcons
+              name="shield-account"
+              size={135}
+              color="rgba(255, 255, 255, 0.15)"
+              style={{ position: 'absolute', right: -15, bottom: -18 }}
+            />
+
+            {/* Top row */}
+            <View className="flex-row items-center justify-between z-10">
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(255, 255, 255, 0.22)',
+                  borderColor: 'rgba(255, 255, 255, 0.35)',
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  gap: 5,
+                }}
+              >
+                <MaterialCommunityIcons name="storefront-outline" size={15} color="#FFFFFF" />
+                <Text style={{ fontSize: 11, color: '#FFFFFF', letterSpacing: 0.3 }} className="font-NunitoExtraBold">
+                  MERCHANT SETUP
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.18)',
+                  borderColor: 'rgba(255, 255, 255, 0.25)',
+                  borderWidth: 1,
+                  borderRadius: 20,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF' }} />
+                <Text style={{ fontSize: 10, color: '#FFFFFF' }} className="font-NunitoBold">
+                  Action Required
+                </Text>
+              </View>
             </View>
-            <View>
-              <Text className="text-[15px] text-white font-NunitoExtraBold leading-[20px] tracking-tight">
-                {'Complete Your Profile\nto Start Earning'}
+
+            {/* Middle */}
+            <View className="z-10">
+              <Text
+                style={{ fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}
+                className="font-NunitoExtraBold"
+              >
+                Complete Store Profile
               </Text>
-              <View className="mt-[8px] bg-white rounded-full py-1.5 px-[12px] flex-row items-center self-start gap-1">
-                <Text className="text-amber-600 text-[12px] font-NunitoBold">Verify Now</Text>
-                <MaterialCommunityIcons name="arrow-right" size={12} color="#D97706" />
+              <Text
+                style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.92)', marginTop: 2, lineHeight: 16 }}
+                className="font-NunitoMedium"
+              >
+                Verify your business identity to start listing parts & cars for sale.
+              </Text>
+            </View>
+
+            {/* Bottom */}
+            <View className="z-10 flex-row items-center justify-start">
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 30,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: '#D97706', fontSize: 12 }} className="font-NunitoExtraBold">
+                  Verify Store
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: '#FEF3C7',
+                    borderRadius: 9,
+                    width: 18,
+                    height: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <MaterialCommunityIcons name="arrow-right" size={11} color="#D97706" />
+                </View>
               </View>
             </View>
           </TouchableOpacity>
@@ -590,38 +1042,113 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
       return (
         <View className="mb-1 mt-1">
           <TouchableOpacity
-            activeOpacity={0.88}
+            activeOpacity={0.9}
             onPress={() => onSellerAction && onSellerAction('kyc')}
-            className="h-[140px] rounded-[18px] p-4 overflow-hidden justify-between bg-amber-600 w-full"
+            className="h-[152px] rounded-[20px] p-4 overflow-hidden justify-between w-full"
             style={{
-              shadowColor: '#D97706',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.18,
+              backgroundColor: '#D97706',
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.25)',
+              shadowColor: '#B45309',
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.25,
               shadowRadius: 10,
-              elevation: 3,
+              elevation: 4,
             }}
           >
+            {/* Ambient luxury glow */}
+            <View
+              style={{
+                position: 'absolute',
+                top: -30,
+                right: -20,
+                width: 140,
+                height: 140,
+                borderRadius: 70,
+                backgroundColor: 'rgba(255, 255, 255, 0.12)',
+              }}
+            />
+
             <MaterialCommunityIcons
               name="clock-time-four"
-              size={115}
-              color="rgba(255,255,255,0.14)"
-              style={{ position: 'absolute', right: -15, bottom: -20 }}
+              size={135}
+              color="rgba(255, 255, 255, 0.15)"
+              style={{ position: 'absolute', right: -15, bottom: -18 }}
             />
-            <View className="flex-row items-center justify-between">
-              <View className="w-[38px] h-[38px] rounded-[12px] items-center justify-center bg-white/20">
-                <MaterialCommunityIcons name="clock-outline" size={22} color="#FFFFFF" />
+
+            {/* Top row */}
+            <View className="flex-row items-center justify-between z-10">
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(255, 255, 255, 0.22)',
+                  borderColor: 'rgba(255, 255, 255, 0.35)',
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  gap: 5,
+                }}
+              >
+                <MaterialCommunityIcons name="storefront-outline" size={15} color="#FFFFFF" />
+                <Text style={{ fontSize: 11, color: '#FFFFFF', letterSpacing: 0.3 }} className="font-NunitoExtraBold">
+                  STORE VERIFICATION
+                </Text>
               </View>
-              <View className="bg-white/20 px-3 py-1 rounded-full flex-row items-center gap-1.5">
-                <View className="w-2 h-2 rounded-full bg-amber-200" />
-                <Text className="text-[11px] font-NunitoBold text-white">Under Review</Text>
+
+              <View
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.20)',
+                  borderColor: 'rgba(255, 255, 255, 0.30)',
+                  borderWidth: 1,
+                  borderRadius: 20,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FEF08A' }} />
+                <Text style={{ fontSize: 10, color: '#FFFFFF' }} className="font-NunitoBold">
+                  Under Review
+                </Text>
               </View>
             </View>
-            <View>
-              <Text className="text-[15px] text-white font-NunitoExtraBold leading-[20px] tracking-tight">
-                {'Verification Pending\nProfile Under Review'}
+
+            {/* Middle */}
+            <View className="z-10">
+              <Text
+                style={{ fontSize: 16, color: '#FFFFFF', letterSpacing: -0.3, lineHeight: 20 }}
+                className="font-NunitoExtraBold"
+              >
+                Verification Pending
               </Text>
-              <View className="mt-[8px] bg-white rounded-full py-1.5 px-[12px] flex-row items-center self-start gap-1">
-                <Text className="text-amber-700 text-[12px] font-NunitoBold">Check Status</Text>
+              <Text
+                style={{ fontSize: 12, color: 'rgba(255, 255, 255, 0.92)', marginTop: 2, lineHeight: 16 }}
+                className="font-NunitoMedium"
+              >
+                Merchant documentation is being reviewed. Approval takes under 24 hours.
+              </Text>
+            </View>
+
+            {/* Bottom */}
+            <View className="z-10 flex-row items-center justify-start">
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 30,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <Text style={{ color: '#B45309', fontSize: 12 }} className="font-NunitoExtraBold">
+                  Check Status
+                </Text>
                 <MaterialCommunityIcons name="chevron-right" size={14} color="#B45309" />
               </View>
             </View>
@@ -835,6 +1362,47 @@ const BiddingCarousel: React.FC<BiddingCarouselProps> = ({ containerPadding = 0,
               <Text className="text-[14px] font-NunitoBold text-gray-800">Upload Cars for Rent</Text>
               <View className="w-9 h-9 rounded-xl bg-primary-200 items-center justify-center">
                 <MaterialCommunityIcons name="cloud-upload" size={18} color="#D30309" />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Rental KYC Incomplete shortcut pill */}
+        {fallbackVariant === 'rental_kyc_incomplete' && (
+          <View
+            className="mt-3"
+            style={{ paddingHorizontal: containerPadding }}
+          >
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => onSellerAction && onSellerAction('kyc')}
+              className="flex-row items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3"
+            >
+              <Text className="text-[14px] font-NunitoBold text-amber-800">Complete Profile to List Rentals</Text>
+              <View className="w-9 h-9 rounded-xl bg-amber-100 items-center justify-center">
+                <MaterialCommunityIcons name="car-key" size={18} color="#D97706" />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Rental KYC Pending shortcut pill */}
+        {fallbackVariant === 'rental_kyc_pending' && (
+          <View
+            className="mt-3"
+            style={{ paddingHorizontal: containerPadding }}
+          >
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => onSellerAction && onSellerAction('kyc')}
+              className="flex-row items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3"
+            >
+              <View className="flex-row items-center gap-2">
+                <MaterialCommunityIcons name="shield-sync" size={18} color="#D97706" />
+                <Text className="text-[14px] font-NunitoBold text-amber-800">Rental Verification in Progress</Text>
+              </View>
+              <View className="bg-amber-100 px-2.5 py-1 rounded-full">
+                <Text className="text-[11px] font-NunitoBold text-amber-700">Under Review</Text>
               </View>
             </TouchableOpacity>
           </View>

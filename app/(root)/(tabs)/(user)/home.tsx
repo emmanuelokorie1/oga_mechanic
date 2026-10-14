@@ -27,6 +27,7 @@ import SwitchUserModal from "@/components/modals/SwitchUserModal";
 import useDoubleBackToExit from "@/hooks/useDoubleBackToExit";
 import VINSearchModal from "@/components/modals/VINSearchModal";
 import EmptyState from "@/components/EmptyState";
+import { useArrivalCodeStore } from "@/stores/arrivalCodeStore";
 
 // ─── Icon config for service cards ───────────────────────────────────────────
 const SERVICE_ICONS: Record<string, { icon: string }> = {
@@ -334,12 +335,28 @@ const Home = () => {
 
         {/* Section Header */}
         <View className="px-5 mt-4 mb-2">
-          <Text
-            style={{ fontSize: 18, color: "#111827", letterSpacing: -0.3 }}
-            className="font-NunitoBold"
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onLongPress={() => {
+              if (__DEV__) {
+                useArrivalCodeStore.getState().showArrivalModal({
+                  orderId: 'DEMO-8821',
+                  otpCode: '731942',
+                  mechanicName: 'Abdul Ibrahim',
+                  mechanicPhone: '+2348012345678',
+                  vehicleSummary: '2019 Toyota Camry LE',
+                  serviceAddress: '8502 Preston Rd. Inglewood, Maine',
+                });
+              }
+            }}
           >
-            Services
-          </Text>
+            <Text
+              style={{ fontSize: 18, color: "#111827", letterSpacing: -0.3 }}
+              className="font-NunitoBold"
+            >
+              Services
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Services Grid */}

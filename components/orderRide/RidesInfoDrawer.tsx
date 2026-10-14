@@ -133,7 +133,7 @@ const RidesInfoDrawer: React.FC<RidesInfoDrawerProps> = ({
 
           <CustomButton
             title="View my rides"
-            className="w-full bg-primary-600 rounded-xl h-[56px] mb-4"
+            className="w-full mb-4"
             onPress={onClose}
           />
 

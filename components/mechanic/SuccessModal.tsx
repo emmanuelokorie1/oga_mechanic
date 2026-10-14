@@ -88,7 +88,7 @@ export const SuccessModal: React.FC<SuccessModalProps> = ({
             />
             <TouchableOpacity
               onPress={onGoHome}
-              className="h-14 rounded-2xl items-center justify-center bg-gray-50 border border-gray-100"
+              className="py-3 rounded-2xl items-center justify-center bg-gray-50 border border-gray-100"
               activeOpacity={0.7}
             >
               <Text className="text-[14px] font-NunitoBold text-gray-700">Back to Dashboard</Text>

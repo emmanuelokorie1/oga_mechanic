@@ -5,13 +5,11 @@ import {
   TextInput, 
   TouchableOpacity, 
   Alert, 
-  TouchableWithoutFeedback,
-  Keyboard,
-  Platform,
-  Animated,
-  ScrollView,
-  ActivityIndicator,
-  KeyboardAvoidingView,
+  Keyboard, 
+  Platform, 
+  Animated, 
+  ScrollView, 
+  ActivityIndicator, 
 } from 'react-native'
 import { MapPinIcon, XMarkIcon } from 'react-native-heroicons/outline'
 import clsx from 'clsx'
@@ -70,6 +68,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
   const containerRef = useRef<View>(null)
   const animatedValue = useRef(new Animated.Value(0)).current
   const animationRef = useRef<Animated.CompositeAnimation | null>(null)
+  
   const [inputValue, setInputValue] = useState(value ?? '')
   const [searchQuery, setSearchQuery] = useState(value ?? '')
   const [suggestions, setSuggestions] = useState<any[]>([])
@@ -78,6 +77,10 @@ const AddressInput: React.FC<AddressInputProps> = ({
   const [isFetchingCurrentLocation, setIsFetchingCurrentLocation] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [isGeocoding, setIsGeocoding] = useState(false)
+
+  // Tracking flags to prevent rogue searches and sticky dropdowns after selection
+  const isUserTypingRef = useRef(false)
+  const hasSelectedRef = useRef(false)
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -89,7 +92,6 @@ const AddressInput: React.FC<AddressInputProps> = ({
       try {
         const { status } = await Location.getForegroundPermissionsAsync()
         if (status === 'granted') {
-          // Get last known position as a fast, silent way to get proximity bias
           const location = await Location.getLastKnownPositionAsync({})
           if (location) {
             setUserCoords({
@@ -99,7 +101,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
           }
         }
       } catch (e) {
-        // Ignore silent errors
+        // Silent error
       }
     }
     getInitialLocation()
@@ -115,17 +117,24 @@ const AddressInput: React.FC<AddressInputProps> = ({
     [hasError]
   )
 
+  // Sync external value changes without triggering autocomplete search
   useEffect(() => {
-    setInputValue(value ?? '')
-    setSearchQuery(value ?? '')
+    if (value !== inputValue) {
+      setInputValue(value ?? '')
+      setSearchQuery(value ?? '')
+    }
   }, [value])
 
+  // Autocomplete fetch - ONLY runs when user is actively typing
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSuggestions([])
-      setFetchError(null)
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
+    // If user didn't type or already picked a value, do not query autocomplete
+    if (!isUserTypingRef.current || hasSelectedRef.current || !searchQuery.trim()) {
+      if (!searchQuery.trim()) {
+        setSuggestions([])
+        setFetchError(null)
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort()
+        }
       }
       return
     }
@@ -155,7 +164,6 @@ const AddressInput: React.FC<AddressInputProps> = ({
 
       try {
         if (googleApiKey) {
-          // Google Places Autocomplete API
           const searchParams: any = {
             input: searchQuery.trim(),
             key: googleApiKey,
@@ -180,24 +188,27 @@ const AddressInput: React.FC<AddressInputProps> = ({
 
           const data = await response.json()
 
-          if (data.status === 'OK' || data.status === 'ZERO_RESULTS') {
-            const mappedSuggestions = (data.predictions || []).map((pred: any) => ({
-              id: pred.place_id,
-              placeId: pred.place_id,
-              name: pred.structured_formatting?.main_text || pred.description,
-              address: pred.description || '',
-              secondaryText: pred.structured_formatting?.secondary_text || '',
-            }))
-            setSuggestions(mappedSuggestions)
-          } else {
-            console.warn('Google Places Autocomplete status:', data.status, data.error_message)
-            if (data.error_message) {
-              setFetchError(data.error_message)
+          // Only apply if user hasn't selected an item in the interim
+          if (!hasSelectedRef.current && isUserTypingRef.current) {
+            if (data.status === 'OK' || data.status === 'ZERO_RESULTS') {
+              const mappedSuggestions = (data.predictions || []).map((pred: any) => ({
+                id: pred.place_id,
+                placeId: pred.place_id,
+                name: pred.structured_formatting?.main_text || pred.description,
+                address: pred.description || '',
+                secondaryText: pred.structured_formatting?.secondary_text || '',
+              }))
+              setSuggestions(mappedSuggestions)
+              setShowSuggestions(mappedSuggestions.length > 0)
+            } else {
+              if (data.error_message) {
+                setFetchError(data.error_message)
+              }
+              setSuggestions([])
             }
-            setSuggestions([])
           }
         } else {
-          // Fallback to Mapbox if Google key is missing
+          // Mapbox fallback
           const encodedQuery = encodeURIComponent(searchQuery.trim())
           const searchParams: any = {
             access_token: ENV_CONFIG.MAPBOX_ACCESS_TOKEN,
@@ -223,29 +234,30 @@ const AddressInput: React.FC<AddressInputProps> = ({
           }
 
           const data = await response.json()
-          const mappedSuggestions =
-            data?.features?.map((feature: any) => ({
-              id: feature.id,
-              name: feature.text || feature.place_name || searchQuery.trim(),
-              address: feature.place_name || '',
-              latitude: feature.center?.[1],
-              longitude: feature.center?.[0],
-              placeId: feature.id,
-              context: feature.context
-            })) ?? []
+          if (!hasSelectedRef.current && isUserTypingRef.current) {
+            const mappedSuggestions =
+              data?.features?.map((feature: any) => ({
+                id: feature.id,
+                name: feature.text || feature.place_name || searchQuery.trim(),
+                address: feature.place_name || '',
+                latitude: feature.center?.[1],
+                longitude: feature.center?.[0],
+                placeId: feature.id,
+                context: feature.context
+              })) ?? []
 
-          setSuggestions(mappedSuggestions)
+            setSuggestions(mappedSuggestions)
+            setShowSuggestions(mappedSuggestions.length > 0)
+          }
         }
       } catch (err: any) {
-        if (err.name === 'AbortError') {
-          return
-        }
+        if (err.name === 'AbortError') return
         setFetchError(err.message || 'Unable to fetch location suggestions.')
         setSuggestions([])
       } finally {
         setIsLoadingSuggestions(false)
       }
-    }, 350)
+    }, 320)
 
     return () => {
       if (debounceTimeoutRef.current) {
@@ -262,6 +274,13 @@ const AddressInput: React.FC<AddressInputProps> = ({
 
     try {
       setIsFetchingCurrentLocation(true)
+      hasSelectedRef.current = true
+      isUserTypingRef.current = false
+      setShowSuggestions(false)
+      setSuggestions([])
+      Keyboard.dismiss()
+      inputRef.current?.blur()
+
       const { status } = await Location.requestForegroundPermissionsAsync()
 
       if (status !== 'granted') {
@@ -296,6 +315,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
       setInputValue(formattedAddress)
       setSearchQuery(formattedAddress)
       setShowSuggestions(false)
+      setSuggestions([])
       onChangeText?.(formattedAddress)
       onLocationSelect?.({
         name: addressRecord?.name || 'Current Location',
@@ -384,7 +404,6 @@ const AddressInput: React.FC<AddressInputProps> = ({
         }
 
         const params = new URLSearchParams(searchParams)
-
         const response = await fetch(
           `${ENV_CONFIG.MAPBOX_PLACES_ENDPOINT}/${encodedQuery}.json?${params.toString()}`
         )
@@ -418,57 +437,65 @@ const AddressInput: React.FC<AddressInputProps> = ({
   }, [userCoords])
 
   const handleInputFocus = useCallback(
-    (e: any) => {
-      if (!isFocused) {
-        setIsFocused(true)
+    () => {
+      setIsFocused(true)
 
-        if (animationRef.current) {
-          animationRef.current.stop()
-        }
-
-        animationRef.current = Animated.timing(animatedValue, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: false,
-        })
-
-        animationRef.current.start()
+      if (animationRef.current) {
+        animationRef.current.stop()
       }
+
+      animationRef.current = Animated.timing(animatedValue, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: false,
+      })
+      animationRef.current.start()
+
       if (blurTimeoutRef.current) {
         clearTimeout(blurTimeoutRef.current)
       }
-      setShowSuggestions(searchQuery.trim().length > 0)
+
+      // Crucial fix: Only show suggestions if the user was typing and suggestions exist.
+      // If a value was already selected, do NOT pop the dropdown back open!
+      if (isUserTypingRef.current && suggestions.length > 0 && !hasSelectedRef.current) {
+        setShowSuggestions(true)
+      }
+
       onFocusProp?.()
     },
-    [isFocused, animatedValue, searchQuery]
+    [animatedValue, suggestions.length, onFocusProp]
   )
 
   const handleInputBlur = useCallback(
-    async (e: any) => {
-      if (isFocused) {
-        setIsFocused(false)
+    () => {
+      setIsFocused(false)
 
-        if (animationRef.current) {
-          animationRef.current.stop()
-        }
-
-        animationRef.current = Animated.timing(animatedValue, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: false,
-        })
-
-        animationRef.current.start()
+      if (animationRef.current) {
+        animationRef.current.stop()
       }
+
+      animationRef.current = Animated.timing(animatedValue, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: false,
+      })
+      animationRef.current.start()
+
       if (blurTimeoutRef.current) {
         clearTimeout(blurTimeoutRef.current)
       }
-      blurTimeoutRef.current = setTimeout(async () => {
-        if (!searchQuery.trim() || suggestions.length === 0) {
-          setShowSuggestions(false)
-        }
 
-        if (inputValue.trim() && onLocationSelect) {
+      // On blur, always dismiss suggestions cleanly after brief delay for taps
+      blurTimeoutRef.current = setTimeout(async () => {
+        setShowSuggestions(false)
+
+        // Only do fallback geocode if user manually typed and didn't pick from list
+        if (
+          !hasSelectedRef.current &&
+          isUserTypingRef.current &&
+          inputValue.trim() &&
+          onLocationSelect
+        ) {
           const geocodedLocation = await geocodeAddress(inputValue)
           if (geocodedLocation) {
             onLocationSelect(geocodedLocation)
@@ -476,9 +503,9 @@ const AddressInput: React.FC<AddressInputProps> = ({
         }
 
         onBlurProp?.()
-      }, 250)
+      }, 180)
     },
-    [isFocused, animatedValue, searchQuery, suggestions.length, inputValue, geocodeAddress, onLocationSelect, onBlurProp]
+    [animatedValue, inputValue, geocodeAddress, onLocationSelect, onBlurProp]
   )
 
   const borderColor = animatedValue.interpolate({
@@ -489,48 +516,65 @@ const AddressInput: React.FC<AddressInputProps> = ({
 
   const handleTextChange = useCallback(
     (text: string) => {
+      // User is actively typing
+      hasSelectedRef.current = false
+      isUserTypingRef.current = true
+
       setInputValue(text)
       setSearchQuery(text)
-      setShowSuggestions(text.trim().length > 0)
+
+      if (text.trim().length === 0) {
+        setShowSuggestions(false)
+        setSuggestions([])
+        setFetchError(null)
+      } else {
+        setShowSuggestions(true)
+      }
+
       onChangeText?.(text)
 
       if (geocodeTimeoutRef.current) {
         clearTimeout(geocodeTimeoutRef.current)
       }
-
-      if (text.trim().length > 0) {
-        geocodeTimeoutRef.current = setTimeout(async () => {
-          if (!showSuggestions || suggestions.length === 0) {
-            const geocodedLocation = await geocodeAddress(text)
-            if (geocodedLocation && onLocationSelect) {
-              onLocationSelect(geocodedLocation)
-            }
-          }
-        }, 2000)
-      }
     },
-    [onChangeText, geocodeAddress, onLocationSelect, showSuggestions, suggestions.length]
+    [onChangeText]
   )
 
   const handleSuggestionSelect = useCallback(
     async (suggestion: any) => {
-      if (blurTimeoutRef.current) {
-        clearTimeout(blurTimeoutRef.current)
-      }
-      const selectedText = suggestion.address || suggestion.name
+      // 1. Immediately flag that user selected a suggestion
+      hasSelectedRef.current = true
+      isUserTypingRef.current = false
+
+      // 2. Clear all debounce and blur timers, abort ongoing fetches
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current)
+      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current)
+      if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current)
+      if (abortControllerRef.current) abortControllerRef.current.abort()
+
+      // 3. Immediately close dropdown and wipe suggestions from memory
+      setShowSuggestions(false)
+      setSuggestions([])
+      setFetchError(null)
+      setIsLoadingSuggestions(false)
+
+      // 4. Dismiss keyboard & blur TextInput completely
+      Keyboard.dismiss()
+      inputRef.current?.blur()
+      setIsFocused(false)
+
+      // 5. Populate input value cleanly
+      const selectedText = suggestion.address || suggestion.name || ''
       setInputValue(selectedText)
       setSearchQuery(selectedText)
-      setShowSuggestions(false)
       onChangeText?.(selectedText)
-      Keyboard.dismiss()
 
-      // If coordinates are already present (e.g. reverse geocoded or Mapbox)
+      // 6. Resolve coordinates (Place Details or existing lat/lng)
       if (suggestion.latitude && suggestion.longitude) {
         onLocationSelect?.(suggestion)
         return
       }
 
-      // Fetch precise coordinates from Google Place Details
       if (suggestion.placeId) {
         const details = await fetchPlaceDetails(suggestion.placeId)
         if (details) {
@@ -549,7 +593,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
         }
       }
 
-      // Fallback: geocode the selected address string
+      // Fallback geocoding if place details unavailable
       const geocoded = await geocodeAddress(selectedText)
       if (geocoded) {
         onLocationSelect?.(geocoded)
@@ -572,8 +616,8 @@ const AddressInput: React.FC<AddressInputProps> = ({
     >
       {/* Label */}
       {label && (
-        <View className="mb-3 flex-row items-end justify-between">
-          <Text className={`text-base font-NunitoSemiBold text-gray-700 ${labelClassName}`}>
+        <View className="mb-2.5 flex-row items-end justify-between">
+          <Text className={`text-[15px] font-NunitoBold text-gray-800 ${labelClassName}`}>
             {label}
             {required && <Text className="text-red-500 ml-1">*</Text>}
           </Text>
@@ -581,21 +625,14 @@ const AddressInput: React.FC<AddressInputProps> = ({
             <TouchableOpacity
               onPress={handleLocationPress}
               disabled={disabled || isFetchingCurrentLocation}
-              className={`flex-row items-center px-4 py-2 rounded-xl ${
-                isFetchingCurrentLocation ? 'bg-gray-100' : 'bg-primary-50'
+              className={`flex-row items-center px-3.5 py-1.5 rounded-xl ${
+                isFetchingCurrentLocation ? 'bg-gray-100' : 'bg-red-50 border border-red-100'
               }`}
               activeOpacity={0.7}
-              style={{
-                shadowColor: '#D30309',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: isFetchingCurrentLocation ? 0 : 0.08,
-                shadowRadius: 8,
-                elevation: isFetchingCurrentLocation ? 0 : 2,
-              }}
             >
               <MapPinIcon size={14} color={isFetchingCurrentLocation ? "#9CA3AF" : "#D30309"} />
-              <Text className={`text-sm font-NunitoBold ml-1.5 ${
-                isFetchingCurrentLocation ? 'text-gray-400' : 'text-primary-600'
+              <Text className={`text-xs font-NunitoBold ml-1.5 ${
+                isFetchingCurrentLocation ? 'text-gray-400' : 'text-[#D30309]'
               }`}>
                 {isFetchingCurrentLocation ? 'Searching...' : 'Use current location'}
               </Text>
@@ -607,7 +644,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
       {/* Input & Floating Dropdown Container */}
       <View style={{ position: 'relative', zIndex: showSuggestions ? 9999 : 1 }}>
         <Animated.View
-          className={`flex flex-row items-center bg-gray-50 rounded-xl px-4 py-1 ${containerStyle}`}
+          className={`flex flex-row items-center bg-gray-50 rounded-2xl px-4 py-1 ${containerStyle}`}
           style={{
             borderWidth: 1,
             borderColor: borderColor,
@@ -640,36 +677,44 @@ const AddressInput: React.FC<AddressInputProps> = ({
             returnKeyType="search"
           />
 
-          <View className="ml-3">
+          <View className="ml-2.5">
             {isFetchingCurrentLocation ? (
               <ActivityIndicator size="small" color="#D30309" />
             ) : inputValue.length > 0 ? (
               <TouchableOpacity 
-                className={`p-2 rounded-xl bg-gray-50`}
+                activeOpacity={0.7}
+                className="w-7 h-7 rounded-full bg-gray-200/80 items-center justify-center"
                 onPress={() => {
-                  setInputValue('');
-                  setSearchQuery('');
-                  setShowSuggestions(false);
-                  onChangeText?.('');
+                  hasSelectedRef.current = false
+                  isUserTypingRef.current = false
+                  setInputValue('')
+                  setSearchQuery('')
+                  setShowSuggestions(false)
+                  setSuggestions([])
+                  setFetchError(null)
+                  onChangeText?.('')
                   if (abortControllerRef.current) {
-                    abortControllerRef.current.abort();
+                    abortControllerRef.current.abort()
+                  }
+                  if (debounceTimeoutRef.current) {
+                    clearTimeout(debounceTimeoutRef.current)
                   }
                 }}
               >
-                <XMarkIcon size={20} color="#6B7280" />
+                <XMarkIcon size={14} color="#4B5563" />
               </TouchableOpacity>
             ) : (
-              <View className={`p-2 rounded-xl ${isFocused ? 'bg-primary-50' : 'bg-gray-50'}`}>
-                <MapPinIcon size={20} color={isFocused ? "#D30309" : "#9CA3AF"} />
+              <View className={`p-2 rounded-xl ${isFocused ? 'bg-red-50' : 'bg-gray-100/60'}`}>
+                <MapPinIcon size={18} color={isFocused ? "#D30309" : "#9CA3AF"} />
               </View>
             )}
           </View>
         </Animated.View>
 
         {/* Floating suggestions dropdown overlay */}
-        {showSuggestions && (
+        {showSuggestions && (isLoadingSuggestions || fetchError || suggestions.length > 0) && (
           <View
-            className="bg-white rounded-[20px] overflow-hidden"
+            className="bg-white rounded-2xl overflow-hidden"
             style={{
               position: 'absolute',
               top: '100%',
@@ -682,7 +727,7 @@ const AddressInput: React.FC<AddressInputProps> = ({
               backgroundColor: '#FFFFFF',
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.15,
+              shadowOpacity: 0.14,
               shadowRadius: 20,
               borderWidth: 1,
               borderColor: '#E5E7EB',
@@ -690,60 +735,62 @@ const AddressInput: React.FC<AddressInputProps> = ({
           >
             <ScrollView
               showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
+              keyboardShouldPersistTaps="always"
               nestedScrollEnabled
             >
-                {isLoadingSuggestions && (
-                  <View className="flex-row items-center gap-3 px-6 py-5 bg-gray-50/50">
-                    <ActivityIndicator size="small" color="#D30309" />
-                    <Text className="text-sm font-NunitoBold text-gray-400">Searching...</Text>
-                  </View>
-                )}
+              {isLoadingSuggestions && (
+                <View className="flex-row items-center gap-3 px-5 py-3.5 bg-gray-50/60">
+                  <ActivityIndicator size="small" color="#D30309" />
+                  <Text className="text-xs font-NunitoBold text-gray-500">Searching locations...</Text>
+                </View>
+              )}
 
-                {fetchError && (
-                  <View className="px-6 py-4 bg-red-50">
-                    <Text className="text-sm font-NunitoBold text-red-500">{fetchError}</Text>
-                  </View>
-                )}
+              {fetchError && (
+                <View className="px-5 py-3 bg-red-50 border-b border-red-100">
+                  <Text className="text-xs font-NunitoBold text-red-500">{fetchError}</Text>
+                </View>
+              )}
 
-                {suggestions.map((suggestion, index) => (
-                  <TouchableOpacity
-                    key={suggestion.id}
-                    onPress={() => handleSuggestionSelect(suggestion)}
-                    activeOpacity={0.7}
-                    className={clsx(
-                      "px-6 py-4 flex-row items-center",
-                      index !== suggestions.length - 1 && "border-b border-gray-50"
-                    )}
-                  >
-                    <View className="w-10 h-10 rounded-2xl bg-gray-50 items-center justify-center">
-                      <MapPinIcon size={20} color="#D30309" />
-                    </View>
-                    <View className="ml-4 flex-1">
-                      <Text className="text-[14px] font-NunitoBold text-gray-900 leading-tight">
-                        {suggestion.name}
-                      </Text>
+              {suggestions.map((suggestion, index) => (
+                <TouchableOpacity
+                  key={suggestion.id || `${suggestion.name}-${index}`}
+                  onPress={() => handleSuggestionSelect(suggestion)}
+                  activeOpacity={0.7}
+                  className={clsx(
+                    "px-4 py-3 flex-row items-center active:bg-gray-50",
+                    index !== suggestions.length - 1 && "border-b border-gray-100"
+                  )}
+                >
+                  <View className="w-8 h-8 rounded-xl bg-red-50 items-center justify-center mr-3 border border-red-100 flex-shrink-0">
+                    <MapPinIcon size={16} color="#D30309" />
+                  </View>
+                  <View className="flex-1 mr-1">
+                    <Text className="text-[14px] font-NunitoBold text-gray-900 leading-tight" numberOfLines={1}>
+                      {suggestion.name}
+                    </Text>
+                    {suggestion.address && suggestion.address !== suggestion.name ? (
                       <Text className="text-xs font-NunitoMedium text-gray-400 mt-0.5" numberOfLines={1}>
                         {suggestion.address}
                       </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-        </View>
-
-        {/* Error */}
-        {hasError && (
-          <View className="flex-row items-center mt-1">
-            <View className="w-1 h-1 bg-red-500 rounded-full mr-2" />
-            <Text className="text-md font-NunitoMedium text-red-500 flex-1">
-              {String(error)}
-            </Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
       </View>
+
+      {/* Error */}
+      {hasError && (
+        <View className="flex-row items-center mt-1.5 ml-1">
+          <View className="w-1.5 h-1.5 bg-red-500 rounded-full mr-2" />
+          <Text className="text-xs font-NunitoMedium text-red-500 flex-1">
+            {String(error)}
+          </Text>
+        </View>
+      )}
+    </View>
   )
 }
 

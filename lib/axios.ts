@@ -1,6 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BASE_URL, AUTH_ENDPOINTS } from './endpoints';
+import { BASE_URL, AUTH_ENDPOINTS, USER_ENDPOINTS } from './endpoints';
 import { ENV_CONFIG } from '../config/env';
 import { authEvents } from './authEvents';
 import { Platform } from 'react-native';
@@ -61,7 +61,16 @@ api.interceptors.request.use(
         token = (await secureStorage.getSecureItem('auth_token')) || (await AsyncStorage.getItem('auth_token'));
       }
 
-      if (token && !config.headers?.skipAuth) {
+      const isPublicEndpoint = 
+        config.url?.includes(USER_ENDPOINTS.LOGIN) ||
+        config.url?.includes(AUTH_ENDPOINTS.LOGIN) ||
+        config.url?.includes(USER_ENDPOINTS.REGISTER) ||
+        config.url?.includes(AUTH_ENDPOINTS.REGISTER) ||
+        config.url?.includes(AUTH_ENDPOINTS.REFRESH_TOKEN) ||
+        config.url?.includes(AUTH_ENDPOINTS.FORGOT_PASSWORD) ||
+        config.url?.includes(AUTH_ENDPOINTS.RESET_PASSWORD);
+
+      if (token && !config.headers?.skipAuth && !isPublicEndpoint) {
         config.headers.Authorization = `Bearer ${token}`;
       }
       if (config.headers?.skipAuth) {
@@ -134,10 +143,31 @@ api.interceptors.response.use(
 
     // Handle 401 Unauthorized
     if (error.response?.status === 401) {
+      // 1. Never treat login or registration failures as session expiry.
+      // These are form submission errors (e.g. invalid credentials or user deleted).
+      const isLoginOrRegisterEndpoint =
+        originalRequest?.url?.includes(AUTH_ENDPOINTS.LOGIN) ||
+        originalRequest?.url?.includes(USER_ENDPOINTS.LOGIN) ||
+        originalRequest?.url?.includes(AUTH_ENDPOINTS.REGISTER) ||
+        originalRequest?.url?.includes(USER_ENDPOINTS.REGISTER);
+
+      if (isLoginOrRegisterEndpoint) {
+        processQueue(error, null);
+        return Promise.reject(error);
+      }
+
+      const hadAuthHeader = !!originalRequest?.headers?.Authorization;
+      if (!hadAuthHeader) {
+        // Request was sent without credentials (user already logged out or guest).
+        // Simply reject the request without triggering an unauthorized logout cascade.
+        processQueue(error, null);
+        return Promise.reject(error);
+      }
+
       const isAuthEndpoint = 
         originalRequest?.url?.includes(AUTH_ENDPOINTS.REFRESH_TOKEN) ||
-        originalRequest?.url?.includes(AUTH_ENDPOINTS.LOGIN) ||
-        originalRequest?.url?.includes(AUTH_ENDPOINTS.LOGOUT);
+        originalRequest?.url?.includes(AUTH_ENDPOINTS.LOGOUT) ||
+        originalRequest?.url?.includes(USER_ENDPOINTS.LOGOUT);
 
       const isUserNotFound = 
         error.response?.data?.code === 'user_not_found' || 
@@ -217,20 +247,24 @@ api.interceptors.response.use(
           return api(originalRequest);
         } else {
           processQueue(error, null);
-          try {
-            const { useUserStore } = require('../stores/userStore');
-            useUserStore.getState().logout();
-          } catch (_) {}
-          await secureStorage.clearAllData().catch(() => {});
-          await AsyncStorage.multiRemove([
-            'auth_token',
-            'refresh_token',
-            'user_data',
-            'is_logged_in',
-            'current_active_role',
-            'user_roles_data'
-          ]).catch(() => {});
-          authEvents.onUnauthorized.emit();
+          const isLoggedIn = (await AsyncStorage.getItem('is_logged_in')) === 'true';
+          if (isLoggedIn) {
+            try {
+              const { useUserStore } = require('../stores/userStore');
+              useUserStore.getState().logout();
+            } catch (_) {}
+            await secureStorage.clearAllData().catch(() => {});
+            await AsyncStorage.multiRemove([
+              'auth_token',
+              'refresh_token',
+              'user_data',
+              'is_logged_in',
+              'current_active_role',
+              'user_roles_data'
+            ]).catch(() => {});
+            authEvents.onUnauthorized.emit();
+          }
+          return Promise.reject(error);
         }
       } catch (refreshError) {
         processQueue(refreshError, null);

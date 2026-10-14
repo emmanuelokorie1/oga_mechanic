@@ -6,6 +6,7 @@ import { ENV_CONFIG } from '@/config/env';
 import { userAPI, GoogleAuthPayload, GoogleAuthResponse } from '@/lib/api/user';
 import { routes, mechanicRoutes, sellerRoutes } from '@/constants/routes';
 import { getRoleHomeRoute, normalizeRoleName } from '@/utils/authUtils';
+import { registerPushNotificationsAndSyncDevice } from '@/services/notificationService';
 
 // Safely import the Google Sign-In module — it may not be available
 // in Expo Go or when the native module isn't properly registered.
@@ -173,6 +174,11 @@ export const useGoogleSignIn = () => {
         } catch (storeError) {
           console.error('⚠️ Failed to sync login data to Zustand store:', storeError);
         }
+
+        // Register device for push notifications globally across all roles
+        registerPushNotificationsAndSyncDevice(true).catch((pushErr) => {
+          console.warn('Push device registration on Google Sign-In warning:', pushErr);
+        });
 
         // 4. Load user roles
         try {

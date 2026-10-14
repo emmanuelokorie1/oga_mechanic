@@ -77,7 +77,13 @@
         }
       ],
       "expo-font",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/adaptive-icon.png",
+          "color": "#D30309"
+        }
+      ],
       [
         "expo-local-authentication",
         {

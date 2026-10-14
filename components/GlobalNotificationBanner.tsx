@@ -7,7 +7,10 @@ import {
   ChatBubbleLeftRightIcon, 
   WrenchScrewdriverIcon, 
   XMarkIcon,
-  TrashIcon
+  TrashIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ChevronRightIcon
 } from 'react-native-heroicons/solid';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userAPI } from '@/lib/api/user';
@@ -15,45 +18,238 @@ import { useRouter, usePathname, useLocalSearchParams } from 'expo-router';
 import { routes, mechanicRoutes } from '@/constants/routes';
 import { usePrimaryUserProfile, userProfileKeys } from '@/hooks/useUserProfile';
 import { extractChatRooms } from '@/lib/api/communications';
+import { useUserStore } from '@/stores/userStore';
+
+export interface NotificationTheme {
+  category: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  tagBg: string;
+  tagText: string;
+  shadowColor: string;
+}
+
+export const getNotificationTheme = (type?: string): NotificationTheme => {
+  const normalized = (type || 'info').toLowerCase();
+  
+  if (
+    normalized === 'support_chat' ||
+    normalized === 'chat' ||
+    normalized === 'chat_message' ||
+    normalized === 'p2p'
+  ) {
+    return {
+      category: 'NEW MESSAGE',
+      color: '#2563EB',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200',
+      tagBg: 'bg-blue-50',
+      tagText: 'text-blue-700',
+      shadowColor: '#000000',
+    };
+  }
+  
+  if (
+    normalized === 'repair_update' ||
+    normalized === 'repair_status' ||
+    normalized.includes('repair') ||
+    normalized.includes('transit')
+  ) {
+    return {
+      category: 'REPAIR UPDATE',
+      color: '#0F172A',
+      bgColor: 'bg-slate-100',
+      borderColor: 'border-slate-200',
+      tagBg: 'bg-slate-100',
+      tagText: 'text-slate-800',
+      shadowColor: '#000000',
+    };
+  }
+
+  if (normalized === 'order' || normalized.includes('order')) {
+    return {
+      category: 'ORDER STATUS',
+      color: '#0F172A',
+      bgColor: 'bg-slate-100',
+      borderColor: 'border-slate-200',
+      tagBg: 'bg-slate-100',
+      tagText: 'text-slate-800',
+      shadowColor: '#000000',
+    };
+  }
+
+  if (normalized === 'success') {
+    return {
+      category: 'SUCCESS',
+      color: '#059669',
+      bgColor: 'bg-emerald-50',
+      borderColor: 'border-emerald-200',
+      tagBg: 'bg-emerald-50',
+      tagText: 'text-emerald-700',
+      shadowColor: '#000000',
+    };
+  }
+
+  if (normalized === 'warning' || normalized === 'warn') {
+    return {
+      category: 'ATTENTION',
+      color: '#D97706',
+      bgColor: 'bg-amber-50',
+      borderColor: 'border-amber-200',
+      tagBg: 'bg-amber-50',
+      tagText: 'text-amber-700',
+      shadowColor: '#000000',
+    };
+  }
+
+  if (normalized === 'error') {
+    return {
+      category: 'NOTICE',
+      color: '#E11D48',
+      bgColor: 'bg-rose-50',
+      borderColor: 'border-rose-200',
+      tagBg: 'bg-rose-50',
+      tagText: 'text-rose-700',
+      shadowColor: '#000000',
+    };
+  }
+
+  return {
+    category: 'UPDATE',
+    color: '#334155',
+    bgColor: 'bg-slate-100',
+    borderColor: 'border-slate-200',
+    tagBg: 'bg-slate-100',
+    tagText: 'text-slate-700',
+    shadowColor: '#000000',
+  };
+};
 
 export const getIconForType = (type: string, color: string) => {
-  switch (type) {
-    case 'support_chat':
-    case 'chat': return <ChatBubbleLeftRightIcon size={24} color={color} />;
-    case 'repair_update':
-    case 'repair_status':
-    case 'order': return <WrenchScrewdriverIcon size={24} color={color} />;
-    default: return <BellAlertIcon size={24} color={color} />;
+  const normalized = (type || '').toLowerCase();
+  if (
+    normalized === 'support_chat' ||
+    normalized === 'chat' ||
+    normalized === 'chat_message' ||
+    normalized === 'p2p'
+  ) {
+    return <ChatBubbleLeftRightIcon size={22} color={color} />;
   }
+  if (
+    normalized === 'repair_update' ||
+    normalized === 'repair_status' ||
+    normalized === 'order' ||
+    normalized.includes('repair') ||
+    normalized.includes('transit')
+  ) {
+    return <WrenchScrewdriverIcon size={22} color={color} />;
+  }
+  if (normalized === 'success') {
+    return <CheckCircleIcon size={22} color={color} />;
+  }
+  if (normalized === 'warning' || normalized === 'warn') {
+    return <ExclamationTriangleIcon size={22} color={color} />;
+  }
+  return <BellAlertIcon size={22} color={color} />;
+};
+
+const formatRelativeTime = (timestamp?: string | number) => {
+  if (!timestamp) return '';
+  const date = typeof timestamp === 'number' ? new Date(timestamp) : new Date(timestamp);
+  if (isNaN(date.getTime())) return '';
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return 'Just now';
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) return `${diffInHours}h ago`;
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) return `${diffInDays}d ago`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
 const NotificationCard = ({ item, onDismiss, onPress }: { item: any, onDismiss: () => void, onPress?: () => void }) => {
   const type = item.notification_type || item.type || 'info';
-  const isRepair = type === 'repair_update' || type === 'repair_status' || type === 'order';
-  const color = isRepair ? '#D30309' : type === 'support_chat' || type === 'chat' ? '#3B82F6' : '#6366F1';
-  const bgColor = isRepair ? 'bg-red-50' : type === 'support_chat' || type === 'chat' ? 'bg-blue-50' : 'bg-indigo-50';
-  const borderColor = isRepair ? 'border-red-100' : type === 'support_chat' || type === 'chat' ? 'border-blue-100' : 'border-indigo-100';
+  const theme = getNotificationTheme(type);
+  const isUnread = !item.is_read;
+  const timeText = formatRelativeTime(item.created_at || item.timestamp);
+
+  const rawTitle = typeof item.title === 'string' ? item.title : String(item.title || '');
+  const rawMessage =
+    typeof item.message === 'string'
+      ? item.message
+      : (item.message?.content || item.message?.text || String(item.message || ''));
 
   return (
     <TouchableOpacity 
-      activeOpacity={0.7}
+      activeOpacity={0.88}
       onPress={onPress}
-      className={`bg-white rounded-[20px] p-4 flex-row items-center mb-3 shadow-sm border ${item.is_read ? 'border-gray-100 opacity-80' : 'border-red-100'}`}
+      className={`bg-white rounded-2xl p-4 mb-3 border ${
+        isUnread ? 'border-slate-200/90' : 'border-slate-100 bg-slate-50/20'
+      }`}
+      style={{
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: isUnread ? 0.08 : 0.03,
+        shadowRadius: 10,
+        elevation: 2,
+      }}
     >
-      <View className={`${bgColor} p-3 rounded-full mr-4 border ${borderColor}`}>
-        {getIconForType(type, color)}
+      <View className="flex-row items-start">
+        {/* Left Icon Badge */}
+        <View className={`${theme.bgColor} p-3 rounded-xl mr-3 border ${theme.borderColor} mt-0.5`}>
+          {getIconForType(type, theme.color)}
+        </View>
+
+        {/* Content */}
+        <View className="flex-1 mr-2">
+          {/* Top meta row */}
+          <View className="flex-row items-center justify-between mb-1">
+            <View className="flex-row items-center">
+              {isUnread && (
+                <View className="w-2 h-2 rounded-full bg-[#D30309] mr-1.5" />
+              )}
+              <View className={`${theme.tagBg} px-2 py-0.5 rounded-full`}>
+                <Text className={`${theme.tagText} font-NunitoExtraBold text-[10px] tracking-wider uppercase`}>
+                  {theme.category}
+                </Text>
+              </View>
+            </View>
+
+            {timeText ? (
+              <Text className="text-gray-400 font-NunitoMedium text-[11px]">
+                {timeText}
+              </Text>
+            ) : null}
+          </View>
+
+          <Text
+            className={`text-gray-900 text-[15px] leading-5 mb-0.5 ${
+              isUnread ? 'font-NunitoExtraBold' : 'font-NunitoBold'
+            }`}
+          >
+            {rawTitle}
+          </Text>
+          <Text className="text-gray-600 font-NunitoMedium text-[13px] leading-[18px]" numberOfLines={3}>
+            {rawMessage}
+          </Text>
+        </View>
+
+        {/* Dismiss Button */}
+        <TouchableOpacity
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onDismiss();
+          }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          className="w-7 h-7 rounded-full bg-gray-50 items-center justify-center border border-gray-100 ml-1"
+        >
+          <XMarkIcon size={14} color="#9CA3AF" />
+        </TouchableOpacity>
       </View>
-      <View className="flex-1 mr-2">
-        <Text className="text-gray-900 font-NunitoExtraBold text-[16px] mb-0.5">
-          {typeof item.title === 'string' ? item.title : String(item.title || '')}
-        </Text>
-        <Text className="text-gray-500 font-NunitoMedium text-[13px]">
-          {typeof item.message === 'string' ? item.message : (item.message?.content || item.message?.text || String(item.message || ''))}
-        </Text>
-      </View>
-      <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDismiss(); }} className="p-2 -mr-2">
-        <XMarkIcon size={20} color="#9CA3AF" />
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 };
@@ -69,10 +265,13 @@ const GlobalNotificationBanner = () => {
   } = useNotificationStore();
   
   const insets = useSafeAreaInsets();
-  const translateY = useRef(new Animated.Value(-150)).current;
+  const translateY = useRef(new Animated.Value(-160)).current;
   const queryClient = useQueryClient();
   const { data: profile } = usePrimaryUserProfile();
   const userRole = profile?.data?.current_role;
+  const accessToken = useUserStore((state) => state.accessToken);
+
+  const bannerTheme = getNotificationTheme(type);
 
   const handleNavigation = (notifData: any) => {
     if (!notifData) return;
@@ -84,14 +283,14 @@ const GlobalNotificationBanner = () => {
 
     console.log('🚀 [Notification Navigation]', { notificationType, relatedObjectId, userRole });
 
-    const title = (bannerData?.title || rawData.title || '').toLowerCase();
+    const titleText = (bannerData?.title || rawData.title || '').toLowerCase();
     const isRepairNotification =
       notificationType === 'repair_update' ||
       notificationType === 'repair_status' ||
       notificationType?.includes('repair') ||
       notificationType?.includes('transit') ||
-      title.includes('repair') ||
-      title.includes('transit');
+      titleText.includes('repair') ||
+      titleText.includes('transit');
 
     if (isRepairNotification) {
       const targetOrderId = relatedObjectId || rawData.order_id || rawData.repair_request_id || rawData.repair_id || rawData.id;
@@ -200,19 +399,19 @@ const GlobalNotificationBanner = () => {
   useEffect(() => {
     if (isVisible && !isHistoryModalVisible) {
       Animated.spring(translateY, {
-        toValue: Platform.OS === 'ios' ? insets.top + 10 : insets.top + 20,
+        toValue: Platform.OS === 'ios' ? insets.top + 8 : insets.top + 14,
         useNativeDriver: true,
-        bounciness: 12,
+        bounciness: 10,
         speed: 14,
       }).start();
     } else {
       Animated.timing(translateY, {
-        toValue: -150,
-        duration: 300,
+        toValue: -160,
+        duration: 260,
         useNativeDriver: true,
       }).start();
     }
-  }, [isVisible, isHistoryModalVisible]);
+  }, [isVisible, isHistoryModalVisible, insets.top]);
 
   // ── Backend Pagination Query ──────────────────────────────────────────────
   const {
@@ -226,7 +425,6 @@ const GlobalNotificationBanner = () => {
     queryKey: ['notifications', 'infinite'],
     queryFn: ({ pageParam = 0 }) => userAPI.getNotifications(pageParam, 15),
     getNextPageParam: (lastPage, allPages) => {
-      // API returns response.data inside lastPage, so the actual paginated data is in lastPage?.data
       const pageData = lastPage?.data || lastPage;
       if (pageData?.next) {
         return allPages.length * 15;
@@ -235,6 +433,11 @@ const GlobalNotificationBanner = () => {
     },
     initialPageParam: 0,
     staleTime: 5 * 60 * 1000,
+    enabled: Boolean(accessToken),
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 401) return false;
+      return failureCount < 2;
+    },
   });
 
   const notifications = data?.pages.flatMap((page) => {
@@ -271,112 +474,166 @@ const GlobalNotificationBanner = () => {
 
   return (
     <>
-      {/* 1. The Temporary Drop-down Banner */}
+      {/* 1. The Elevated Floating In-App Dropdown Banner */}
       <Animated.View
         style={{
           position: 'absolute',
           top: 0,
-          left: 16,
-          right: 16,
+          left: 14,
+          right: 14,
           transform: [{ translateY }],
           zIndex: 9999,
         }}
       >
         <TouchableOpacity 
-          activeOpacity={0.9}
+          activeOpacity={0.92}
           onPress={() => handleNavigation(bannerData)}
-          onLongPress={() => toggleHistoryModal(true)} // Open history on long press
-          className="bg-white rounded-[20px] p-4 flex-row items-center border border-gray-100 overflow-hidden"
+          onLongPress={() => toggleHistoryModal(true)}
+          className="bg-white rounded-[22px] p-3.5 border border-slate-200/90 overflow-hidden"
           style={{
-            shadowColor: '#D30309',
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.15,
-            shadowRadius: 16,
-            elevation: 2,
+            shadowColor: '#000000',
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: Platform.OS === 'ios' ? 0.12 : 0.18,
+            shadowRadius: 20,
+            elevation: 10,
           }}
         >
-          <View className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#D30309]" />
-          <View className="bg-red-50 p-3 rounded-[14px] mr-4 ml-2 border border-red-100">
-            {getIconForType(type, "#D30309")}
+          {/* Top Category Row */}
+          <View className="flex-row items-center justify-between mb-2">
+            <View className={`${bannerTheme.tagBg} px-2.5 py-0.5 rounded-full border ${bannerTheme.borderColor}`}>
+              <Text className={`${bannerTheme.tagText} font-NunitoBold text-[10px] tracking-wider uppercase`}>
+                {bannerTheme.category}
+              </Text>
+            </View>
+
+            <View className="flex-row items-center">
+              <Text className="text-slate-400 font-NunitoSemiBold text-[10.5px] mr-2">
+                Tap to view
+              </Text>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  hideNotification();
+                }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                className="w-6 h-6 rounded-full bg-slate-100 items-center justify-center active:bg-slate-200"
+              >
+                <XMarkIcon size={12} color="#64748B" />
+              </TouchableOpacity>
+            </View>
           </View>
-          <View className="flex-1 mr-3">
-            <Text className="text-gray-900 font-NunitoExtraBold text-[16px] mb-0.5 tracking-tight">
-              {typeof title === 'string' ? title : String(title || '')}
-            </Text>
-            <Text className="text-gray-500 font-NunitoMedium text-[13px] leading-[18px]" numberOfLines={2}>
-              {typeof message === 'string' ? message : ((message as any)?.content || (message as any)?.text || String(message || ''))}
-            </Text>
+
+          {/* Banner Body */}
+          <View className="flex-row items-center">
+            <View className={`w-11 h-11 rounded-2xl ${bannerTheme.bgColor} border ${bannerTheme.borderColor} items-center justify-center mr-3`}>
+              {getIconForType(type, bannerTheme.color)}
+            </View>
+            <View className="flex-1 mr-2">
+              <Text className="text-slate-900 font-NunitoExtraBold text-[14px] leading-5 mb-0.5" numberOfLines={1}>
+                {typeof title === 'string' ? title : String(title || '')}
+              </Text>
+              <Text className="text-slate-600 font-NunitoMedium text-[12.5px] leading-[17px]" numberOfLines={2}>
+                {typeof message === 'string' ? message : ((message as any)?.content || (message as any)?.text || String(message || ''))}
+              </Text>
+            </View>
+            <ChevronRightIcon size={16} color="#94A3B8" />
           </View>
-          <TouchableOpacity onPress={hideNotification} className="w-8 h-8 bg-gray-50 rounded-full items-center justify-center border border-gray-100">
-            <XMarkIcon size={16} color="#9CA3AF" />
-          </TouchableOpacity>
+
+          {/* Tactile Bottom Grabber */}
+          <View className="w-8 h-1 bg-slate-200 rounded-full mx-auto mt-2" />
         </TouchableOpacity>
       </Animated.View>
 
-      {/* 2. The Full Screen History Modal with Infinite Scroll */}
+      {/* 2. The Full Screen History Modal with Sheet Styling */}
       <Modal
         visible={isHistoryModalVisible}
         transparent
         animationType="fade"
         onRequestClose={() => toggleHistoryModal(false)}
       >
-        <View className="flex-1 bg-black/60 pt-16">
-          <View className="px-4">
+        <View className="flex-1 bg-black/60 justify-end">
+          <View 
+            className="flex-1 bg-[#0F1014] pt-4"
+            style={{ paddingTop: Math.max(insets.top, 24) }}
+          >
             {/* Header */}
-            <View className="flex-row items-center justify-between mb-6" style={{ marginTop: insets.top }}>
-              <Text className="text-white font-NunitoExtraBold text-lg">
-                Notifications {totalCount > 0 ? `(${totalCount})` : ''}
-              </Text>
+            <View className="px-5 pb-4 border-b border-white/10 flex-row items-center justify-between">
+              <View className="flex-row items-center">
+                <Text className="text-white font-NunitoExtraBold text-xl">
+                  Notifications
+                </Text>
+                {totalCount > 0 && (
+                  <View className="ml-2.5 bg-[#D30309] px-2.5 py-0.5 rounded-full">
+                    <Text className="text-white font-NunitoExtraBold text-xs">
+                      {totalCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
               <View className="flex-row items-center">
                 {notifications.length > 0 && (
                   <TouchableOpacity 
                     onPress={() => markAllReadMutation.mutate()} 
                     disabled={markAllReadMutation.isPending}
-                    className="flex-row items-center mr-4"
+                    className="flex-row items-center bg-white/10 px-3 py-1.5 rounded-full mr-3 border border-white/10 active:bg-white/20"
                   >
-                    <TrashIcon size={16} color="#EF4444" />
-                    <Text className="text-red-500 font-NunitoBold ml-1">Clear all</Text>
+                    <TrashIcon size={14} color="#EF4444" />
+                    <Text className="text-red-400 font-NunitoBold text-xs ml-1.5">Clear all</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={() => toggleHistoryModal(false)} className="bg-white/20 p-2 rounded-full">
+                <TouchableOpacity 
+                  onPress={() => toggleHistoryModal(false)} 
+                  className="w-9 h-9 rounded-full bg-white/15 items-center justify-center active:bg-white/25"
+                >
                   <XMarkIcon size={20} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
 
-          {/* Infinite Scroll List */}
-          <View className="flex-1 px-4">
-            {isLoading ? (
-              <View className="flex-1 items-center justify-center">
-                <ActivityIndicator size="large" color="#FFFFFF" />
-              </View>
-            ) : notifications.length === 0 ? (
-              <View className="items-center justify-center mt-20">
-                <BellAlertIcon size={48} color="#9CA3AF" />
-                <Text className="text-gray-400 font-NunitoMedium mt-4 text-center">No recent notifications</Text>
-              </View>
-            ) : (
-              <FlatList
-                data={notifications}
-                keyExtractor={(item) => item.id.toString()}
-                renderItem={({ item }) => (
-                  <NotificationCard 
-                    item={item} 
-                    onDismiss={() => markReadMutation.mutate(item.id)} 
-                    onPress={() => handleNavigation(item)}
-                  />
-                )}
-                showsVerticalScrollIndicator={false}
-                onEndReached={() => {
-                  if (hasNextPage) fetchNextPage();
-                }}
-                onEndReachedThreshold={0.5}
-                ListFooterComponent={renderFooter}
-                refreshing={isLoading}
-                onRefresh={refetch}
-              />
-            )}
+            {/* Infinite Scroll List */}
+            <View className="flex-1 px-4 pt-4">
+              {isLoading ? (
+                <View className="flex-1 items-center justify-center">
+                  <ActivityIndicator size="large" color="#D30309" />
+                  <Text className="text-gray-400 font-NunitoMedium text-sm mt-3">
+                    Loading notifications...
+                  </Text>
+                </View>
+              ) : notifications.length === 0 ? (
+                <View className="flex-1 items-center justify-center px-6">
+                  <View className="w-20 h-20 rounded-full bg-white/10 items-center justify-center mb-4 border border-white/10">
+                    <BellAlertIcon size={40} color="#9CA3AF" />
+                  </View>
+                  <Text className="text-white font-NunitoExtraBold text-lg mb-1">
+                    All Caught Up!
+                  </Text>
+                  <Text className="text-gray-400 font-NunitoMedium text-sm text-center leading-5 max-w-[280px]">
+                    You have no unread notifications right now. We'll alert you as soon as there are updates on your repairs, orders, or chats.
+                  </Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={notifications}
+                  keyExtractor={(item) => item.id.toString()}
+                  renderItem={({ item }) => (
+                    <NotificationCard 
+                      item={item} 
+                      onDismiss={() => markReadMutation.mutate(item.id)} 
+                      onPress={() => handleNavigation(item)}
+                    />
+                  )}
+                  showsVerticalScrollIndicator={false}
+                  onEndReached={() => {
+                    if (hasNextPage) fetchNextPage();
+                  }}
+                  onEndReachedThreshold={0.5}
+                  ListFooterComponent={renderFooter}
+                  refreshing={isLoading}
+                  onRefresh={refetch}
+                />
+              )}
+            </View>
           </View>
         </View>
       </Modal>

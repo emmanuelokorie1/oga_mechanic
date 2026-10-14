@@ -1,9 +1,17 @@
 import React, { useEffect, useRef } from "react";
-import { View, Animated, Image, Text, StyleSheet } from "react-native";
+import {
+  View,
+  Animated,
+  Image,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  StatusBar as RNStatusBar,
+  Platform,
+  Easing,
+} from "react-native";
 import * as SplashScreen from "expo-splash-screen";
-import { icons } from "@/constants";
-import { TruckIcon, WrenchScrewdriverIcon, ShieldCheckIcon } from "react-native-heroicons/outline";
-import { StatusBar } from "expo-status-bar";
+import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 
 interface AnimatedSplashProps {
   onAnimationEnd?: () => void;
@@ -11,10 +19,23 @@ interface AnimatedSplashProps {
 }
 
 export default function AnimatedSplash({ onAnimationEnd, isReady = true }: AnimatedSplashProps) {
-  const opacity = useRef(new Animated.Value(1)).current;
-  const scale = useRef(new Animated.Value(1)).current;
+  // Exit animation values
+  const exitOpacity = useRef(new Animated.Value(1)).current;
+  const exitScale = useRef(new Animated.Value(1)).current;
+
+  // Entrance & Logo animation values
+  const logoScale = useRef(new Animated.Value(0.75)).current;
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+  const pulseScale = useRef(new Animated.Value(1)).current;
+
+  // Staggered text animation values
+  const textTranslateY = useRef(new Animated.Value(14)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
-  const textScale = useRef(new Animated.Value(0.85)).current;
+  const subtitleOpacity = useRef(new Animated.Value(0)).current;
+
+  // Animation reference for clean cancellation
+  const ambientLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
   const hasTriggeredExit = useRef(false);
   const onAnimationEndRef = useRef(onAnimationEnd);
   onAnimationEndRef.current = onAnimationEnd;
@@ -23,15 +44,21 @@ export default function AnimatedSplash({ onAnimationEnd, isReady = true }: Anima
     if (hasTriggeredExit.current) return;
     hasTriggeredExit.current = true;
 
+    // Stop ongoing ambient loop
+    ambientLoopRef.current?.stop();
+
+    // Restore dark status bar for light app screens upon exit
+    RNStatusBar.setBarStyle("dark-content", true);
+
     Animated.parallel([
-      Animated.timing(opacity, {
+      Animated.timing(exitOpacity, {
         toValue: 0,
-        duration: 350,
+        duration: 300,
         useNativeDriver: true,
       }),
-      Animated.timing(scale, {
+      Animated.timing(exitScale, {
         toValue: 1.04,
-        duration: 350,
+        duration: 300,
         useNativeDriver: true,
       }),
     ]).start(() => {
@@ -40,122 +67,197 @@ export default function AnimatedSplash({ onAnimationEnd, isReady = true }: Anima
   };
 
   useEffect(() => {
-    // Hide the native OS splash so our animated splash is visible
     SplashScreen.hideAsync().catch(() => {});
 
-    // Run entrance animation immediately
+    const enforceLightStatusBar = () => {
+      RNStatusBar.setBarStyle("light-content", false);
+      if (Platform.OS === "android") {
+        RNStatusBar.setTranslucent(true);
+        RNStatusBar.setBackgroundColor("transparent", false);
+      }
+    };
+
+    // Force Android & iOS status bar icons and text to pure white
+    enforceLightStatusBar();
+
+    // Guard against child screens mounting in the background and overriding barStyle to dark
+    const guardInterval = setInterval(() => {
+      if (!hasTriggeredExit.current) {
+        enforceLightStatusBar();
+      }
+    }, 250);
+
+    // 1. Crisp Spring Entrance for the logo tile
     Animated.parallel([
-      Animated.timing(textOpacity, {
+      Animated.spring(logoScale, {
         toValue: 1,
-        duration: 500,
+        tension: 50,
+        friction: 6.5,
         useNativeDriver: true,
       }),
-      Animated.timing(textScale, {
+      Animated.timing(logoOpacity, {
         toValue: 1,
-        duration: 500,
+        duration: 350,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // Gentle ambient breathing loop on the icon card
+      if (!hasTriggeredExit.current) {
+        const breathing = Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulseScale, {
+              toValue: 1.03,
+              duration: 1600,
+              easing: Easing.inOut(Easing.sin),
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseScale, {
+              toValue: 1.0,
+              duration: 1600,
+              easing: Easing.inOut(Easing.sin),
+              useNativeDriver: true,
+            }),
+          ])
+        );
+        ambientLoopRef.current = breathing;
+        breathing.start();
+      }
+    });
+
+    // 2. Staggered reveal for typography
+    Animated.sequence([
+      Animated.delay(180),
+      Animated.parallel([
+        Animated.timing(textTranslateY, {
+          toValue: 0,
+          duration: 400,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(textOpacity, {
+          toValue: 1,
+          duration: 350,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.timing(subtitleOpacity, {
+        toValue: 1,
+        duration: 350,
         useNativeDriver: true,
       }),
     ]).start();
 
-    // Absolute fallback: NEVER stay on screen longer than 2500ms
-    const safetyTimer = setTimeout(() => {
+    // Normal fallback timeout in case initial readiness is delayed
+    const fallbackTimer = setTimeout(() => {
       triggerExit();
-    }, 2500);
+    }, 4000);
 
-    return () => clearTimeout(safetyTimer);
+    return () => {
+      clearInterval(guardInterval);
+      clearTimeout(fallbackTimer);
+      ambientLoopRef.current?.stop();
+    };
   }, []);
 
-  // When isReady is true, trigger exit immediately after entrance animation completes
   useEffect(() => {
     if (isReady) {
+      // Allow entrance animation to settle, then smoothly trigger exit
       const readyTimer = setTimeout(() => {
         triggerExit();
-      }, 550);
+      }, 2000);
 
       return () => clearTimeout(readyTimer);
     }
   }, [isReady]);
 
   return (
-    <Animated.View 
+    <Animated.View
       pointerEvents={hasTriggeredExit.current ? "none" : "auto"}
       style={[
         StyleSheet.absoluteFill,
         {
           zIndex: 99999,
-          backgroundColor: "#DC2626", // bg-primary-500
-          opacity,
-          transform: [{ scale }],
+          backgroundColor: "#D30309",
+          opacity: exitOpacity,
+          transform: [{ scale: exitScale }],
         },
       ]}
     >
-      <StatusBar style="light" />
-      {/* Main Content */}
-      <View className="flex-1 items-center justify-center px-6">
-        {/* Logo */}
-        <Animated.View 
-          className="mb-8"
-          style={{ 
-            opacity: textOpacity, 
-            transform: [{ scale: textScale }] 
+      <RNStatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
+      <ExpoStatusBar style="light" />
+
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={triggerExit}
+        style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+      >
+        <Animated.View
+          style={{
+            alignItems: "center",
+            opacity: logoOpacity,
+            transform: [{ scale: logoScale }],
           }}
         >
-          <View className="rounded-2xl p-4 shadow-xl bg-white/10">
+          {/* White App Icon Card with Ambient Breathing */}
+          <Animated.View
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: 24,
+              backgroundColor: "#FFFFFF",
+              alignItems: "center",
+              justifyContent: "center",
+              transform: [{ scale: pulseScale }],
+            }}
+          >
             <Image
               source={require("../assets/icons/box_logo.png")}
-              className="w-28 h-28"
+              style={{ width: 76, height: 76 }}
               resizeMode="contain"
             />
-          </View>
-        </Animated.View>
-        
-        {/* Main Text */}
-        <Animated.View 
-          className="items-center"
-          style={{ 
-            opacity: textOpacity, 
-            transform: [{ scale: textScale }] 
-          }}
-        >
-          <Text className="text-4xl font-extrabold text-white text-center tracking-wider mb-1">
-            EVERYTHING
-          </Text>
-          <Text className="text-4xl font-extrabold text-white text-center tracking-wider">
-            AUTOMOBILE
-          </Text>
-        </Animated.View>
-      </View>
-      
-      {/* Bottom Features */}
-      <View className="bg-green-700 px-6 py-6">
-        <View className="flex-row justify-around">
-          <View className="items-center flex-1">
-            <View className="bg-white/15 rounded-xl p-3 mb-2">
-              <TruckIcon size={26} color="#F0FDF4" />
-            </View>
-            <Text className="text-xs text-green-50 font-semibold text-center">Auto Services</Text>
-          </View>
-          <View className="items-center flex-1">
-            <View className="bg-white/15 rounded-xl p-3 mb-2">
-              <WrenchScrewdriverIcon size={26} color="#F0FDF4" />
-            </View>
-            <Text className="text-xs text-green-50 font-semibold text-center">Expert Mechanics</Text>
-          </View>
-          <View className="items-center flex-1">
-            <View className="bg-white/15 rounded-xl p-3 mb-2">
-              <ShieldCheckIcon size={26} color="#F0FDF4" />
-            </View>
-            <Text className="text-xs text-green-50 font-semibold text-center">Trusted & Secure</Text>
-          </View>
-        </View>
-      </View>
+          </Animated.View>
 
-      {/* Logo Section */}
-      <View className="bg-white py-6 items-center justify-center">
-        <View className="bg-gray-50 rounded-xl p-2">
-          <icons.logoBlack width={150} height={70} />
-        </View>
-      </View>
+          {/* Staggered Brand Typography Reveal */}
+          <Animated.View
+            style={{
+              alignItems: "center",
+              opacity: textOpacity,
+              transform: [{ translateY: textTranslateY }],
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 26,
+                color: "#FFFFFF",
+                marginTop: 22,
+                letterSpacing: -0.5,
+              }}
+              className="font-NunitoExtraBold"
+            >
+              Oga Mechanic
+            </Text>
+
+            <Animated.Text
+              style={{
+                fontSize: 12,
+                color: "rgba(255, 255, 255, 0.75)",
+                marginTop: 6,
+                letterSpacing: 2.5,
+                textTransform: "uppercase",
+                opacity: subtitleOpacity,
+              }}
+              className="font-NunitoBold"
+            >
+              Everything Automobile
+            </Animated.Text>
+          </Animated.View>
+        </Animated.View>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
