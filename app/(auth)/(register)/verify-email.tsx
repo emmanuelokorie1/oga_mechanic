@@ -3,6 +3,7 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import React, { useState, useEffect } from "react";
 import { icons } from "@/constants";
@@ -12,6 +13,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { routes } from "@/constants/routes";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 import { userAPI } from "@/lib/api/user";
 import { useCustomAlert } from "@/hooks/useCustomAlert";
 import CustomAlert from "@/components/CustomAlert";
@@ -141,10 +143,21 @@ const VerifyEmail = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white h-[80vh]">
+    <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
       <StatusBar style="dark" />
-      <View className="flex-1 justify-center items-center px-4">
-        <View className="w-full max-w-md">
+      <KeyboardAwareScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingHorizontal: 20,
+          paddingTop: 36,
+          paddingBottom: 60,
+        }}
+        extraScrollHeight={Platform.OS === 'ios' ? 60 : 120}
+        extraHeight={Platform.OS === 'ios' ? 80 : 160}
+        keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}
+      >
+        <View className="w-full max-w-md mx-auto">
           <View className="items-start mb-6">
             <icons.tick1 />
           </View>
@@ -168,8 +181,8 @@ const VerifyEmail = () => {
           {loading ? (
             <ActivityIndicator size="large" color="#D30309" className="pt-4" />
           ) : (
-            <View className="items-center">
-              <Text className="pt-2 pb-4 text-[15px]">Didn't receive OTP?</Text>
+            <View className="items-center mt-2">
+              <Text className="pt-2 pb-3 text-[15px] text-gray-600">Didn't receive OTP?</Text>
               {countdown > 0 ? (
                 <View className="items-center">
                   <Text className="text-gray-500 text-[14px] font-NunitoMedium mb-2">
@@ -182,7 +195,7 @@ const VerifyEmail = () => {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity onPress={handleResendCode} disabled={isResending}>
+                <TouchableOpacity onPress={handleResendCode} disabled={isResending} activeOpacity={0.7}>
                   <Text className="text-primary-500 text-[16px] font-NunitoSemiBold">
                     {isResending ? "Sending..." : "Resend Code"}
                   </Text>
@@ -191,7 +204,7 @@ const VerifyEmail = () => {
             </View>
           )}
         </View>
-      </View>
+      </KeyboardAwareScrollView>
 
       {/* Custom Alert */}
       {alertConfig && (

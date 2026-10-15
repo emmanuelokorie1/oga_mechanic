@@ -3,6 +3,7 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import React, { useState, useEffect } from "react";
 import HeaderAndDescTextCenter from "@/components/HeaderAndDescTextCenter";
@@ -16,6 +17,7 @@ import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
 import { useLocalSearchParams } from "expo-router";
 import { userAPI } from "@/lib/api/user";
 import Toast from "react-native-toast-message";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const EnterCode = () => {
   const router = useRouter();
@@ -101,66 +103,82 @@ const EnterCode = () => {
   };
 
   return (
-    <KeyboardAwareScrollView>
-      <View className="pt-[1.5rem]">
-        <View className="flex flex-row justify-between w-full py-4">
-          <View className="w-fit py-4 ps-2">
-            <BackArrowBtn />
+    <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
+      <KeyboardAwareScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingBottom: 60,
+        }}
+        extraScrollHeight={Platform.OS === 'ios' ? 60 : 120}
+        extraHeight={Platform.OS === 'ios' ? 80 : 160}
+        keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}
+      >
+        <View className="pt-[1.5rem]">
+          <View className="flex flex-row justify-between w-full py-4">
+            <View className="w-fit py-4 ps-2">
+              <BackArrowBtn />
+            </View>
+
+            <View className="flex-1 flex items-center">
+              <HeaderAndDescTextCenter
+                header="Enter Code"
+                text1="A six-digit OTP code has been sent to your email"
+                containerStyle="px-[1rem]"
+              />
+            </View>
+
+            <View className="w-fit flex items-end ">
+              <Text className="text-transparent">GG</Text>
+            </View>
           </View>
 
-          <View className="flex-1 flex items-center">
-            <HeaderAndDescTextCenter
-              header="Enter Code"
-              text1="A six-digit OTP code has been sent to your email"
-              containerStyle="px-[1rem]"
+          <View className="px-5 pt-6">
+            <icons.tick1 />
+
+            <Text className="font-NunitoSemiBold text-[19px] pt-5 pb-2">
+              Enter the 6-digit code we emailed to your linked address{" "}
+              {maskEmail(email || "your-email@gmail.com")}
+            </Text>
+            <Text className="text-text-100 text-[16px]">
+              This helps keep your account safe by verifying it's you
+            </Text>
+
+            <OTPInput
+              numberOfDigits={6}
+              onComplete={(otp) => { handleOtpComplete(otp); }}
+              countdown={countdown}
             />
-          </View>
 
-          <View className="w-fit flex items-end ">
-            <Text className="text-transparent">GG</Text>
+            {loading ? (
+              <ActivityIndicator size="large" color="#D30309" className="pt-4" />
+            ) : (
+              <View className="items-center mt-2">
+                <Text className="pt-2 pb-3 text-[15px] text-gray-600">Didn't receive OTP?</Text>
+                {countdown > 0 ? (
+                  <View className="items-center">
+                    <Text className="text-gray-500 text-[14px] font-NunitoMedium mb-2">
+                      {`Resend Code (${countdown}s)`}
+                    </Text>
+                    <TouchableOpacity disabled>
+                      <Text className="text-gray-400 text-[16px] font-NunitoSemiBold">
+                        Resend Code
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity onPress={handleResendCode} activeOpacity={0.7}>
+                    <Text className="text-primary-500 text-[16px] font-NunitoSemiBold">
+                      {"Resend Code"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
         </View>
-
-        <View className="px-5 pt-6">
-          <icons.tick1 />
-
-          <Text className="font-NunitoSemiBold text-[19px] pt-5 pb-2">
-            Enter the 6-digit code we emailed to your linked address{" "}
-            {maskEmail(email || "your-email@gmail.com")}
-          </Text>
-          <Text className="text-text-100 text-[16px]">
-            This helps keep your account safe by verifying it's you
-          </Text>
-
-          <OTPInput
-            numberOfDigits={6}
-            onComplete={(otp) => { handleOtpComplete(otp); }}
-            countdown={countdown}
-          />
-
-          {loading ? (
-            <ActivityIndicator size="large" color="#D30309" className="pt-4" />
-          ) : (
-            <>
-              <Text className="pt-2 pb-4 text-[15px]">Didn't receive OTP?</Text>
-              {countdown > 0 ? (
-                <TouchableOpacity>
-                  <Text className="text-primary-500 text-[16px] font-NunitoSemiBold">
-                    {`Resend Code (${countdown}s)`}
-                  </Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity onPress={handleResendCode}>
-                  <Text className="text-primary-500 text-[16px] font-NunitoSemiBold">
-                    {"Resend Code"}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-        </View>
-      </View>
-    </KeyboardAwareScrollView>
+      </KeyboardAwareScrollView>
+    </SafeAreaView>
   );
 };
 

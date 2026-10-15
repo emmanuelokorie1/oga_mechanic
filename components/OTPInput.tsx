@@ -5,7 +5,7 @@ import { OtpInput, OtpInputRef } from "react-native-otp-entry";
 import * as Clipboard from 'expo-clipboard';
 import { useIsFocused } from 'expo-router/react-navigation';
 
-const OTPInput = forwardRef(({ numberOfDigits, onComplete, countdown }: OTPInputProps, ref: React.Ref<OtpInputRef>) => {
+const OTPInput = forwardRef(({ numberOfDigits, onComplete, countdown, keyboardType = "default", containerStyle, autoFocus = false }: OTPInputProps, ref: React.Ref<OtpInputRef>) => {
   const internalRef = useRef<OtpInputRef>(null);
 
   useImperativeHandle(ref, () => ({
@@ -59,34 +59,32 @@ const OTPInput = forwardRef(({ numberOfDigits, onComplete, countdown }: OTPInput
   }, [numberOfDigits, isFocused]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.wrapper, containerStyle]}>
       <OtpInput
         ref={internalRef}
         numberOfDigits={numberOfDigits || 6}
         focusColor="#FFBFC2"
-        autoFocus={false}
+        autoFocus={autoFocus}
         hideStick={true}
         placeholder=""
         blurOnFilled={true}
-
         type="alphanumeric"
         secureTextEntry={false}
         focusStickBlinkingDuration={500}
         onFilled={(text) => onComplete?.(text)}
         textInputProps={{
           accessibilityLabel: "One-Time Password",
-          keyboardType: "default",
+          keyboardType: keyboardType,
           autoCapitalize: "characters",
         }}
         theme={{
-          containerStyle: styles.container,
+          containerStyle: styles.otpContainer,
           pinCodeContainerStyle: styles.pinCodeContainer,
           pinCodeTextStyle: styles.pinCodeText,
           focusStickStyle: styles.focusStick,
           focusedPinCodeContainerStyle: styles.activePinCodeContainer,
           placeholderTextStyle: styles.placeholderText,
           filledPinCodeContainerStyle: styles.filledPinCodeContainer,
-
         }}
       />
     </View>
@@ -94,21 +92,26 @@ const OTPInput = forwardRef(({ numberOfDigits, onComplete, countdown }: OTPInput
 });
 
 const styles = StyleSheet.create({
-  container: {
-    paddingVertical: 20,
+  wrapper: {
+    paddingVertical: 12,
+    width: "100%",
+  },
+  otpContainer: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   pinCodeContainer: {
     width: 44,
     height: 48,
     backgroundColor: "#f9f9f9",
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ccc",
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
     justifyContent: "center",
     alignItems: "center",
     marginHorizontal: 1,
   },
-
   pinCodeText: {
     fontSize: 20,
     fontWeight: "bold",
@@ -118,13 +121,16 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFBFC2",
   },
   activePinCodeContainer: {
-    borderColor: "#FFBFC2",
+    borderColor: "#D30309",
+    borderWidth: 2,
+    backgroundColor: "#FFF5F5",
   },
   placeholderText: {
     color: "#ccc",
   },
   filledPinCodeContainer: {
-    borderColor: "red",
+    borderColor: "#D30309",
+    borderWidth: 1.5,
   },
 });
 

@@ -71,11 +71,11 @@ const Register = () => {
 
       // Prepare registration data
       const registerData: DirectRegisterRequest = {
-        email: values.email,
+        email: values.email.trim().toLowerCase(),
         password: values.password,
         confirm_password: values.password,
-        first_name: values.first_name,
-        last_name: values.last_name,
+        first_name: values.first_name.trim(),
+        last_name: values.last_name.trim(),
         phone_number: formattedPhone,
         role: "primary_user", // Default role
       };

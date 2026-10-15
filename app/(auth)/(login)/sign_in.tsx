@@ -2,28 +2,25 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, TextInput, Alert } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import KeyboardAwareScrollView from "@/components/KeyboardAwareScrollView";
-import { Formik } from "formik";
+import { Formik, FormikProps } from "formik";
 import { router, useLocalSearchParams } from "expo-router";
 import HeaderAndDescTextCenter from "@/components/HeaderAndDescTextCenter";
 import AuthNavigateLink from "@/components/AuthNavigateLink";
 import * as Yup from "yup";
-import { loginSchema } from "@/utils/validationSchemas";
 import { routes, sellerRoutes } from "@/constants/routes";
 import FormikInput from "@/components/forms/FormikInput";
 import FormikButton from "@/components/forms/FormikButton";
-import FormikCheckbox from "@/components/forms/FormikCheckbox";
 import { LoginCredentials } from "@/lib/api/user";
 import { useLogin } from "@/hooks/useLogin";
 import { useCustomAlert } from "@/hooks/useCustomAlert";
 import CustomAlert from "@/components/CustomAlert";
 import { useGoogleSignIn } from "@/hooks/useGoogleSignIn";
-import { ChevronDownIcon } from "react-native-heroicons/outline";
-import CountryStatePicker from "@/components/CountryStatePicker";
 import { Country } from 'react-native-country-picker-modal';
 import { biometricAuth, BiometricType } from "@/utils/biometricAuth";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Svg, { Path } from "react-native-svg";
 import * as Haptics from "expo-haptics";
+import { formatPhoneNumber } from "@/utils/phoneUtils";
 
 const FaceIdSvg = ({ size = 28, color = "#D30309" }: { size?: number; color?: string }) => (
   <Svg width={size} height={size} viewBox="0 0 100 100" fill="none">
@@ -93,8 +90,9 @@ const singleInputLoginSchema = Yup.object().shape({
     .required('Email or Phone number is required')
     .test('email-or-phone', 'Please enter a valid email or phone number', function (value) {
       if (!value) return false;
-      const isEmail = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(value);
-      const isPhone = /^[+]?[0-9\s\-\(\)]{10,15}$/.test(value);
+      const clean = value.trim();
+      const isEmail = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(clean);
+      const isPhone = /^[+]?[0-9\s\-\(\)]{10,15}$/.test(clean);
       return isEmail || isPhone;
     }),
   password: Yup.string()
@@ -107,6 +105,7 @@ const SignIn = () => {
   const loginMutation = useLogin();
   const { visible, alertConfig, hideAlert, showError, showSuccess } = useCustomAlert();
   const passwordInputRef = useRef<TextInput>(null);
+  const formikRef = useRef<FormikProps<any>>(null);
 
   const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('email');
   const [showCountryPicker, setShowCountryPicker] = useState(false);
@@ -131,7 +130,6 @@ const SignIn = () => {
   const [hasBiometricCreds, setHasBiometricCreds] = useState(false);
   const [biometricType, setBiometricType] = useState<BiometricType>(BiometricType.FINGERPRINT);
   const [prefilledIdentifier, setPrefilledIdentifier] = useState("");
-  const [dormantIdentifier, setDormantIdentifier] = useState("");
   const [throttleMessage, setThrottleMessage] = useState("");
 
   const parsedName = useMemo(() => {
@@ -143,37 +141,15 @@ const SignIn = () => {
     return prefilledIdentifier;
   }, [prefilledIdentifier]);
 
-  const parsedDormantName = useMemo(() => {
-    if (!dormantIdentifier) return "";
-    if (dormantIdentifier.includes('@')) {
-      const name = dormantIdentifier.split('@')[0];
-      return name.charAt(0).toUpperCase() + name.slice(1);
-    }
-    return dormantIdentifier;
-  }, [dormantIdentifier]);
-
-  const handleSwitchAccount = async () => {
-    await AsyncStorage.setItem('switched_account', 'true');
-    setPrefilledIdentifier("");
-    router.replace(routes?.welcome as any);
-  };
-
-  const handleRestoreAccount = async () => {
-    setPrefilledIdentifier(dormantIdentifier);
-    setDormantIdentifier("");
-    await AsyncStorage.removeItem('switched_account');
-    const creds = await biometricAuth.getCredentials();
-    if (creds) {
-      handleBiometricLogin(creds);
-    }
-  };
-
   const hasAutoPromptedRef = useRef(false);
 
   useEffect(() => {
     const checkBiometrics = async () => {
       try {
-        const isSwitched = await AsyncStorage.getItem('switched_account') === 'true';
+        const justLoggedOut = (await AsyncStorage.getItem('just_logged_out')) === 'true';
+        if (justLoggedOut) {
+          await AsyncStorage.removeItem('just_logged_out');
+        }
 
         const availability = await biometricAuth.checkAvailability();
         // Supported if hardware is available, even if not yet enrolled
@@ -190,10 +166,9 @@ const SignIn = () => {
         if (creds && creds.loginMethod) {
           const identifier = creds.loginMethod === 'email' ? creds.email : creds.phone_number;
           if (identifier) {
-            if (isSwitched) {
-              setDormantIdentifier(identifier);
-            } else {
-              setPrefilledIdentifier(identifier);
+            setPrefilledIdentifier(identifier);
+            if (formikRef.current && !formikRef.current.values.identifier) {
+              formikRef.current.setFieldValue('identifier', identifier);
             }
           }
         }
@@ -201,10 +176,15 @@ const SignIn = () => {
         const type = await biometricAuth.getPreferredBiometricType();
         setBiometricType(type);
 
-        // Auto-prompt biometrics if supported, enabled, enrolled, and credentials exist
-        if (availability === 'available' && isEnabled && hasCreds && !hasAutoPromptedRef.current && !isSwitched) {
+        // Auto-prompt biometrics only on cold launch (not right after an explicit logout)
+        if (
+          availability === 'available' &&
+          isEnabled &&
+          hasCreds &&
+          !hasAutoPromptedRef.current &&
+          !justLoggedOut
+        ) {
           hasAutoPromptedRef.current = true;
-          // Small delay so the page transitions are complete and layout is settled
           setTimeout(() => {
             handleBiometricLogin(creds);
           }, 800);
@@ -250,14 +230,14 @@ const SignIn = () => {
         }
         setLoginMethod(creds.loginMethod);
 
-        // Call login API
+        // Call login API with normalized credentials
         const loginCredentials: LoginCredentials = {
           password: creds.password,
         };
         if (creds.loginMethod === 'email') {
-          loginCredentials.email = creds.email;
+          loginCredentials.email = (creds.email || '').trim().toLowerCase();
         } else {
-          loginCredentials.phone_number = creds.phone_number;
+          loginCredentials.phone_number = formatPhoneNumber((creds.phone_number || '').trim());
         }
 
         console.log("[Biometric] Mutating login request with credentials:", loginCredentials);
@@ -279,14 +259,10 @@ const SignIn = () => {
               errorMessage = error.response.data.message;
             }
 
-            // CRITICAL: Clear invalid / deleted credentials so the app does not remain stuck
-            // with a dormant user banner ("Continue as ...") or retry invalid credentials.
+            // Clear invalid credentials from biometric storage so device doesn't retry bad credentials
             await biometricAuth.clearCredentials();
             await biometricAuth.disableBiometric();
             setHasBiometricCreds(false);
-            setDormantIdentifier("");
-            setPrefilledIdentifier("");
-            await AsyncStorage.removeItem('switched_account');
 
             showError('Sign In Failed', errorMessage);
           }
@@ -392,39 +368,43 @@ const SignIn = () => {
   const handleSignIn = async (values: any, { setSubmitting, setFieldError, setFieldValue }: any) => {
     console.log("[SignIn] handleSignIn started. Formik values:", values);
     try {
-      const isEmailInput = values.identifier.includes('@');
+      const cleanIdentifier = (values.identifier || '').trim();
+      const isEmailInput = cleanIdentifier.includes('@');
+      const normalizedEmail = isEmailInput ? cleanIdentifier.toLowerCase() : '';
+      const normalizedPhone = !isEmailInput ? formatPhoneNumber(cleanIdentifier) : '';
+
       const credentials: LoginCredentials = {
         password: values.password,
       };
 
       if (isEmailInput) {
-        credentials.email = values.identifier;
+        credentials.email = normalizedEmail;
       } else {
-        credentials.phone_number = values.identifier;
+        credentials.phone_number = normalizedPhone;
       }
 
-      // Save biometric credentials BEFORE calling mutate
-      // (The useLogin hook navigates away in its own onSuccess,
-      //  which unmounts this component before any inline onSuccess runs)
+      // Save biometric credentials with normalized identifier BEFORE calling mutate
       if (values.rememberMe) {
         const biometricCredentials = {
           loginMethod: isEmailInput ? 'email' : 'phone',
           password: values.password,
-          email: isEmailInput ? values.identifier : '',
-          phone_number: !isEmailInput ? values.identifier : '',
+          email: normalizedEmail,
+          phone_number: normalizedPhone,
           selectedCountry,
         };
         console.log("[SignIn] Saving biometric credentials BEFORE mutate:", biometricCredentials);
         await biometricAuth.saveCredentials(biometricCredentials);
         await biometricAuth.enableBiometric();
+        setHasBiometricCreds(true);
       } else {
         console.log("[SignIn] rememberMe is false. Clearing biometric credentials...");
         await biometricAuth.clearCredentials();
         await biometricAuth.disableBiometric();
+        setHasBiometricCreds(false);
       }
 
       // Now call login — the useLogin hook will navigate on success
-      console.log("[SignIn] Calling loginMutation.mutate...");
+      console.log("[SignIn] Calling loginMutation.mutate with:", { ...credentials, password: '[PROTECTED]' });
       await AsyncStorage.removeItem('switched_account');
       loginMutation.mutate(credentials, {
         onError: async (error: any) => {
@@ -435,10 +415,6 @@ const SignIn = () => {
             await biometricAuth.disableBiometric();
             setHasBiometricCreds(false);
           }
-
-          // Clear dormant identifier as well
-          setDormantIdentifier("");
-          await AsyncStorage.removeItem('switched_account');
 
           // Clear password on failure for security
           setFieldValue('password', '');
@@ -488,13 +464,14 @@ const SignIn = () => {
           <HeaderAndDescTextCenter
             headerStyle="!text-[24px]"
             containerStyle={"px-2"}
-            header={prefilledIdentifier ? `Welcome back, ${parsedName}!` : (userType ? `Sign in as ${userType.charAt(0).toUpperCase() + userType.slice(1)}` : "Jump right back in.")}
-            text1={prefilledIdentifier ? "Please enter your password to continue" : (userType ? `Hi, Welcome back ${userType}.` : "Hi, Welcome back.")}
+            header={userType ? `Sign in as ${userType.charAt(0).toUpperCase() + userType.slice(1)}` : (parsedName ? `Welcome back, ${parsedName}!` : "Jump right back in.")}
+            text1={parsedName ? "Sign in to continue to your account" : (userType ? `Hi, Welcome back ${userType}.` : "Hi, Welcome back.")}
           />
         </View>
 
         <Formik
-          enableReinitialize={true}
+          innerRef={formikRef}
+          enableReinitialize={false}
           initialValues={{
             identifier: prefilledIdentifier || "",
             password: "",
@@ -505,18 +482,16 @@ const SignIn = () => {
         >
           {({ values, setFieldValue, errors, touched }) => (
             <View className="px-5">
-              {!prefilledIdentifier && (
-                <FormikInput
-                  name="identifier"
-                  label="Email or Phone number"
-                  placeholder="Email or phone"
-                  containerStyle=""
-                  type="email"
-                  required={true}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              )}
+              <FormikInput
+                name="identifier"
+                label="Email or Phone number"
+                placeholder="Email or phone number"
+                containerStyle=""
+                type="email"
+                required={true}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
 
               {/* Password Input */}
               <FormikInput
@@ -544,7 +519,7 @@ const SignIn = () => {
 
               <FormikButton
                 title={throttleMessage ? "Please wait..." : (loginMutation.isPending ? "Signing In..." : "Sign In")}
-                className="mb-6"
+                className="mb-4"
                 loading={loginMutation.isPending}
                 disabled={loginMutation.isPending || !!throttleMessage}
               />
@@ -554,8 +529,34 @@ const SignIn = () => {
                   {throttleMessage}
                 </Text>
               ) : null}
+
+              {/* Biometric Quick Login if supported & credentials exist */}
+              {isBiometricSupported && hasBiometricCreds && (
+                <View className="items-center mb-4">
+                  <TouchableOpacity
+                    onPress={() => handleBiometricLogin()}
+                    className="flex-row items-center justify-center w-full"
+                    disabled={loginMutation.isPending}
+                    activeOpacity={0.7}
+                  >
+                    {biometricType === BiometricType.FACIAL ? (
+                      <FaceIdSvg size={40} color="#D30309" />
+                    ) : (
+                      <MaterialCommunityIcons
+                        name="fingerprint"
+                        size={40}
+                        color="#D30309"
+                      />
+                    )}
+                    {/* <Text className="ml-3 font-NunitoBold text-primary-500 text-[1rem]">
+                      Sign in with {biometricType === BiometricType.FACIAL ? "Face ID" : "Biometrics"}
+                    </Text> */}
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* Divider */}
-              <View className="flex-row items-center my-5">
+              <View className="flex-row items-center my-4">
                 <View className="flex-1 h-[1px] bg-gray-200" />
                 <Text className="mx-4 text-gray-500 font-semibold text-sm">Or continue with</Text>
                 <View className="flex-1 h-[1px] bg-gray-200" />
@@ -570,65 +571,14 @@ const SignIn = () => {
                 <Text className="ml-3 font-semibold text-gray-700 text-[1.1rem]">Sign in with Google</Text>
               </TouchableOpacity>
 
-              {prefilledIdentifier ? (
-                <AuthNavigateLink
-                  onPress={handleSwitchAccount}
-                  text={`Not ${parsedName}?`}
-                  textLink="Switch account"
-                  containerClassName="mb-4"
-                  textClassName="text-[1rem]"
-                  linkClassName="text-[1rem]"
-                />
-              ) : dormantIdentifier ? (
-                <View>
-                  <AuthNavigateLink
-                    onPress={() => router?.push(routes?.register)}
-                    text="Don't have an account yet?"
-                    textLink="Sign Up"
-                    containerClassName="mb-6"
-                    textClassName="text-[1rem]"
-                    linkClassName="text-[1rem]"
-                  />
-                  <AuthNavigateLink
-                    onPress={handleRestoreAccount}
-                    text=""
-                    textLink={`Continue as ${parsedDormantName}`}
-                    containerClassName="mb-6 justify-center"
-                    textClassName="text-[1.1rem]"
-                    linkClassName="text-[1.1rem] text-primary-500 font-NunitoExtraBold"
-                  />
-                </View>
-              ) : (
-                <AuthNavigateLink
-                  onPress={() => router?.push(routes?.register)}
-                  text="Don't have an account yet?"
-                  textLink="Sign Up"
-                  containerClassName="mb-4"
-                  textClassName="text-[1rem]"
-                  linkClassName="text-[1rem]"
-                />
-              )}
-
-              {isBiometricSupported && prefilledIdentifier && (
-                <View className="items-center mt-2 mb-6">
-                  <TouchableOpacity
-                    onPress={() => handleBiometricLogin()}
-                    className="w-[56px] h-[56px] bg-[#D30309]/10 rounded-2xl items-center justify-center border border-[#D30309]/20"
-                    disabled={loginMutation.isPending}
-                    activeOpacity={0.7}
-                  >
-                    {biometricType === BiometricType.FACIAL ? (
-                      <FaceIdSvg size={28} color="#D30309" />
-                    ) : (
-                      <MaterialCommunityIcons
-                        name="fingerprint"
-                        size={28}
-                        color="#D30309"
-                      />
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
+              <AuthNavigateLink
+                onPress={() => router?.push(routes?.register)}
+                text="Don't have an account yet?"
+                textLink="Sign Up"
+                containerClassName="mb-4"
+                textClassName="text-[1rem]"
+                linkClassName="text-[1rem]"
+              />
             </View>
           )}
         </Formik>

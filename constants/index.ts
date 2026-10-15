@@ -30,6 +30,7 @@ import carRent from "@/assets/icons/car_rent.png";
 import round from "@/assets/icons/round.svg";
 import mechanicOrderIcon from "@/assets/icons/find_mechanic.png";
 import customerService from "@/assets/icons/customer-service.png";
+import carTow from "@/assets/icons/carTow.svg";
 
 //profile icons
 import UserCircle from "@/assets/icons/profile/UserCircle.svg";
@@ -119,6 +120,7 @@ export const icons = {
   spareParts: sparePartIcon,
   cars: car,
   carRent,
+  carTow,
   activeFleetTab: carRent
 };
 
@@ -163,6 +165,16 @@ export const Services: ServicesProps[] = [
     bgColor: "#F0FDF4",
     border: "#189804",
     badge: "Insured",
+  },
+  {
+    id: 7,
+    name: "Rent Towing Van",
+    description: "Emergency towing & flatbed haulage",
+    image: carTow,
+    isSmall: true,
+    bgColor: "#FEF2F2",
+    border: "#EF4444",
+    badge: "24/7 Rescue",
   },
   {
     id: 8,

@@ -10,6 +10,7 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
+  ScrollView,
 } from 'react-native';
 import { XMarkIcon, ShieldCheckIcon } from 'react-native-heroicons/outline';
 import OTPInput from '@/components/OTPInput';
@@ -49,10 +50,17 @@ const MechanicOTPVerificationModal = ({
         <View style={styles.centeredView}>
           <View style={styles.overlay} />
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
             style={styles.modalViewContainer}
           >
-            <View style={styles.modalView}>
+            <ScrollView
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <View style={styles.modalView}>
               <View style={styles.header}>
                 <View style={styles.iconContainer}>
                    <ShieldCheckIcon size={24} color="#16A34A" />
@@ -107,6 +115,7 @@ const MechanicOTPVerificationModal = ({
                  </>
                )}
              </View>
+            </ScrollView>
            </KeyboardAvoidingView>
          </View>
        </TouchableWithoutFeedback>
@@ -127,6 +136,11 @@ const styles = StyleSheet.create({
   modalViewContainer: {
     width: '90%',
     maxWidth: 400,
+    maxHeight: '85%',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   modalView: {
     backgroundColor: 'white',

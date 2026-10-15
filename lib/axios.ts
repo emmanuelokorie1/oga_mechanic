@@ -72,6 +72,8 @@ api.interceptors.request.use(
 
       if (token && !config.headers?.skipAuth && !isPublicEndpoint) {
         config.headers.Authorization = `Bearer ${token}`;
+      } else if (isPublicEndpoint && config.headers?.Authorization) {
+        delete config.headers.Authorization;
       }
       if (config.headers?.skipAuth) {
         delete config.headers.skipAuth;

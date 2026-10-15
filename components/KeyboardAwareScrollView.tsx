@@ -37,6 +37,8 @@ const KeyboardAwareScrollView: React.FC<KeyboardAwareScrollViewProps> = ({
   scrollViewClassName = 'flex-1',
   contentContainerStyle,
   style,
+  extraScrollHeight = Platform.OS === 'ios' ? 50 : 120,
+  extraHeight = Platform.OS === 'ios' ? 75 : 150,
   ...scrollViewProps
 }) => {
   return (
@@ -49,10 +51,10 @@ const KeyboardAwareScrollView: React.FC<KeyboardAwareScrollViewProps> = ({
       bounces={true}
       enableOnAndroid={true}
       enableAutomaticScroll={true}
-      extraScrollHeight={Platform.OS === 'ios' ? 20 : 0}
-      extraHeight={Platform.OS === 'ios' ? 40 : 20}
+      extraScrollHeight={extraScrollHeight}
+      extraHeight={extraHeight}
       enableResetScrollToCoords={false}
-      keyboardOpeningTime={0}
+      keyboardOpeningTime={Platform.OS === 'ios' ? 250 : 0}
       contentContainerStyle={[
         {
           flexGrow: 1,

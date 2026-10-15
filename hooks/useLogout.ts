@@ -32,8 +32,11 @@ export const useLogout = () => {
       'user_data',
       'is_logged_in',
       'user_roles_data',
-      'current_active_role'
+      'current_active_role',
+      'switched_account'
     ]).catch(() => {});
+
+    await AsyncStorage.setItem('just_logged_out', 'true');
 
     // 4. Navigate to sign-in page
     router.replace(routes?.signIn);

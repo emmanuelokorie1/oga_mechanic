@@ -48,6 +48,9 @@ declare interface OTPInputProps {
   numberOfDigits?: number
   countdown?: number
   onComplete?: (otp: string | number) => void | undefined
+  keyboardType?: "default" | "number-pad" | "numeric"
+  containerStyle?: any
+  autoFocus?: boolean
 }
 
 declare interface Ride {

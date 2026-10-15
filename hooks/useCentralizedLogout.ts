@@ -56,8 +56,10 @@ export const useCentralizedLogout = () => {
         'user_data',
         'is_logged_in',
         'current_active_role',
-        'user_roles_data'
+        'user_roles_data',
+        'switched_account'
       ]);
+      await AsyncStorage.setItem('just_logged_out', 'true');
       
       console.log('✅ All auth data cleared from storage');
       
@@ -84,8 +86,10 @@ export const useCentralizedLogout = () => {
           'user_data',
           'is_logged_in',
           'current_active_role',
-          'user_roles_data'
+          'user_roles_data',
+          'switched_account'
         ]);
+        await AsyncStorage.setItem('just_logged_out', 'true');
         router.replace(routes?.signIn as any);
       } catch (fallbackError) {
         console.error('❌ Fallback logout failed:', fallbackError);

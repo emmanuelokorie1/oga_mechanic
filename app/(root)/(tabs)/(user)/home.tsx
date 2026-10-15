@@ -35,10 +35,12 @@ const SERVICE_ICONS: Record<string, { icon: string }> = {
   'Buy Spare Parts':  { icon: 'car-cog' },
   'Buy a Car':        { icon: 'car' },
   'Vehicle Rental':   { icon: 'car-clock' },
+  'Rent Towing Van':  { icon: 'tow-truck' },
   'VIN Search':       { icon: 'barcode-scan' },
   'My Repair Orders': { icon: 'file-document-outline' },
   'Chat Specialist':  { icon: 'chat-processing-outline' },
   'Service Partner':  { icon: 'handshake-outline' },
+  'Service Provider': { icon: 'handshake-outline' },
 };
 
 // ─── Trust indicators data ───────────────────────────────────────────────────
@@ -284,6 +286,12 @@ const Home = () => {
       }
       case "Vehicle Rental":
         router.push(routes.rentACar);
+        break;
+      case "Rent Towing Van":
+        router.push({
+          pathname: routes.rentACar as any,
+          params: { type: 'van' },
+        });
         break;
       case "Chat a Specialist":
       case "Chat Specialist":

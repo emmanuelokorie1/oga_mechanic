@@ -176,7 +176,9 @@ export const useAuth = () => {
         'is_logged_in',
         'user_roles_data',   // Bug 15: remove stale role data instead of writing it
         'current_active_role',
+        'switched_account',
       ]);
+      await AsyncStorage.setItem('just_logged_out', 'true');
       
       setIsAuthenticated(false);
       setUserData(null);

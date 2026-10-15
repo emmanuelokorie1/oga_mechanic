@@ -29,7 +29,7 @@ import { usePrimaryUserProfile, useFollowedMerchants } from "@/hooks/useUserProf
 import CustomAlert from "@/components/CustomAlert";
 import { useCustomAlert } from "@/hooks/useCustomAlert";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLogout } from "@/hooks/useLogout";
+import { useCentralizedLogout } from "@/hooks/useCentralizedLogout";
 import { PrimaryUserProfileResponse } from "@/lib/api/user";
 import usePullToRefresh from "@/hooks/usePullToRefresh";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -68,7 +68,7 @@ const Profile = () => {
   const followedMerchantsCount = Array.isArray(followedMerchantsData?.data) ? followedMerchantsData.data.length : 0;
 
   const { visible, alertConfig, hideAlert } = useCustomAlert();
-  const logoutMutation = useLogout();
+  const { logout, isLoggingOut } = useCentralizedLogout();
 
   // Pull to refresh functionality
   const { refreshControl } = usePullToRefresh({
@@ -88,34 +88,7 @@ const Profile = () => {
 
   const confirmLogout = async () => {
     setShowLogoutModal(false);
-
-    try {
-      // Get refresh token from AsyncStorage
-      const refreshToken = await AsyncStorage.getItem('refresh_token');
-
-      if (refreshToken) {
-        // Call logout API with refresh token
-        logoutMutation.mutate({ refresh: refreshToken });
-      } else {
-        // If no refresh token, just clear local storage and navigate
-        await AsyncStorage.multiRemove([
-          'auth_token',
-          'refresh_token',
-          'user_data',
-          'is_logged_in'
-        ]);
-        router?.push(routes?.signIn);
-      }
-    } catch (error) {
-      // Fallback: clear storage and navigate
-      await AsyncStorage.multiRemove([
-        'auth_token',
-        'refresh_token',
-        'user_data',
-        'is_logged_in'
-      ]);
-      router?.push(routes?.signIn);
-    }
+    await logout();
   };
 
   const cancelLogout = () => {
@@ -394,18 +367,18 @@ const Profile = () => {
             <View className="pt-2">
               <TouchableOpacity
                 onPress={handleLogout}
-                disabled={logoutMutation.isPending}
+                disabled={isLoggingOut}
                 className={`flex-row items-center justify-center gap-2 bg-white border border-red-100 rounded-3xl py-4 shadow-sm ${
-                  logoutMutation.isPending ? "opacity-50" : ""
+                  isLoggingOut ? "opacity-50" : ""
                 }`}
               >
-                {logoutMutation.isPending ? (
+                {isLoggingOut ? (
                   <ActivityIndicator size="small" color="#EF4444" />
                 ) : (
                   <ArrowRightOnRectangleIcon size={20} color="#EF4444" />
                 )}
                 <Text className="text-red-500 text-lg font-NunitoBold">
-                  {logoutMutation.isPending ? "Logging out..." : "Log Out"}
+                  {isLoggingOut ? "Logging out..." : "Log Out"}
                 </Text>
               </TouchableOpacity>
 
